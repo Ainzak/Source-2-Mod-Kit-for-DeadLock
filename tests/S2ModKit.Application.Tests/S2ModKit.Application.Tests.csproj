@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\..\src\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+    <ProjectReference Include="..\..\src\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
+    <ProjectReference Include="..\..\src\S2ModKit.Infrastructure\S2ModKit.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NJsonSchema" />
+  </ItemGroup>
+</Project>

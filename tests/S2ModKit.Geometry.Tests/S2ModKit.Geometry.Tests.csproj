@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
+  </ItemGroup>
+</Project>

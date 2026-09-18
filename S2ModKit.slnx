@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/S2ModKit.Adapters.Source2/S2ModKit.Adapters.Source2.csproj" />
+    <Project Path="src/S2ModKit.Adapters.Vpk/S2ModKit.Adapters.Vpk.csproj" />
+    <Project Path="src/S2ModKit.Application/S2ModKit.Application.csproj" />
+    <Project Path="src/S2ModKit.Cli/S2ModKit.Cli.csproj" />
+    <Project Path="src/S2ModKit.Domain/S2ModKit.Domain.csproj" />
+    <Project Path="src/S2ModKit.Geometry/S2ModKit.Geometry.csproj" />
+    <Project Path="src/S2ModKit.Infrastructure/S2ModKit.Infrastructure.csproj" />
+    <Project Path="src/S2ModKit.Reporting/S2ModKit.Reporting.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/S2ModKit.Application.Tests/S2ModKit.Application.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Architecture.Tests/S2ModKit.Architecture.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Cli.Tests/S2ModKit.Cli.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Domain.Tests/S2ModKit.Domain.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Geometry.Tests/S2ModKit.Geometry.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Source2.Tests/S2ModKit.Source2.Tests.csproj" />
+    <Project Path="tests/S2ModKit.Vpk.Tests/S2ModKit.Vpk.Tests.csproj" />
+  </Folder>
+</Solution>

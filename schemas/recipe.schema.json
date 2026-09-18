@@ -1,0 +1,240 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/recipe.schema.json",
+  "title": "S2ModKit recipe v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recipeId", "inputHash", "operations", "extensions"],
+  "properties": {
+    "schemaVersion": { "enum": [4] },
+    "recipeId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+    "inputHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/removeComponent" },
+          { "$ref": "#/definitions/transformComponent" },
+          { "$ref": "#/definitions/coupledTransformComponent" },
+          { "$ref": "#/definitions/connectedComponentTransform" }
+        ]
+      }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "removeComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "extensions"],
+      "properties": {
+        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+        "kind": { "enum": ["remove_component"] },
+        "version": { "enum": [1] },
+        "granularity": { "enum": ["draw_call"] },
+        "selector": { "$ref": "#/definitions/selector" },
+        "lodPolicy": { "enum": ["all_present"] },
+        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "transformComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "expectedVerticesByLod", "ownershipPolicy", "transform", "limits", "extensions"],
+      "properties": {
+        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+        "kind": { "enum": ["transform_component"] },
+        "version": { "enum": [1] },
+        "granularity": { "enum": ["draw_call_owned_vertices"] },
+        "selector": { "$ref": "#/definitions/selector" },
+        "lodPolicy": { "enum": ["all_present"] },
+        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "expectedVerticesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "ownershipPolicy": { "enum": ["exclusive"] },
+        "transform": { "$ref": "#/definitions/transform" },
+        "limits": { "$ref": "#/definitions/limitsV1" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "coupledTransformComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "expectedVerticesByLod", "ownershipPolicy", "physicsPolicy", "transform", "limits", "extensions"],
+      "properties": {
+        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+        "kind": { "enum": ["transform_component"] },
+        "version": { "enum": [2] },
+        "granularity": { "enum": ["draw_call_owned_vertices"] },
+        "selector": { "$ref": "#/definitions/selector" },
+        "lodPolicy": { "enum": ["all_present"] },
+        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "expectedVerticesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "ownershipPolicy": { "enum": ["exclusive"] },
+        "physicsPolicy": { "enum": ["transform_coupled_convex"] },
+        "transform": { "$ref": "#/definitions/coupledTransform" },
+        "limits": { "$ref": "#/definitions/limitsV2" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "connectedComponentTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "expectedVerticesByLod", "connectedComponentIdsByLod", "ownershipPolicy", "transform", "limits", "extensions"],
+      "properties": {
+        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+        "kind": { "enum": ["transform_component"] },
+        "version": { "enum": [3] },
+        "granularity": { "enum": ["connected_component_vertices"] },
+        "selector": { "$ref": "#/definitions/selector" },
+        "lodPolicy": { "enum": ["all_present"] },
+        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "expectedVerticesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "connectedComponentIdsByLod": { "$ref": "#/definitions/connectedComponentIdsByLod" },
+        "ownershipPolicy": { "enum": ["exclusive"] },
+        "transform": { "$ref": "#/definitions/transform" },
+        "limits": { "$ref": "#/definitions/limitsV1" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "materialPath"],
+          "properties": {
+            "kind": { "enum": ["material_exact"] },
+            "materialPath": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "drawCallIds"],
+          "properties": {
+            "kind": { "enum": ["draw_call_ids"] },
+            "drawCallIds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+            }
+          }
+        }
+      ]
+    },
+    "lodExpectations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(0|[1-9][0-9]*)$": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "connectedComponentIdsByLod": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(0|[1-9][0-9]*)$": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^cc_[0-9a-f]{24}$" }
+        }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pivot", "uniformScale", "translation"],
+      "properties": {
+        "pivot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "referenceLod"],
+          "properties": {
+            "kind": { "enum": ["selection_bounds_center"] },
+            "referenceLod": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "uniformScale": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
+        "translation": { "$ref": "#/definitions/vector3" }
+      },
+      "not": {
+        "properties": {
+          "uniformScale": { "enum": [1.0] },
+          "translation": {
+            "properties": {
+              "x": { "enum": [0.0] },
+              "y": { "enum": [0.0] },
+              "z": { "enum": [0.0] }
+            },
+            "required": ["x", "y", "z"]
+          }
+        },
+        "required": ["uniformScale", "translation"]
+      }
+    },
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "coupledTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pivot", "uniformScale", "translation"],
+      "properties": {
+        "pivot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "referenceLod"],
+          "properties": {
+            "kind": { "enum": ["selection_bounds_center"] },
+            "referenceLod": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "uniformScale": { "type": "number", "minimum": 0.25, "maximum": 4.0, "not": { "enum": [1.0] } },
+        "translation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "z"],
+          "properties": { "x": { "enum": [0.0] }, "y": { "enum": [0.0] }, "z": { "enum": [0.0] } }
+        }
+      }
+    },
+    "limitsV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumVertexDisplacement"],
+      "properties": {
+        "maximumVertexDisplacement": { "type": "number", "exclusiveMinimum": 0, "maximum": 256.0 }
+      }
+    },
+    "limitsV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumVertexDisplacement", "maximumCollisionDisplacement"],
+      "properties": {
+        "maximumVertexDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256.0
+        },
+        "maximumCollisionDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256.0
+        }
+      }
+    }
+  }
+}

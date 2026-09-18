@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "catalogueId": "deadlock.current",
+  "revision": "2026-09-17.1",
+  "source": {
+    "gameId": "deadlock",
+    "sourceKind": "base_vpk",
+    "expectedDirectoryHash": "922c1145ea203bf48c4987653139b94f301fbaf0ffbd92d3596c5549ebdebbca"
+  },
+  "heroes": [
+    { "heroId": "abrams", "displayName": "Abrams", "aliases": ["atlas"], "rosterStatus": "active", "resources": [
+      { "resourceId": "abrams.primary", "displayName": "Abrams", "role": "primary_model", "logicalPath": "models/heroes_wip/abrams/abrams.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 6 } },
+    { "heroId": "apollo", "displayName": "Apollo", "aliases": ["fencer"], "rosterStatus": "active", "resources": [
+      { "resourceId": "apollo.primary", "displayName": "Apollo", "role": "primary_model", "logicalPath": "models/heroes_wip/fencer/fencer.vmdl_c", "optional": false, "qualificationStatus": "runtime_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 77 } },
+    { "heroId": "bebop", "displayName": "Bebop", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "bebop.primary", "displayName": "Bebop", "role": "primary_model", "logicalPath": "models/heroes_staging/bebop/bebop.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 15 } },
+    { "heroId": "billy", "displayName": "Billy", "aliases": ["punkgoat"], "rosterStatus": "active", "resources": [
+      { "resourceId": "billy.primary", "displayName": "Billy", "role": "primary_model", "logicalPath": "models/heroes_wip/punkgoat/punkgoat.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 72 } },
+    { "heroId": "calico", "displayName": "Calico", "aliases": ["nano"], "rosterStatus": "active", "resources": [
+      { "resourceId": "calico.primary", "displayName": "Calico", "role": "primary_model", "logicalPath": "models/heroes_staging/nano/nano_v2/nano.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 16 } },
+    { "heroId": "doorman", "displayName": "Doorman", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "doorman.primary", "displayName": "Doorman", "role": "primary_model", "logicalPath": "models/heroes_wip/doorman_v2/doorman.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 69 } },
+    { "heroId": "drifter", "displayName": "Drifter", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "drifter.primary", "displayName": "Drifter", "role": "primary_model", "logicalPath": "models/heroes_wip/drifter/drifter.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 64 } },
+    { "heroId": "dynamo", "displayName": "Dynamo", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "dynamo.primary", "displayName": "Dynamo", "role": "primary_model", "logicalPath": "models/heroes_wip/dynamo/dynamo.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 11 } },
+    { "heroId": "familiar", "displayName": "Familiar", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "familiar.primary", "displayName": "Familiar", "role": "primary_model", "logicalPath": "models/heroes_wip/familiar/familiar_wip.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 79 } },
+    { "heroId": "grey-talon", "displayName": "Grey Talon", "aliases": ["orion"], "rosterStatus": "active", "resources": [
+      { "resourceId": "grey-talon.primary", "displayName": "Grey Talon", "role": "primary_model", "logicalPath": "models/heroes_staging/archer/archer.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 17 } },
+    { "heroId": "graves", "displayName": "Graves", "aliases": ["necro"], "rosterStatus": "active", "resources": [
+      { "resourceId": "graves.primary", "displayName": "Graves", "role": "primary_model", "logicalPath": "models/heroes_wip/necro/necro.vmdl_c", "optional": false, "qualificationStatus": "runtime_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 76 } },
+    { "heroId": "haze", "displayName": "Haze", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "haze.primary", "displayName": "Haze", "role": "primary_model", "logicalPath": "models/heroes_staging/haze/haze.vmdl_c", "optional": false, "qualificationStatus": "runtime_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 13 } },
+    { "heroId": "holliday", "displayName": "Holliday", "aliases": ["astro"], "rosterStatus": "active", "resources": [
+      { "resourceId": "holliday.primary", "displayName": "Holliday", "role": "primary_model", "logicalPath": "models/heroes_staging/astro/astro.vmdl_c", "optional": false, "qualificationStatus": "runtime_qualified", "extensions": {} },
+      { "resourceId": "holliday.hat", "displayName": "Holliday hat", "role": "accessory_model", "logicalPath": "models/heroes_staging/astro/astro_hat.vmdl_c", "optional": true, "qualificationStatus": "offline_static", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 14 } },
+    { "heroId": "infernus", "displayName": "Infernus", "aliases": ["inferno"], "rosterStatus": "active", "resources": [
+      { "resourceId": "infernus.primary", "displayName": "Infernus", "role": "primary_model", "logicalPath": "models/heroes_wip/inferno/inferno.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 1 } },
+    { "heroId": "ivy", "displayName": "Ivy", "aliases": ["tengu"], "rosterStatus": "active", "resources": [
+      { "resourceId": "ivy.primary", "displayName": "Ivy", "role": "primary_model", "logicalPath": "models/heroes_wip/ivy/ivy.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 20 } },
+    { "heroId": "kelvin", "displayName": "Kelvin", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "kelvin.primary", "displayName": "Kelvin", "role": "primary_model", "logicalPath": "models/heroes_staging/kelvin_v2/kelvin.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 12 } },
+    { "heroId": "lady-geist", "displayName": "Lady Geist", "aliases": ["ghost"], "rosterStatus": "active", "resources": [
+      { "resourceId": "lady-geist.primary", "displayName": "Lady Geist", "role": "primary_model", "logicalPath": "models/heroes_wip/geist/geist.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 4 } },
+    { "heroId": "lash", "displayName": "Lash", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "lash.primary", "displayName": "Lash", "role": "primary_model", "logicalPath": "models/heroes_wip/lash/lash.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 31 } },
+    { "heroId": "mcginnis", "displayName": "McGinnis", "aliases": ["forge"], "rosterStatus": "active", "resources": [
+      { "resourceId": "mcginnis.primary", "displayName": "McGinnis", "role": "primary_model", "logicalPath": "models/heroes_wip/mcginnis/mcginnis.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 8 } },
+    { "heroId": "mina", "displayName": "Mina", "aliases": ["vampirebat"], "rosterStatus": "active", "resources": [
+      { "resourceId": "mina.primary", "displayName": "Mina", "role": "primary_model", "logicalPath": "models/heroes_wip/vampirebat/vampirebat.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 63 } },
+    { "heroId": "mirage", "displayName": "Mirage", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "mirage.primary", "displayName": "Mirage", "role": "primary_model", "logicalPath": "models/heroes_staging/mirage_v2/mirage.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 52 } },
+    { "heroId": "mo-and-krill", "displayName": "Mo & Krill", "aliases": ["krill", "mo krill"], "rosterStatus": "active", "resources": [
+      { "resourceId": "mo-and-krill.primary", "displayName": "Mo & Krill", "role": "primary_model", "logicalPath": "models/heroes_staging/digger/digger.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 18 } },
+    { "heroId": "paige", "displayName": "Paige", "aliases": ["bookworm"], "rosterStatus": "active", "resources": [
+      { "resourceId": "paige.primary", "displayName": "Paige", "role": "primary_model", "logicalPath": "models/heroes_wip/bookworm/bookworm.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 67 } },
+    { "heroId": "paradox", "displayName": "Paradox", "aliases": ["chrono"], "rosterStatus": "active", "resources": [
+      { "resourceId": "paradox.primary", "displayName": "Paradox", "role": "primary_model", "logicalPath": "models/heroes_staging/chrono/chrono.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 10 } },
+    { "heroId": "pocket", "displayName": "Pocket", "aliases": ["synth"], "rosterStatus": "active", "resources": [
+      { "resourceId": "pocket.primary", "displayName": "Pocket", "role": "primary_model", "logicalPath": "models/heroes_wip/pocket/pocket.vmdl_c", "optional": false, "qualificationStatus": "runtime_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 50 } },
+    { "heroId": "priest", "displayName": "Priest", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "priest.primary", "displayName": "Priest", "role": "primary_model", "logicalPath": "models/heroes_wip/priest/priest.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 65 } },
+    { "heroId": "seven", "displayName": "Seven", "aliases": ["gigawatt"], "rosterStatus": "active", "resources": [
+      { "resourceId": "seven.primary", "displayName": "Seven", "role": "primary_model", "logicalPath": "models/heroes_staging/gigawatt_prisoner/gigawatt_prisoner.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 2 } },
+    { "heroId": "shiv", "displayName": "Shiv", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "shiv.primary", "displayName": "Shiv", "role": "primary_model", "logicalPath": "models/heroes_staging/shiv/shiv.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 19 } },
+    { "heroId": "sinclair", "displayName": "Sinclair", "aliases": ["magician"], "rosterStatus": "active", "resources": [
+      { "resourceId": "sinclair.primary", "displayName": "Sinclair", "role": "primary_model", "logicalPath": "models/heroes_staging/magician_v2/magician.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 60 } },
+    { "heroId": "unicorn", "displayName": "Unicorn", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "unicorn.primary", "displayName": "Unicorn", "role": "primary_model", "logicalPath": "models/heroes_wip/unicorn/unicorn.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 81 } },
+    { "heroId": "victor", "displayName": "Victor", "aliases": ["frank"], "rosterStatus": "active", "resources": [
+      { "resourceId": "victor.primary", "displayName": "Victor", "role": "primary_model", "logicalPath": "models/heroes_wip/frank/frank.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 66 } },
+    { "heroId": "vindicta", "displayName": "Vindicta", "aliases": ["hornet"], "rosterStatus": "active", "resources": [
+      { "resourceId": "vindicta.primary", "displayName": "Vindicta", "role": "primary_model", "logicalPath": "models/heroes_staging/hornet_v3/hornet.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 3 } },
+    { "heroId": "viscous", "displayName": "Viscous", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "viscous.primary", "displayName": "Viscous", "role": "primary_model", "logicalPath": "models/heroes_staging/viscous/viscous.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 35 } },
+    { "heroId": "vyper", "displayName": "Vyper", "aliases": ["viper"], "rosterStatus": "active", "resources": [
+      { "resourceId": "vyper.primary", "displayName": "Vyper", "role": "primary_model", "logicalPath": "models/heroes_staging/viper/viper.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 58 } },
+    { "heroId": "warden", "displayName": "Warden", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "warden.primary", "displayName": "Warden", "role": "primary_model", "logicalPath": "models/heroes_staging/warden/warden.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 25 } },
+    { "heroId": "werewolf", "displayName": "Werewolf", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "werewolf.primary", "displayName": "Werewolf", "role": "primary_model", "logicalPath": "models/heroes_wip/werewolf/werewolf.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 80 } },
+    { "heroId": "wraith", "displayName": "Wraith", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "wraith.primary", "displayName": "Wraith", "role": "primary_model", "logicalPath": "models/heroes_wip/wraith/wraith.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 7 } },
+    { "heroId": "yamato", "displayName": "Yamato", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "yamato.primary", "displayName": "Yamato", "role": "primary_model", "logicalPath": "models/heroes_staging/yamato_v2/yamato.vmdl_c", "optional": false, "qualificationStatus": "read_only_qualified", "extensions": {} }
+    ], "extensions": { "sourceHeroId": 27 } }
+  ],
+  "extensions": {
+    "rosterSource": "scripts/heroes.vdata_c",
+    "selectionRule": "player-selectable and neither disabled nor in-development"
+  }
+}

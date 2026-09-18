@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+  </ItemGroup>
+</Project>
+

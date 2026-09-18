@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/installation.schema.json",
+  "title": "S2ModKit managed installation receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "installationId", "projectId", "packageId", "createdUtc", "updatedUtc", "status",
+    "addonsRoot", "targetFileName", "stagingFileName", "slot", "logicalPath", "packageHash",
+    "entryContentHash", "extensions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "installationId": { "type": "string", "pattern": "^install-[a-z0-9-]+$" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "packageId": { "type": "string", "pattern": "^vpk-[0-9a-f]{20}$" },
+    "createdUtc": { "type": "string", "format": "date-time" },
+    "updatedUtc": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["prepared", "active", "rolled_back"] },
+    "addonsRoot": { "type": "string", "minLength": 1 },
+    "targetFileName": { "type": "string", "pattern": "^pak[0-9]{2}_dir\\.vpk$" },
+    "stagingFileName": { "type": "string", "minLength": 1 },
+    "disabledFileName": { "type": ["string", "null"] },
+    "slot": { "type": "integer", "minimum": 0, "maximum": 99 },
+    "logicalPath": { "type": "string", "minLength": 1 },
+    "packageHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "entryContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dmmStateHashBefore": { "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{64}$" }, { "type": "null" }] },
+    "dmmStateHashAfter": { "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{64}$" }, { "type": "null" }] },
+    "extensions": { "type": "object" }
+  }
+}

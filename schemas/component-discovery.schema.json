@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/component-discovery.schema.json",
+  "title": "S2ModKit component discovery v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "model", "discoveryFingerprint", "analyzer", "candidates", "lineageDiagnostics", "extensions"],
+  "properties": {
+    "schemaVersion": { "enum": [2] },
+    "model": { "$ref": "#/definitions/modelIdentity" },
+    "discoveryFingerprint": { "$ref": "#/definitions/hash" },
+    "analyzer": { "$ref": "#/definitions/analyzerIdentity" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/materialGroupCandidate" },
+          { "$ref": "#/definitions/meshLineageCandidate" }
+        ]
+      }
+    },
+    "lineageDiagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/lineageDiagnostic" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "modelIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "size"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "$ref": "#/definitions/hash" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "analyzerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "componentVersions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "componentVersions": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "materialGroupCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "candidateId", "model", "displayLabel", "capabilities", "extensions", "materialPath", "lods"],
+      "properties": {
+        "kind": { "enum": ["material_group"] },
+        "candidateId": { "type": "string", "pattern": "^cmp_[0-9a-f]{24}$" },
+        "model": { "$ref": "#/definitions/modelIdentity" },
+        "displayLabel": { "type": "string", "minLength": 1 },
+        "capabilities": { "$ref": "#/definitions/capabilities" },
+        "extensions": { "type": "object" },
+        "materialPath": { "type": "string", "minLength": 1 },
+        "lods": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/candidateLod" }
+        }
+      }
+    },
+    "meshLineageCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "candidateId", "model", "displayLabel", "capabilities", "extensions", "lineageKey", "sourceLabel", "materialPaths", "lods"],
+      "properties": {
+        "kind": { "enum": ["mesh_lineage"] },
+        "candidateId": { "type": "string", "pattern": "^cmp_[0-9a-f]{24}$" },
+        "model": { "$ref": "#/definitions/modelIdentity" },
+        "displayLabel": { "type": "string", "minLength": 1 },
+        "capabilities": { "$ref": "#/definitions/capabilities" },
+        "extensions": { "type": "object" },
+        "lineageKey": { "type": "string", "minLength": 1 },
+        "sourceLabel": { "type": "string", "minLength": 1 },
+        "materialPaths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lods": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/meshLineageLod" }
+        }
+      }
+    },
+    "candidateLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "drawCallIds", "drawCallCount"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "drawCallIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+        },
+        "drawCallCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "meshLineageLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "resourcePath", "meshOrdinal", "resourceBlockIndex", "immutableSemanticHash", "sourceName", "materialPaths", "drawCallIds", "drawCallCount"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "resourcePath": { "type": "string", "minLength": 1 },
+        "meshOrdinal": { "type": "integer", "minimum": 0 },
+        "resourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "immutableSemanticHash": { "$ref": "#/definitions/hash" },
+        "sourceName": { "type": "string", "minLength": 1 },
+        "materialPaths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "drawCallIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+        },
+        "drawCallCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/definitions/capability" }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationKind", "operationVersion", "availability", "reasons", "geometryByLod"],
+      "properties": {
+        "operationKind": { "enum": ["remove_component", "transform_component"] },
+        "operationVersion": { "enum": [1] },
+        "availability": { "enum": ["available", "blocked", "unsupported", "ambiguous"] },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/reason" }
+        },
+        "geometryByLod": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/geometryLod" }
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "geometryLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "selectedVertexCount", "vertexSetHash", "exclusivelyOwned"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "selectedVertexCount": { "type": "integer", "minimum": 1 },
+        "vertexSetHash": { "$ref": "#/definitions/hash" },
+        "exclusivelyOwned": { "type": "boolean" }
+      }
+    },
+    "lineageDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary", "observedLods"],
+      "properties": {
+        "lineageKey": { "type": "string", "minLength": 1 },
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "summary": { "type": "string", "minLength": 1 },
+        "observedLods": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

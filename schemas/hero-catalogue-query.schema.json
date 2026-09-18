@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/hero-catalogue-query.schema.json",
+  "title": "S2ModKit hero catalogue query result",
+  "oneOf": [
+    {
+      "allOf": [
+        { "$ref": "#/definitions/envelope" },
+        {
+          "properties": {
+            "command": { "const": "catalog.heroes.list" },
+            "result": { "$ref": "#/definitions/listResult" }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        { "$ref": "#/definitions/envelope" },
+        {
+          "properties": {
+            "command": { "const": "catalog.resolve" },
+            "result": { "$ref": "#/definitions/resolveResult" }
+          }
+        }
+      ]
+    }
+  ],
+  "definitions": {
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "status", "command", "result"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "status": { "const": "success" },
+        "command": { "enum": ["catalog.heroes.list", "catalog.resolve"] },
+        "result": { "type": "object" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "actualDirectoryHash"],
+      "properties": {
+        "status": { "enum": ["verified", "unpinned", "stale"] },
+        "actualDirectoryHash": { "$ref": "#/definitions/hash" },
+        "expectedDirectoryHash": { "$ref": "#/definitions/hash" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceId", "displayName", "role", "logicalPath", "optional", "qualificationStatus", "verificationStatus", "candidateLogicalPaths"],
+      "properties": {
+        "resourceId": { "$ref": "#/definitions/id" },
+        "displayName": { "$ref": "#/definitions/displayText" },
+        "role": { "enum": ["primary_model", "accessory_model", "variant_model"] },
+        "logicalPath": { "type": "string", "pattern": "^[a-z0-9_./-]+\\.vmdl_c$" },
+        "optional": { "type": "boolean" },
+        "qualificationStatus": { "enum": ["unqualified", "read_only_qualified", "offline_static", "runtime_qualified"] },
+        "verificationStatus": { "enum": ["verified", "missing", "moved", "ambiguous", "duplicate"] },
+        "size": { "type": "integer", "minimum": 0 },
+        "candidateLogicalPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9_./-]+$" }
+        }
+      }
+    },
+    "hero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heroId", "displayName", "aliases", "rosterStatus", "resources"],
+      "properties": {
+        "heroId": { "$ref": "#/definitions/id" },
+        "displayName": { "$ref": "#/definitions/displayText" },
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/displayText" }
+        },
+        "rosterStatus": { "enum": ["active", "experimental", "unavailable"] },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/resource" }
+        }
+      }
+    },
+    "listResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "catalogueId", "revision", "source", "heroes"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "catalogueId": { "$ref": "#/definitions/id" },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "source": { "$ref": "#/definitions/source" },
+        "heroes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/hero" }
+        }
+      }
+    },
+    "resolveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "catalogueId", "revision", "source", "hero"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "catalogueId": { "$ref": "#/definitions/id" },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "source": { "$ref": "#/definitions/source" },
+        "hero": { "$ref": "#/definitions/hero" }
+      }
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "displayText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}

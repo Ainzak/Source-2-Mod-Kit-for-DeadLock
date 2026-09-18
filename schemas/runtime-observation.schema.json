@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/runtime-observation.schema.json",
+  "title": "S2ModKit immutable player runtime observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "observationId", "createdUtc", "proofLevel", "status", "projectId", "packageId",
+    "installationId", "installedHash", "checks", "notes", "boundaries", "extensions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "observationId": { "type": "string", "pattern": "^runtime-[a-z0-9-]+$" },
+    "createdUtc": { "type": "string", "format": "date-time" },
+    "proofLevel": { "const": "player_observed" },
+    "status": { "enum": ["passed", "failed", "partial"] },
+    "projectId": { "type": "string", "minLength": 1 },
+    "packageId": { "type": "string", "pattern": "^vpk-[0-9a-f]{20}$" },
+    "installationId": { "type": "string", "minLength": 1 },
+    "installedHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "checks": { "$ref": "#/definitions/checks" },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "boundaries": { "type": "array", "items": { "$ref": "#/definitions/boundary" } },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "checkStatus": { "enum": ["passed", "failed", "not_checked"] },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetComponent", "preservedMaterialsAndParts", "animations", "lodTransitions", "menuPreview", "deathAndRespawn"],
+      "properties": {
+        "targetComponent": { "$ref": "#/definitions/checkStatus" },
+        "preservedMaterialsAndParts": { "$ref": "#/definitions/checkStatus" },
+        "animations": { "$ref": "#/definitions/checkStatus" },
+        "lodTransitions": { "$ref": "#/definitions/checkStatus" },
+        "menuPreview": { "$ref": "#/definitions/checkStatus" },
+        "deathAndRespawn": { "$ref": "#/definitions/checkStatus" }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "summary"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "not_applicable", "untested", "skipped"] },
+        "summary": { "type": "string" }
+      }
+    }
+  }
+}

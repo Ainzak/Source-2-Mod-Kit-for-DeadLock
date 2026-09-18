@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/evidence.schema.json",
+  "title": "S2ModKit evidence report v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reportId", "createdUtc", "proofLevel", "command", "status", "input", "dependencies", "planFingerprint", "operations", "boundaries", "blocks", "toolVersions", "warnings", "extensions"],
+  "properties": {
+    "schemaVersion": { "enum": [3] },
+    "reportId": { "type": "string", "minLength": 1 },
+    "createdUtc": { "type": "string", "format": "date-time" },
+    "proofLevel": { "enum": ["offline_static"] },
+    "command": { "enum": ["plan", "build", "verify"] },
+    "status": { "enum": ["passed", "failed"] },
+    "input": { "$ref": "#/definitions/artifactEvidence" },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/artifactEvidence" }
+    },
+    "output": {
+      "oneOf": [
+        { "$ref": "#/definitions/artifactEvidence" },
+        { "type": "null" }
+      ]
+    },
+    "planFingerprint": { "$ref": "#/definitions/contentHash" },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/removeOperationEvidence" },
+          { "$ref": "#/definitions/transformOperationEvidence" }
+        ]
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/boundaryEvidence" }
+    },
+    "blocks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/resourceBlockEvidence" }
+    },
+    "toolVersions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "removeOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "selectedDrawCallIds", "changedResources", "geometryChanges"],
+      "properties": {
+        "operationId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["remove_component"] },
+        "version": { "enum": [1] },
+        "selectedDrawCallIds": { "$ref": "#/definitions/drawCallIds" },
+        "changedResources": { "$ref": "#/definitions/resourcePaths" },
+        "geometryChanges": {
+          "type": "array",
+          "not": { "minItems": 1 }
+        }
+      }
+    },
+    "transformOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "selectedDrawCallIds", "changedResources", "geometryChanges"],
+      "properties": {
+        "operationId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["transform_component"] },
+        "version": { "enum": [1] },
+        "selectedDrawCallIds": { "$ref": "#/definitions/drawCallIds" },
+        "changedResources": { "$ref": "#/definitions/resourcePaths" },
+        "geometryChanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/geometryChange" }
+        }
+      }
+    },
+    "drawCallIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+    },
+    "resourcePaths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "geometryChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "resourcePath", "meshOrdinal", "resourceBlockIndex", "vertexSetHash", "vertexCount", "beforeBounds", "afterBounds", "pivot", "uniformScale", "translation", "maximumDisplacement", "changedAttributes", "inputVertexBlockHash", "outputVertexBlockHash", "codec"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "resourcePath": { "type": "string", "minLength": 1 },
+        "meshOrdinal": { "type": "integer", "minimum": 0 },
+        "resourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "vertexSetHash": { "$ref": "#/definitions/contentHash" },
+        "vertexCount": { "type": "integer", "minimum": 1 },
+        "beforeBounds": { "$ref": "#/definitions/bounds" },
+        "afterBounds": { "$ref": "#/definitions/bounds" },
+        "pivot": { "$ref": "#/definitions/vector3" },
+        "uniformScale": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
+        "translation": { "$ref": "#/definitions/vector3" },
+        "maximumDisplacement": { "type": "number", "minimum": 0, "maximum": 256.0 },
+        "changedAttributes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["position"] }
+        },
+        "inputVertexBlockHash": { "$ref": "#/definitions/contentHash" },
+        "outputVertexBlockHash": {
+          "oneOf": [
+            { "$ref": "#/definitions/contentHash" },
+            { "type": "null" }
+          ]
+        },
+        "inputDecodedVertexBufferHash": { "$ref": "#/definitions/contentHash" },
+        "expectedDecodedVertexBufferHash": { "$ref": "#/definitions/contentHash" },
+        "codec": { "$ref": "#/definitions/codecIdentity" }
+      }
+    },
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "$ref": "#/definitions/vector3" },
+        "max": { "$ref": "#/definitions/vector3" }
+      }
+    },
+    "codecIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "apiProfile", "platform", "binaryHash", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "apiProfile": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "binaryHash": { "$ref": "#/definitions/contentHash" },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "size", "sourceKind", "catalogIdentity", "verificationMode"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "$ref": "#/definitions/contentHash" },
+        "size": { "type": "integer", "minimum": 0 },
+        "sourceKind": { "enum": ["directory", "vpk", "generated"] },
+        "catalogIdentity": { "type": "string", "minLength": 1 },
+        "verificationMode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "boundaryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "summary"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "not_applicable", "untested", "skipped"] },
+        "summary": { "type": "string" }
+      }
+    },
+    "resourceBlockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "type", "inputHash", "disposition"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "type": { "type": "string", "minLength": 1 },
+        "inputHash": { "$ref": "#/definitions/contentHash" },
+        "outputHash": {
+          "oneOf": [
+            { "$ref": "#/definitions/contentHash" },
+            { "type": "null" }
+          ]
+        },
+        "disposition": { "enum": ["planned_change", "planned_unchanged", "changed", "unchanged"] }
+      }
+    }
+  }
+}
+

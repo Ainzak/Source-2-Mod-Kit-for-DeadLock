@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+    <ProjectReference Include="..\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ValveResourceFormat" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="S2ModKit.Source2.Tests" />
+  </ItemGroup>
+</Project>

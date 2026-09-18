@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/v1/recipe.schema.json",
+  "title": "S2ModKit recipe v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recipeId", "inputHash", "operations", "extensions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recipeId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+    "inputHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/removeComponent" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "removeComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "extensions"],
+      "properties": {
+        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+        "kind": { "const": "remove_component" },
+        "version": { "const": 1 },
+        "granularity": { "const": "draw_call" },
+        "selector": { "$ref": "#/definitions/selector" },
+        "lodPolicy": { "const": "all_present" },
+        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
+        "extensions": { "type": "object" }
+      }
+    },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "materialPath"],
+          "properties": {
+            "kind": { "const": "material_exact" },
+            "materialPath": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "drawCallIds"],
+          "properties": {
+            "kind": { "const": "draw_call_ids" },
+            "drawCallIds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+            }
+          }
+        }
+      ]
+    },
+    "lodExpectations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[0-9]+$": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

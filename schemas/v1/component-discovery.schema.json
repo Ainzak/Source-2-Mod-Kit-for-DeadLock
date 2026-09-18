@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/v1/component-discovery.schema.json",
+  "title": "S2ModKit component discovery v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "model", "discoveryFingerprint", "analyzer", "candidates", "extensions"],
+  "properties": {
+    "schemaVersion": { "enum": [1] },
+    "model": { "$ref": "#/definitions/modelIdentity" },
+    "discoveryFingerprint": { "$ref": "#/definitions/hash" },
+    "analyzer": { "$ref": "#/definitions/analyzerIdentity" },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/candidate" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "modelIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "size"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "$ref": "#/definitions/hash" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "analyzerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "componentVersions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "componentVersions": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "kind", "model", "materialPath", "displayLabel", "lods", "capabilities", "extensions"],
+      "properties": {
+        "candidateId": { "type": "string", "pattern": "^cmp_[0-9a-f]{24}$" },
+        "kind": { "enum": ["material_group"] },
+        "model": { "$ref": "#/definitions/modelIdentity" },
+        "materialPath": { "type": "string", "minLength": 1 },
+        "displayLabel": { "type": "string", "minLength": 1 },
+        "lods": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/candidateLod" }
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/definitions/capability" }
+        },
+        "extensions": { "type": "object" }
+      }
+    },
+    "candidateLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "drawCallIds", "drawCallCount"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "drawCallIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^dc_[0-9a-f]{24}$" }
+        },
+        "drawCallCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationKind", "operationVersion", "availability", "reasons", "geometryByLod"],
+      "properties": {
+        "operationKind": { "enum": ["remove_component", "transform_component"] },
+        "operationVersion": { "enum": [1] },
+        "availability": { "enum": ["available", "blocked", "unsupported", "ambiguous"] },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/reason" }
+        },
+        "geometryByLod": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/geometryLod" }
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "geometryLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lod", "selectedVertexCount", "vertexSetHash", "exclusivelyOwned"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "selectedVertexCount": { "type": "integer", "minimum": 1 },
+        "vertexSetHash": { "$ref": "#/definitions/hash" },
+        "exclusivelyOwned": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/guided-session.schema.json",
+  "title": "S2ModKit guided workflow session version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sessionId",
+    "status",
+    "step",
+    "cataloguePath",
+    "expert",
+    "sources"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["active", "paused", "complete"] },
+    "step": {
+      "enum": [
+        "source_selection",
+        "hero_selection",
+        "resource_selection",
+        "component_selection",
+        "action_selection",
+        "review",
+        "output_selection",
+        "install_selection",
+        "rollback_selection",
+        "complete"
+      ]
+    },
+    "cataloguePath": { "type": "string", "minLength": 1 },
+    "expert": { "type": "boolean" },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/source" }
+    },
+    "selectedSourceId": { "type": "string", "minLength": 1 },
+    "selectedHeroId": { "type": "string", "minLength": 1 },
+    "selectedResourceId": { "type": "string", "minLength": 1 },
+    "selectedLogicalPath": { "type": "string", "minLength": 1 },
+    "projectRoot": { "type": "string", "minLength": 1 },
+    "projectReady": { "type": "boolean" },
+    "selectedComponentId": { "type": "string", "minLength": 1 },
+    "selectedComponentLabel": { "type": "string", "minLength": 1 },
+    "selectedIntent": { "enum": ["remove", "uniform-scale", "translate"] },
+    "selectedOperationKind": { "enum": ["remove_component", "transform_component"] },
+    "selectedOperationVersion": { "type": "integer", "minimum": 1 },
+    "uniformScale": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
+    "translationX": { "type": "number", "minimum": -256.0, "maximum": 256.0 },
+    "translationY": { "type": "number", "minimum": -256.0, "maximum": 256.0 },
+    "translationZ": { "type": "number", "minimum": -256.0, "maximum": 256.0 },
+    "maximumVertexDisplacement": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 256.0 },
+    "maximumCollisionDisplacement": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 256.0 },
+    "recipePath": { "type": "string", "minLength": 1 },
+    "recipeContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "planFingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "plannedDrawCallCount": { "type": "integer", "minimum": 0 },
+    "plannedLodCount": { "type": "integer", "minimum": 0 },
+    "plannedTargetBlockCount": { "type": "integer", "minimum": 0 },
+    "plannedVertexCount": { "type": "integer", "minimum": 0 },
+    "plannedCoupledCollision": { "type": "boolean" },
+    "outputChoice": { "enum": ["plan_only", "build_only", "minimal_package", "export_package"] },
+    "buildId": { "type": "string", "minLength": 1 },
+    "buildContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "packageId": { "type": "string", "minLength": 1 },
+    "packageContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "exportPath": { "type": "string", "minLength": 1 },
+    "exportContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "addonsRoot": { "type": "string", "minLength": 1 },
+    "installationId": { "type": "string", "minLength": 1 },
+    "installationTargetFileName": { "type": "string", "minLength": 1 },
+    "installationSlot": { "type": "integer", "minimum": 0, "maximum": 99 },
+    "installationStatus": { "enum": ["installed_unverified", "active", "rolled_back"] }
+  },
+  "definitions": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "kind", "displayName", "path"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["base_vpk", "mod_vpk", "compiled_model"] },
+        "displayName": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

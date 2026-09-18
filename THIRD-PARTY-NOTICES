@@ -1,0 +1,31 @@
+S2ModKit bundles or references the following third-party packages. Their licenses remain separate
+from S2ModKit's MIT license. Package versions are pinned in Directory.Packages.props and the exact
+transitive graph may vary with the selected target runtime.
+
+MIT
+- NJsonSchema 11.6.1 — https://github.com/RicoSuter/NJsonSchema
+- SharpGLTF.Core/Runtime/Toolkit 1.0.6 — https://github.com/vpenades/SharpGLTF
+- SkiaSharp and native assets 4.151.1 — https://github.com/mono/SkiaSharp
+- System.CommandLine 2.0.2 — https://github.com/dotnet/command-line-api
+- System.IO.Hashing 10.0.10 — https://github.com/dotnet/dotnet
+- TinyBCSharp 0.1.2 — https://github.com/jandk/TinyBCSharp
+- TinyEXR.NET 1.1.0 — https://github.com/ksgfk/TinyEXR.NET
+- ValveKeyValue 0.70.0.499 — https://github.com/ValveResourceFormat/ValveKeyValue
+- ValvePak 5.0.2.177 — https://github.com/ValveResourceFormat/ValvePak
+- ValveResourceFormat 20.0.6980 — https://github.com/ValveResourceFormat/ValveResourceFormat
+- Vortice.SPIRV 1.0.5 and Vortice.SpirvCross 1.5.4 — https://github.com/amerkoleci/Vortice.Vulkan
+- ZstdSharp.Port 0.8.8 — https://github.com/oleg-st/ZstdSharp
+- KeyValues2 0.8.0 — https://github.com/kristiker/Datamodel.NET
+
+BSD-2-Clause
+- Blake3 3.0.2 — https://github.com/xoofx/Blake3.NET
+
+Apache-2.0
+- xunit.v3 4.0.0 (test-only dependency) — https://github.com/xunit/xunit
+
+K4os.Compression.LZ4 1.3.8 uses the license published by its authors:
+https://github.com/MiloszKrajewski/K4os.Compression.LZ4/blob/master/LICENSE
+
+This notice is a navigation summary, not a replacement for the license texts distributed by the
+respective package authors. Review package metadata and source repositories when producing a binary
+release.

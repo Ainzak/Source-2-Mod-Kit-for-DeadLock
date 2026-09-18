@@ -1,0 +1,194 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/compatibility-scan.schema.json",
+  "title": "S2ModKit compatibility scan report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reportId", "scan", "clusters"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportId": { "type": "string", "pattern": "^compat_[0-9a-f]{24}$" },
+    "scan": { "$ref": "#/definitions/scan" },
+    "clusters": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/cluster" }
+    },
+    "comparison": { "$ref": "#/definitions/comparison" }
+  },
+  "definitions": {
+    "scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "catalogueId", "catalogueRevision", "sourceDirectoryHash", "analyzer", "resources"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "catalogueId": { "$ref": "#/definitions/id" },
+        "catalogueRevision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceDirectoryHash": { "$ref": "#/definitions/hash" },
+        "analyzer": { "$ref": "#/definitions/analyzer" },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/resource" }
+        }
+      }
+    },
+    "analyzer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inspectorName", "inspectorVersion", "capabilityAnalyzerName", "capabilityAnalyzerVersion", "componentVersions"],
+      "properties": {
+        "inspectorName": { "type": "string", "minLength": 1 },
+        "inspectorVersion": { "type": "string", "minLength": 1 },
+        "capabilityAnalyzerName": { "type": "string", "minLength": 1 },
+        "capabilityAnalyzerVersion": { "type": "string", "minLength": 1 },
+        "componentVersions": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heroId", "heroDisplayName", "resourceId", "resourceDisplayName", "role", "logicalPath", "contentHash", "size", "status", "candidates", "reasons"],
+      "properties": {
+        "heroId": { "$ref": "#/definitions/id" },
+        "heroDisplayName": { "$ref": "#/definitions/text" },
+        "resourceId": { "$ref": "#/definitions/id" },
+        "resourceDisplayName": { "$ref": "#/definitions/text" },
+        "role": { "enum": ["primary_model", "accessory_model", "variant_model"] },
+        "logicalPath": { "type": "string", "pattern": "^[a-z0-9_./-]+\\.vmdl_c$" },
+        "contentHash": { "$ref": "#/definitions/hash" },
+        "size": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["supported", "unsupported", "inspection_failed"] },
+        "signature": { "$ref": "#/definitions/signature" },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/candidate" }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/reason" }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "family", "signatureId", "fingerprint", "facts"],
+      "properties": {
+        "contractVersion": { "const": 1 },
+        "family": { "$ref": "#/definitions/id" },
+        "signatureId": { "type": "string", "pattern": "^sig_[0-9a-f]{24}$" },
+        "fingerprint": { "$ref": "#/definitions/hash" },
+        "facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "value"],
+            "properties": {
+              "key": { "$ref": "#/definitions/id" },
+              "value": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "candidateKind", "displayLabel", "materialPaths", "lods", "capabilities"],
+      "properties": {
+        "candidateId": { "type": "string", "pattern": "^cmp_[0-9a-f]{24}$" },
+        "candidateKind": { "enum": ["material_group", "mesh_lineage"] },
+        "displayLabel": { "$ref": "#/definitions/text" },
+        "materialPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lods": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/capability" }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationKind", "operationVersion", "availability", "reasons"],
+      "properties": {
+        "operationKind": { "$ref": "#/definitions/id" },
+        "operationVersion": { "type": "integer", "minimum": 1 },
+        "availability": { "enum": ["available", "blocked", "unsupported", "ambiguous"] },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/reason" }
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "summary": { "$ref": "#/definitions/text" }
+      }
+    },
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clusterId", "signatureId", "reasonCodes", "resourceIds"],
+      "properties": {
+        "clusterId": { "type": "string", "pattern": "^gap_[0-9a-f]{24}$" },
+        "signatureId": { "type": "string", "pattern": "^(sig_[0-9a-f]{24}|inspection_failed)$" },
+        "reasonCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+        },
+        "resourceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/id" }
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priorReportId", "addedResourceIds", "removedResourceIds", "changedResourceIds", "unchangedResourceIds"],
+      "properties": {
+        "priorReportId": { "type": "string", "pattern": "^compat_[0-9a-f]{24}$" },
+        "addedResourceIds": { "$ref": "#/definitions/idArray" },
+        "removedResourceIds": { "$ref": "#/definitions/idArray" },
+        "changedResourceIds": { "$ref": "#/definitions/idArray" },
+        "unchangedResourceIds": { "$ref": "#/definitions/idArray" }
+      }
+    },
+    "idArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/id" }
+    },
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 128
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 1024 }
+  }
+}

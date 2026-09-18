@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/evidence.schema.json",
+  "title": "S2ModKit evidence report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reportId", "createdUtc", "proofLevel", "command", "status", "input", "dependencies", "planFingerprint", "operations", "boundaries", "blocks", "toolVersions", "warnings", "extensions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportId": { "type": "string", "minLength": 1 },
+    "createdUtc": { "type": "string", "format": "date-time" },
+    "proofLevel": { "const": "offline_static" },
+    "command": { "enum": ["plan", "build", "verify"] },
+    "status": { "enum": ["passed", "failed"] },
+    "input": { "$ref": "#/definitions/artifactEvidence" },
+    "dependencies": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/artifactEvidence" }
+    },
+    "output": {
+      "oneOf": [
+        { "$ref": "#/definitions/artifactEvidence" },
+        { "type": "null" }
+      ]
+    },
+    "planFingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operationId", "kind", "version", "selectedDrawCallIds", "changedResources"],
+        "properties": {
+          "operationId": { "type": "string" },
+          "kind": { "const": "remove_component" },
+          "version": { "const": 1 },
+          "selectedDrawCallIds": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "changedResources": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "summary"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "failed", "not_applicable", "untested", "skipped"] },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/resourceBlockEvidence" }
+    },
+    "toolVersions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "extensions": { "type": "object" }
+  },
+  "definitions": {
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "size"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resourceBlockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "type", "inputHash", "disposition"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "type": { "type": "string", "minLength": 1 },
+        "inputHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "outputHash": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "disposition": { "enum": ["planned_change", "planned_unchanged", "changed", "unchanged"] }
+      }
+    }
+  }
+}

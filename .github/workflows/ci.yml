@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: Directory.Packages.props
+
+      - name: Restore
+        run: dotnet restore S2ModKit.slnx
+
+      - name: Verify formatting
+        run: dotnet format S2ModKit.slnx --no-restore --verify-no-changes
+
+      - name: Build
+        run: dotnet build S2ModKit.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 69

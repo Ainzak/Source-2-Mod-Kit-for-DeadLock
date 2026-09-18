@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/package.schema.json",
+  "title": "S2ModKit VPK package evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "mode", "reportId", "createdUtc", "command", "status", "proofLevel",
+    "packageId", "buildId", "sourceArchive", "outputArchive", "replacedEntry", "packagedEntry",
+    "unchangedEntryCount", "boundaries", "toolVersions", "warnings", "extensions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "mode": { "enum": ["replace_source", "minimal"] },
+    "reportId": { "type": "string", "minLength": 1 },
+    "createdUtc": { "type": "string", "format": "date-time" },
+    "command": { "enum": ["package.create", "package.create-minimal", "package.verify"] },
+    "status": { "enum": ["passed", "failed"] },
+    "proofLevel": { "const": "offline_static" },
+    "packageId": { "type": "string", "pattern": "^vpk-[0-9a-f]{20}$" },
+    "buildId": { "type": "string", "minLength": 1 },
+    "sourceArchive": { "oneOf": [{ "$ref": "#/definitions/archive" }, { "type": "null" }] },
+    "outputArchive": { "$ref": "#/definitions/archive" },
+    "replacedEntry": { "oneOf": [{ "$ref": "#/definitions/replacedEntry" }, { "type": "null" }] },
+    "packagedEntry": { "oneOf": [{ "$ref": "#/definitions/packagedEntry" }, { "type": "null" }] },
+    "unchangedEntryCount": { "type": "integer", "minimum": 0 },
+    "boundaries": { "type": "array", "items": { "$ref": "#/definitions/boundary" } },
+    "toolVersions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "extensions": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "replace_source" } } },
+      "then": {
+        "properties": {
+          "sourceArchive": { "$ref": "#/definitions/archive" },
+          "replacedEntry": { "$ref": "#/definitions/replacedEntry" },
+          "packagedEntry": { "$ref": "#/definitions/packagedEntry" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "minimal" } } },
+      "then": {
+        "properties": {
+          "sourceArchive": { "type": "null" },
+          "replacedEntry": { "type": "null" },
+          "packagedEntry": { "$ref": "#/definitions/packagedEntry" },
+          "unchangedEntryCount": { "const": 0 }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "archive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "contentHash", "size", "entryCount"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size": { "type": "integer", "minimum": 1 },
+        "entryCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "replacedEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logicalPath", "sourceContentHash", "outputContentHash", "sourceCrc32", "outputCrc32", "sourceSize", "outputSize"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "sourceContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "outputContentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sourceCrc32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "outputCrc32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "sourceSize": { "type": "integer", "minimum": 0 },
+        "outputSize": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "packagedEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "crc32", "size"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "crc32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "status", "summary"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["passed", "failed", "not_applicable", "untested", "skipped"] },
+        "summary": { "type": "string" }
+      }
+    }
+  }
+}

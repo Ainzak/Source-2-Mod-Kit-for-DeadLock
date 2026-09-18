@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>s2mod</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Adapters.Source2\S2ModKit.Adapters.Source2.csproj" />
+    <ProjectReference Include="..\S2ModKit.Adapters.Vpk\S2ModKit.Adapters.Vpk.csproj" />
+    <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+    <ProjectReference Include="..\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
+    <ProjectReference Include="..\S2ModKit.Infrastructure\S2ModKit.Infrastructure.csproj" />
+    <ProjectReference Include="..\S2ModKit.Reporting\S2ModKit.Reporting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+</Project>

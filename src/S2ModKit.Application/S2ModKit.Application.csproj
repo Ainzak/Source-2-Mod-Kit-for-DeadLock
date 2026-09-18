@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+    <ProjectReference Include="..\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
+  </ItemGroup>
+</Project>

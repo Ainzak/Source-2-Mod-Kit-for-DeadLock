@@ -1,0 +1,30 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+
+# Local S2ModKit artifacts
+.workspaces/**
+!.workspaces/.gitkeep
+.stage8/**
+/exceptions.txt
+*.vpk
+*.vmdl_c
+*.vmesh_c
+*.vtex_c
+*.vanim_c
+*.vphys_c
+
+# On case-insensitive filesystems, *.vpk also matches the source project directory.
+!src/S2ModKit.Adapters.Vpk/
+!src/S2ModKit.Adapters.Vpk/*.cs
+!src/S2ModKit.Adapters.Vpk/*.csproj
+
+# Editors and OS
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
