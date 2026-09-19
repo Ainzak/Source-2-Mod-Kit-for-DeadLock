@@ -20,7 +20,7 @@ jobs:
           cache-dependency-path: Directory.Packages.props
 
       - name: Restore
-        run: dotnet restore S2ModKit.slnx
+        run: dotnet restore S2ModKit.slnx --runtime win-x64
 
       - name: Verify formatting
         run: dotnet format S2ModKit.slnx --no-restore --verify-no-changes
@@ -30,3 +30,34 @@ jobs:
 
       - name: Test
         run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 69
+
+      - name: Publish win-x64 candidate
+        run: dotnet publish src/S2ModKit.Cli/S2ModKit.Cli.csproj --configuration Release -p:PublishProfile=WinX64SingleFile --output artifacts/publish --no-restore --verbosity quiet
+
+      - name: Test published executable
+        shell: pwsh
+        env:
+          S2MODKIT_PACKAGED_EXE: ${{ github.workspace }}\artifacts\publish\s2mod.exe
+        run: dotnet test tests/S2ModKit.Cli.Tests/S2ModKit.Cli.Tests.csproj --configuration Release --no-build --verbosity quiet
+
+      - name: Stage release candidate
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:GITHUB_WORKSPACE 'artifacts/S2ModKit-win-x64'
+          New-Item -ItemType Directory -Path $stage, (Join-Path $stage 'catalogues'), (Join-Path $stage 'docs') -Force | Out-Null
+          Copy-Item artifacts/publish/s2mod.exe, artifacts/publish/libSkiaSharp.dll, artifacts/publish/spirv-cross.dll $stage
+          Copy-Item artifacts/publish/catalogues/deadlock-current.json (Join-Path $stage 'catalogues')
+          Copy-Item LICENSE, README.md, THIRD-PARTY-NOTICES $stage
+          Copy-Item docs/USER-GUIDE.md, docs/CLI-REFERENCE.md (Join-Path $stage 'docs')
+          $allowed = @('s2mod.exe', 'libSkiaSharp.dll', 'spirv-cross.dll', 'LICENSE', 'README.md', 'THIRD-PARTY-NOTICES', 'catalogues/deadlock-current.json', 'docs/USER-GUIDE.md', 'docs/CLI-REFERENCE.md')
+          $actual = Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Substring($stage.Length + 1).Replace('\', '/') }
+          if (@($actual | Where-Object { $_ -notin $allowed }).Count -gt 0) { throw 'Unexpected release file detected.' }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath artifacts/S2ModKit-win-x64.zip -CompressionLevel Optimal
+          Get-FileHash artifacts/S2ModKit-win-x64.zip -Algorithm SHA256 | Format-List
+
+      - name: Retain release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: s2modkit-win-x64-candidate
+          path: artifacts/S2ModKit-win-x64.zip
+          retention-days: 7
