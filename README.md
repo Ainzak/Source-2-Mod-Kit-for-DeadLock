@@ -67,4 +67,5 @@ will render or behave correctly; live player testing remains a separate step.
 ## License
 
 S2ModKit is released under the MIT License. Dependency notices are in
-[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
+[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES), with the shipped runtime inventory in
+[THIRD-PARTY-SBOM.json](THIRD-PARTY-SBOM.json).
