@@ -6,7 +6,7 @@ param(
     [string] $Solution = (Join-Path (Split-Path -Parent $PSScriptRoot) 'S2ModKit.slnx'),
 
     [ValidateRange(1, 1000000)]
-    [int] $MinimumExpectedTests = 349
+    [int] $MinimumExpectedTests = 524
 )
 
 Set-StrictMode -Version Latest
