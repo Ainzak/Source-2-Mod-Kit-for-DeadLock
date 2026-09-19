@@ -1,11 +1,14 @@
-S2ModKit bundles or references the following third-party packages. Their licenses remain separate
-from S2ModKit's MIT license. Package versions are pinned in Directory.Packages.props and the exact
-transitive graph may vary with the selected target runtime.
+S2ModKit distributes a self-contained Windows build and references the packages below. These
+licenses are separate from S2ModKit's MIT license. Versions are pinned in Directory.Packages.props
+or resolved transitively by the listed top-level package.
+
+SHIPPED RUNTIME PACKAGES (win-x64)
 
 MIT
-- NJsonSchema 11.6.1 — https://github.com/RicoSuter/NJsonSchema
-- SharpGLTF.Core/Runtime/Toolkit 1.0.6 — https://github.com/vpenades/SharpGLTF
-- SkiaSharp and native assets 4.151.1 — https://github.com/mono/SkiaSharp
+- K4os.Compression.LZ4 1.3.8 — https://github.com/MiloszKrajewski/K4os.Compression.LZ4
+- KeyValues2 0.8.0 — https://github.com/kristiker/Datamodel.NET (package license file: COPYING)
+- SharpGLTF.Core, SharpGLTF.Runtime, SharpGLTF.Toolkit 1.0.6 — https://github.com/vpenades/SharpGLTF
+- SkiaSharp 4.151.1 and SkiaSharp.NativeAssets.Win32 4.151.1 — https://github.com/mono/SkiaSharp
 - System.CommandLine 2.0.2 — https://github.com/dotnet/command-line-api
 - System.IO.Hashing 10.0.10 — https://github.com/dotnet/dotnet
 - TinyBCSharp 0.1.2 — https://github.com/jandk/TinyBCSharp
@@ -15,17 +18,22 @@ MIT
 - ValveResourceFormat 20.0.6980 — https://github.com/ValveResourceFormat/ValveResourceFormat
 - Vortice.SPIRV 1.0.5 and Vortice.SpirvCross 1.5.4 — https://github.com/amerkoleci/Vortice.Vulkan
 - ZstdSharp.Port 0.8.8 — https://github.com/oleg-st/ZstdSharp
-- KeyValues2 0.8.0 — https://github.com/kristiker/Datamodel.NET
 
 BSD-2-Clause
 - Blake3 3.0.2 — https://github.com/xoofx/Blake3.NET
 
+The SkiaSharp Linux and macOS native-asset packages are present in the dependency graph for
+multi-runtime restore, but are not included in the win-x64 release package. Their package metadata
+also declares MIT.
+
+DEVELOPMENT/TEST-ONLY PACKAGES
+
+MIT
+- NJsonSchema 11.6.1 — https://github.com/RicoSuter/NJsonSchema
+
 Apache-2.0
-- xunit.v3 4.0.0 (test-only dependency) — https://github.com/xunit/xunit
+- xunit.v3 4.0.0 — https://github.com/xunit/xunit
 
-K4os.Compression.LZ4 1.3.8 uses the license published by its authors:
-https://github.com/MiloszKrajewski/K4os.Compression.LZ4/blob/master/LICENSE
-
-This notice is a navigation summary, not a replacement for the license texts distributed by the
-respective package authors. Review package metadata and source repositories when producing a binary
-release.
+This notice is a navigation summary. The machine-readable runtime component inventory is in
+THIRD-PARTY-SBOM.json. Package metadata and the linked source repositories remain authoritative for
+the complete license texts and any transitive dependencies introduced by another target runtime.

@@ -26,6 +26,8 @@ public sealed partial class CliContractTests
         Assert.Equal("doctor", document.RootElement.GetProperty("command").GetString());
         Assert.Contains("0.1.0", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("result").GetProperty("runtimeIdentifier").GetString()));
+        var catalogueRevision = document.RootElement.GetProperty("result").GetProperty("catalogueRevision").GetString();
+        Assert.True(catalogueRevision is "not_packaged" or "2026-09-17.1");
         Assert.Equal("test-adapter", document.RootElement.GetProperty("result").GetProperty("adapterName").GetString());
         Assert.Equal("not_configured", document.RootElement.GetProperty("result").GetProperty("geometryCodec").GetString());
         Assert.Empty(error.ToString());
@@ -43,6 +45,7 @@ public sealed partial class CliContractTests
         Assert.Equal(0, exitCode);
         Assert.Contains("S2ModKit doctor: ready", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("Geometry codec: not_configured", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Catalogue revision:", output.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("\"schemaVersion\"", output.ToString(), StringComparison.Ordinal);
         Assert.Empty(error.ToString());
     }

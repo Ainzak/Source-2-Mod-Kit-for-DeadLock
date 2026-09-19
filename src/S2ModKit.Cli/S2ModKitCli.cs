@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using S2ModKit.Adapters.Source2;
 using S2ModKit.Adapters.Vpk;
 using S2ModKit.Application;
@@ -24,6 +25,7 @@ public sealed partial class S2ModKitCli
     private readonly string adapterVersion;
     private readonly string productVersion;
     private readonly string runtimeIdentifier;
+    private readonly string catalogueRevision;
     private readonly string externalVerifierStatus;
     private readonly string geometryCodecStatus;
 
@@ -42,6 +44,7 @@ public sealed partial class S2ModKitCli
         this.adapterVersion = string.IsNullOrWhiteSpace(adapterVersion) ? throw new ArgumentException("Adapter version is required.", nameof(adapterVersion)) : adapterVersion;
         productVersion = typeof(S2ModKitCli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
         runtimeIdentifier = RuntimeInformation.RuntimeIdentifier;
+        catalogueRevision = ReadPackagedCatalogueRevision();
         externalVerifierStatus = externalVerifierAvailable ? "available" : "skipped";
         this.geometryCodecStatus = string.IsNullOrWhiteSpace(geometryCodecStatus) ? "not_configured" : geometryCodecStatus;
         this.catalogueInventoryFactory = catalogueInventoryFactory;
@@ -99,6 +102,7 @@ public sealed partial class S2ModKitCli
         this.adapterVersion = adapterVersion;
         productVersion = typeof(S2ModKitCli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
         runtimeIdentifier = RuntimeInformation.RuntimeIdentifier;
+        catalogueRevision = ReadPackagedCatalogueRevision();
         this.externalVerifierStatus = externalVerifierStatus;
         this.geometryCodecStatus = geometryCodecStatus;
         this.catalogueInventoryFactory = catalogueInventoryFactory;
@@ -732,6 +736,7 @@ public sealed partial class S2ModKitCli
                 "ready",
                 productVersion,
                 runtimeIdentifier,
+                catalogueRevision,
                 adapterName,
                 adapterVersion,
                 externalVerifierStatus,
@@ -946,10 +951,42 @@ public sealed partial class S2ModKitCli
 
 
 
+    private static string ReadPackagedCatalogueRevision()
+    {
+        var path = CataloguePathResolver.TryFindPackagedCatalogue(AppContext.BaseDirectory);
+        if (path is null)
+        {
+            return "not_packaged";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            return document.RootElement.TryGetProperty("revision", out var revision)
+                && revision.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(revision.GetString())
+                ? revision.GetString()!
+                : "invalid";
+        }
+        catch (JsonException)
+        {
+            return "invalid";
+        }
+        catch (IOException)
+        {
+            return "invalid";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "invalid";
+        }
+    }
+
     private sealed record DoctorResult(
         string Status,
         string ProductVersion,
         string RuntimeIdentifier,
+        string CatalogueRevision,
         string AdapterName,
         string AdapterVersion,
         string ExternalVerifier,

@@ -1,0 +1,34 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:6c783f01-4e51-4a48-a8d3-6b9c5e6c0a01",
+  "version": 1,
+  "metadata": {
+    "component": { "type": "application", "name": "S2ModKit", "version": "0.1.0" },
+    "properties": [
+      { "name": "targetFramework", "value": "net10.0" },
+      { "name": "targetRuntime", "value": "win-x64" },
+      { "name": "source", "value": "dotnet list src/S2ModKit.Cli/S2ModKit.Cli.csproj package --include-transitive --format json" }
+    ]
+  },
+  "components": [
+    { "type": "library", "name": "Blake3", "version": "3.0.2", "purl": "pkg:nuget/Blake3@3.0.2", "licenses": [{ "license": { "id": "BSD-2-Clause" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/xoofx/Blake3.NET" }] },
+    { "type": "library", "name": "K4os.Compression.LZ4", "version": "1.3.8", "purl": "pkg:nuget/K4os.Compression.LZ4@1.3.8", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/MiloszKrajewski/K4os.Compression.LZ4" }] },
+    { "type": "library", "name": "KeyValues2", "version": "0.8.0", "purl": "pkg:nuget/KeyValues2@0.8.0", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/kristiker/Datamodel.NET" }] },
+    { "type": "library", "name": "SharpGLTF.Core", "version": "1.0.6", "purl": "pkg:nuget/SharpGLTF.Core@1.0.6", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/vpenades/SharpGLTF" }] },
+    { "type": "library", "name": "SharpGLTF.Runtime", "version": "1.0.6", "purl": "pkg:nuget/SharpGLTF.Runtime@1.0.6", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/vpenades/SharpGLTF" }] },
+    { "type": "library", "name": "SharpGLTF.Toolkit", "version": "1.0.6", "purl": "pkg:nuget/SharpGLTF.Toolkit@1.0.6", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/vpenades/SharpGLTF" }] },
+    { "type": "library", "name": "SkiaSharp", "version": "4.151.1", "purl": "pkg:nuget/SkiaSharp@4.151.1", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/mono/SkiaSharp" }] },
+    { "type": "library", "name": "SkiaSharp.NativeAssets.Win32", "version": "4.151.1", "purl": "pkg:nuget/SkiaSharp.NativeAssets.Win32@4.151.1", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/mono/SkiaSharp" }] },
+    { "type": "library", "name": "System.CommandLine", "version": "2.0.2", "purl": "pkg:nuget/System.CommandLine@2.0.2", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/dotnet/command-line-api" }] },
+    { "type": "library", "name": "System.IO.Hashing", "version": "10.0.10", "purl": "pkg:nuget/System.IO.Hashing@10.0.10", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/dotnet/dotnet" }] },
+    { "type": "library", "name": "TinyBCSharp", "version": "0.1.2", "purl": "pkg:nuget/TinyBCSharp@0.1.2", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/jandk/TinyBCSharp" }] },
+    { "type": "library", "name": "TinyEXR.NET", "version": "1.1.0", "purl": "pkg:nuget/TinyEXR.NET@1.1.0", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ksgfk/TinyEXR.NET" }] },
+    { "type": "library", "name": "ValveKeyValue", "version": "0.70.0.499", "purl": "pkg:nuget/ValveKeyValue@0.70.0.499", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ValveResourceFormat/ValveKeyValue" }] },
+    { "type": "library", "name": "ValvePak", "version": "5.0.2.177", "purl": "pkg:nuget/ValvePak@5.0.2.177", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ValveResourceFormat/ValvePak" }] },
+    { "type": "library", "name": "ValveResourceFormat", "version": "20.0.6980", "purl": "pkg:nuget/ValveResourceFormat@20.0.6980", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ValveResourceFormat/ValveResourceFormat" }] },
+    { "type": "library", "name": "Vortice.SPIRV", "version": "1.0.5", "purl": "pkg:nuget/Vortice.SPIRV@1.0.5", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/amerkoleci/Vortice.Vulkan" }] },
+    { "type": "library", "name": "Vortice.SpirvCross", "version": "1.5.4", "purl": "pkg:nuget/Vortice.SpirvCross@1.5.4", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/amerkoleci/Vortice.Vulkan" }] },
+    { "type": "library", "name": "ZstdSharp.Port", "version": "0.8.8", "purl": "pkg:nuget/ZstdSharp.Port@0.8.8", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/oleg-st/ZstdSharp" }] }
+  ]
+}
