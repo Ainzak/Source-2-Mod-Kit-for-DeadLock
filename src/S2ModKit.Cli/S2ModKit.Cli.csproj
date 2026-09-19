@@ -15,4 +15,13 @@
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\catalogues\deadlock-current.json" Link="catalogues\deadlock-current.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="S2ModKit.Cli.Tests" />
+  </ItemGroup>
 </Project>

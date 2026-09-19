@@ -214,12 +214,12 @@ public sealed partial class CliContractTests
                 "1",
                 externalVerifierAvailable: false,
                 catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
-            using var input = new StringReader($"{sessionPath}\n{cataloguePath}\n1\npak01_dir.vpk\ncancel\n");
+            using var input = new StringReader($"{sessionPath}\n1\npak01_dir.vpk\ncancel\n");
             using var output = new StringWriter();
             using var error = new StringWriter();
 
             var exitCode = await cli.RunAsync(
-                ["interactive"],
+                ["interactive", "--catalogue", cataloguePath],
                 input,
                 output,
                 error,
@@ -233,7 +233,7 @@ public sealed partial class CliContractTests
             Assert.Single(session.Sources);
             Assert.Equal(GuidedWorkflowContract.BaseVpkSource, session.Sources[0].Kind);
             Assert.Contains("Session JSON path", output.ToString(), StringComparison.Ordinal);
-            Assert.Contains("Hero catalogue JSON path", output.ToString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("Hero catalogue JSON path", output.ToString(), StringComparison.Ordinal);
             Assert.Contains("Choose a source type", output.ToString(), StringComparison.Ordinal);
             Assert.Empty(error.ToString());
         }

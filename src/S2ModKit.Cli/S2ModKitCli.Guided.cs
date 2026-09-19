@@ -51,11 +51,19 @@ public sealed partial class S2ModKitCli
         }
         else if (string.IsNullOrWhiteSpace(cataloguePath))
         {
-            cataloguePath = await ReadGuidedTextAsync(input, output, "Hero catalogue JSON path: ", cancellationToken).ConfigureAwait(false);
-            if (cataloguePath is null)
+            cataloguePath = CataloguePathResolver.TryFindPackagedCatalogue(AppContext.BaseDirectory);
+            if (cataloguePath is not null)
             {
-                output.WriteLine("Canceled; no session was created.");
-                return null;
+                output.WriteLine($"Using packaged hero catalogue: {cataloguePath}");
+            }
+            else
+            {
+                cataloguePath = await ReadGuidedTextAsync(input, output, "Hero catalogue JSON path: ", cancellationToken).ConfigureAwait(false);
+                if (cataloguePath is null)
+                {
+                    output.WriteLine("Canceled; no session was created.");
+                    return null;
+                }
             }
         }
 
