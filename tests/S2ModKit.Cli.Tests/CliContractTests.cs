@@ -24,6 +24,8 @@ public sealed partial class CliContractTests
         Assert.Equal(0, exitCode);
         Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
         Assert.Equal("doctor", document.RootElement.GetProperty("command").GetString());
+        Assert.Contains("0.1.0", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("result").GetProperty("runtimeIdentifier").GetString()));
         Assert.Equal("test-adapter", document.RootElement.GetProperty("result").GetProperty("adapterName").GetString());
         Assert.Equal("not_configured", document.RootElement.GetProperty("result").GetProperty("geometryCodec").GetString());
         Assert.Empty(error.ToString());

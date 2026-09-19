@@ -26,6 +26,8 @@ public sealed partial class S2ModKitCli
     private static void RenderDoctor(TextWriter writer, DoctorResult result)
     {
         writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"S2ModKit doctor: {result.Status}"));
+        writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Product version: {result.ProductVersion}"));
+        writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Runtime: {result.RuntimeIdentifier}"));
         writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Source 2 adapter: {result.AdapterName} {result.AdapterVersion}"));
         writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"External verifier: {result.ExternalVerifier}"));
         writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Geometry codec: {result.GeometryCodec}"));
