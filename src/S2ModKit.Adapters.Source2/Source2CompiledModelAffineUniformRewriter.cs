@@ -7,15 +7,17 @@ namespace S2ModKit.Adapters.Source2;
 
 public sealed partial class Source2CompiledModelAdapter
 {
-    private static bool IsAffineUniformTransformPlan(MutationPlan plan) =>
-        plan.Operations is [{ Kind: "transform_component", Version: 4, AffineTransformTarget: not null } operation]
-        && operation.AffineTransformTarget.Rotation.Kind == "identity"
-        && operation.AffineTransformTarget.Scale.X == operation.AffineTransformTarget.Scale.Y
-        && operation.AffineTransformTarget.Scale.Y == operation.AffineTransformTarget.Scale.Z;
+    private static bool IsAffineTransformPlan(MutationPlan plan) =>
+        plan.Operations is [{ Kind: "transform_component", Version: 4, AffineTransformTarget: not null }];
 
-    private static bool CanRewriteAffineUniformTransform(ModelSnapshot model, MutationPlan plan)
+    private static bool IsPositionOnlyAffineTransform(PlannedAffineTransformTarget affine) =>
+        affine.Rotation.Kind == "identity"
+        && affine.Scale.X == affine.Scale.Y
+        && affine.Scale.Y == affine.Scale.Z;
+
+    private static bool CanRewriteAffineTransform(ModelSnapshot model, MutationPlan plan)
     {
-        if (!IsAffineUniformTransformPlan(plan) || plan.InputHash != model.Artifact.ContentHash)
+        if (!IsAffineTransformPlan(plan) || plan.InputHash != model.Artifact.ContentHash)
         {
             return false;
         }
@@ -24,14 +26,17 @@ public sealed partial class Source2CompiledModelAdapter
         {
             var operation = plan.Operations[0];
             var affine = operation.AffineTransformTarget!;
+            var positionOnly = IsPositionOnlyAffineTransform(affine);
+            var expectedAttributes = positionOnly ? new[] { "position" } : ["normal_tangent", "position"];
             if (operation.GeometryTargets.Count != 0
                 || operation.DistanceFieldTargets.Count != 0
                 || operation.CoupledTransformTarget is not null
                 || operation.SelectedDrawCalls.Count == 0
                 || affine.GeometryTargets.Count == 0
-                || affine.GeometryTargets.Any(target => target.AllowedChangedAttributes.Count != 1
-                    || target.AllowedChangedAttributes[0] != "position"
-                    || target.InputPackedFrameHash != target.ExpectedPackedFrameHash
+                || affine.GeometryTargets.Any(target => !target.AllowedChangedAttributes.SequenceEqual(expectedAttributes, StringComparer.Ordinal)
+                    || (positionOnly
+                        ? target.InputPackedFrameHash != target.ExpectedPackedFrameHash
+                        : target.InputPackedFrameHash == target.ExpectedPackedFrameHash)
                     || target.BoneBoundsTargets.Count == 0))
             {
                 return false;
@@ -62,7 +67,7 @@ public sealed partial class Source2CompiledModelAdapter
         }
     }
 
-    private RewriteCandidate RewriteAffineUniformTransform(
+    private RewriteCandidate RewriteAffineTransform(
         ArtifactContent input,
         ModelSnapshot model,
         MutationPlan plan,
@@ -74,6 +79,7 @@ public sealed partial class Source2CompiledModelAdapter
             ValidateSnapshotAgreement(model, parsed.Snapshot);
             var operation = plan.Operations.Single();
             var affine = operation.AffineTransformTarget!;
+            var positionOnly = IsPositionOnlyAffineTransform(affine);
             ValidateAffineTargetBlocks(parsed, operation, affine);
 
             var replacements = new Dictionary<int, ReadOnlyMemory<byte>>();
@@ -83,50 +89,67 @@ public sealed partial class Source2CompiledModelAdapter
             foreach (var target in affine.GeometryTargets)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var profile = ValidateAffineUniformTarget(parsed, input, operation, target, codec.Identity);
+                var profile = ValidateAffineUniformTarget(parsed, input, operation, target, codec.Identity, positionOnly);
                 var selectedVertices = ResolveAffineVertices(profile.Mesh, operation, target);
-                var transform = new UniformTransform(
-                    ToPoint(affine.Pivot.Point),
-                    affine.Scale.X,
-                    ToPoint(affine.Translation));
-                var transformed = DecodedPositionBufferTransformer.Apply(
-                    profile.Vertices.Decoded,
-                    profile.Vertices.Snapshot.VertexCount,
-                    profile.Vertices.Snapshot.PositionLayout,
-                    selectedVertices,
-                    transform);
-                if (transformed.InputHash != target.DecodedVertexBufferHash
-                    || transformed.OutputHash != target.ExpectedDecodedVertexBufferHash
-                    || transformed.SelectedVertexSetHash != target.VertexSetHash
-                    || transformed.SelectedVertexCount != target.SelectedVertexCount
-                    || transformed.BoundsBefore != target.SelectionBeforeBounds
-                    || transformed.BoundsAfter != target.SelectionExpectedAfterBounds
-                    || transformed.ChangedVertexCount < 1
-                    || !HasIdenticalSingle(transformed.MaximumDisplacement, target.MaximumDisplacement))
+                var transform = CreateAffineTransform(affine);
+                var intended = (byte[])profile.Vertices.Decoded.Clone();
+                var beforePoints = selectedVertices
+                    .Select(vertex => Source2GeometryAnalyzer.ReadPosition(profile.Vertices, vertex))
+                    .ToArray();
+                var afterPoints = new Point3[selectedVertices.Length];
+                var summary = transform.ApplyAndSummarize(beforePoints, afterPoints);
+                for (var vertexIndex = 0; vertexIndex < selectedVertices.Length; vertexIndex++)
+                {
+                    WritePosition(intended, profile.Vertices.Snapshot.PositionLayout, selectedVertices[vertexIndex], afterPoints[vertexIndex]);
+                }
+                ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.PositionsTransformed);
+
+                if (ContentHash.Compute(profile.Vertices.Decoded) != target.DecodedVertexBufferHash
+                    || new ContentHash(VertexSetHash.Compute(selectedVertices)) != target.VertexSetHash
+                    || selectedVertices.Length != target.SelectedVertexCount
+                    || ToAffineBounds(summary.BeforeBounds) != target.SelectionBeforeBounds
+                    || ToAffineBounds(summary.AfterBounds) != target.SelectionExpectedAfterBounds
+                    || summary.ChangedPointCount < 1
+                    || !HasIdenticalSingle(summary.MaximumDisplacement, target.MaximumDisplacement))
                 {
                     throw Errors.Verification(
                         "AFFINE_RESULT_DRIFT",
-                        $"LOD {target.Lod} uniform affine position result differs from its dry-run plan.",
+                        $"LOD {target.Lod} affine position result differs from its dry-run plan.",
                         "Reject the candidate and regenerate the plan.");
                 }
 
-                VerifyOnlyPositionBytesChanged(
+                if (!positionOnly)
+                {
+                    Source2PackedFrameCodec.TransformSelected(intended, target.PackedFrameLayout, selectedVertices, transform);
+                }
+                ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.PackedFramesTransformed);
+
+                if (ContentHash.Compute(intended) != target.ExpectedDecodedVertexBufferHash)
+                {
+                    throw Errors.Verification(
+                        "AFFINE_RESULT_DRIFT",
+                        $"LOD {target.Lod} affine decoded-buffer hash differs from its dry-run plan.",
+                        "Reject the candidate and regenerate the plan.");
+                }
+
+                VerifyAffineAllowedVertexBytesChanged(
                     profile.Vertices.Decoded,
-                    transformed.TransformedDecoded.Span,
+                    intended,
                     profile.Vertices.Snapshot.PositionLayout,
-                    selectedVertices);
+                    target.PackedFrameLayout,
+                    selectedVertices,
+                    positionOnly);
                 if (Source2PackedFrameCodec.HashSelected(
-                        transformed.TransformedDecoded.Span,
+                        intended,
                         target.PackedFrameLayout,
                         selectedVertices) != target.ExpectedPackedFrameHash)
                 {
                     throw Errors.Verification(
                         "AFFINE_PACKED_FRAME_REENCODE_MISMATCH",
-                        $"LOD {target.Lod} uniform affine routing changed packed-frame bytes.",
-                        "Reject the position-only candidate.");
+                        $"LOD {target.Lod} packed normal/tangent frames differ from the affine plan.",
+                        "Reject the candidate and regenerate the plan.");
                 }
 
-                var intended = transformed.TransformedDecoded.ToArray();
                 var encoded = EncodeDeterministically(
                     codec,
                     intended,
@@ -140,14 +163,17 @@ public sealed partial class Source2CompiledModelAdapter
                 {
                     throw new InvalidDataException($"LOD {target.Lod} affine MVTX changed during encode/decode verification.");
                 }
+                ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.VertexBufferEncoded);
 
                 replacements.Add(target.VertexResourceBlockIndex, encoded);
                 intendedDecoded.Add(target.VertexResourceBlockIndex, intended);
                 UpdateAffineMeshMetadata(profile.Mesh.Block.Data, profile.Metadata, target);
+                ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.BoundsUpdated);
                 expectedSemanticHashes.Add(target.ResourceBlockIndex, KvSemanticHasher.ComputeComplete(profile.Mesh.Block.Data));
                 replacements.Add(
                     target.ResourceBlockIndex,
                     SerializeDeterministically(profile.Mesh.Block.Serialize, $"LOD {target.Lod} affine MDAT block {target.ResourceBlockIndex}"));
+                ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.MetadataSerialized);
             }
 
             if (!operation.TargetBlocks.Select(block => block.Index).ToHashSet().SetEquals(replacements.Keys))
@@ -156,6 +182,7 @@ public sealed partial class Source2CompiledModelAdapter
             }
 
             var candidateBytes = ResourceEnvelopeWriter.Rebuild(parsed.Envelope, replacements);
+            ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.EnvelopeRebuilt);
             var candidateArtifact = new ArtifactContent(input.LogicalPath, ContentHash.Compute(candidateBytes), candidateBytes);
             using var reopened = Parse(candidateArtifact, retainGeometryAnalysis: true);
             VerifyAffineUniformReopen(
@@ -197,7 +224,8 @@ public sealed partial class Source2CompiledModelAdapter
         ArtifactContent input,
         PlannedOperation operation,
         PlannedAffineGeometryTarget target,
-        GeometryCodecIdentity codecIdentity)
+        GeometryCodecIdentity codecIdentity,
+        bool positionOnly)
     {
         if (!parsed.MeshesByOrdinal.TryGetValue(target.MeshOrdinal, out var mesh)
             || mesh.Lod != target.Lod
@@ -235,8 +263,11 @@ public sealed partial class Source2CompiledModelAdapter
             || selectedVertices.Length != target.SelectedVertexCount
             || metadata.SceneBounds != target.MeshBeforeBounds
             || Source2PackedFrameCodec.HashSelected(vertices.Decoded, target.PackedFrameLayout, selectedVertices) != target.InputPackedFrameHash
-            || target.InputPackedFrameHash != target.ExpectedPackedFrameHash
-            || !target.AllowedChangedAttributes.SequenceEqual(["position"], StringComparer.Ordinal)
+            || (positionOnly
+                ? target.InputPackedFrameHash != target.ExpectedPackedFrameHash
+                    || !target.AllowedChangedAttributes.SequenceEqual(["position"], StringComparer.Ordinal)
+                : target.InputPackedFrameHash == target.ExpectedPackedFrameHash
+                    || !target.AllowedChangedAttributes.SequenceEqual(["normal_tangent", "position"], StringComparer.Ordinal))
             || target.Codec != codecIdentity)
         {
             throw Errors.Verification(
@@ -482,6 +513,53 @@ public sealed partial class Source2CompiledModelAdapter
         Y = bounds.Max.Y - bounds.Min.Y,
         Z = bounds.Max.Z - bounds.Min.Z,
     };
+
+    private static AffineTransform CreateAffineTransform(PlannedAffineTransformTarget target)
+    {
+        var rotation = target.Rotation.Kind == "identity"
+            ? AxisAngleRotation.Identity
+            : new AxisAngleRotation(ToAffinePoint(target.Rotation.Axis!), target.Rotation.Degrees!.Value);
+        return new AffineTransform(
+            ToAffinePoint(target.Pivot.Point),
+            new AffineScale(target.Scale.X, target.Scale.Y, target.Scale.Z),
+            rotation,
+            new RigidFrame(ToAffineMatrix(target.Frame.ToModel)),
+            ToAffinePoint(target.Translation));
+    }
+
+    private static void VerifyAffineAllowedVertexBytesChanged(
+        ReadOnlySpan<byte> before,
+        ReadOnlySpan<byte> after,
+        PositionLayout positionLayout,
+        PackedFrameLayout packedFrameLayout,
+        IReadOnlyCollection<int> selectedVertices,
+        bool positionOnly)
+    {
+        if (before.Length != after.Length || before.Length % positionLayout.Stride != 0)
+        {
+            throw new InvalidDataException("Decoded MVTX length changed during affine transform.");
+        }
+
+        var selected = selectedVertices.ToHashSet();
+        for (var vertex = 0; vertex < before.Length / positionLayout.Stride; vertex++)
+        {
+            var recordOffset = checked(vertex * positionLayout.Stride);
+            for (var offset = 0; offset < positionLayout.Stride; offset++)
+            {
+                var positionByte = selected.Contains(vertex)
+                    && offset >= positionLayout.Offset
+                    && offset < positionLayout.Offset + (sizeof(float) * 3);
+                var frameByte = !positionOnly
+                    && selected.Contains(vertex)
+                    && offset >= packedFrameLayout.Offset
+                    && offset < packedFrameLayout.Offset + sizeof(uint);
+                if (!positionByte && !frameByte && before[recordOffset + offset] != after[recordOffset + offset])
+                {
+                    throw new InvalidDataException($"Decoded MVTX changed an unplanned byte {offset} of vertex {vertex}.");
+                }
+            }
+        }
+    }
 
     private sealed record AffineUniformRewriteProfile(
         ParsedMesh Mesh,

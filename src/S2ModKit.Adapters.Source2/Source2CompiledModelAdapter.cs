@@ -18,14 +18,26 @@ public sealed partial class Source2CompiledModelAdapter : IModelInspector, IReso
     private const int MaximumDrawCallsPerMesh = 65536;
     private const int MaximumDirectDependencyCount = 4096;
     private readonly string? meshOptimizerPath;
+    private readonly Action<AffineRewriteCheckpoint>? affineRewriteCheckpoint;
 
     public Source2CompiledModelAdapter(string? meshOptimizerPath = null)
+        : this(meshOptimizerPath, null)
+    {
+    }
+
+    internal Source2CompiledModelAdapter(
+        string? meshOptimizerPath,
+        Action<AffineRewriteCheckpoint>? affineRewriteCheckpoint)
     {
         this.meshOptimizerPath = string.IsNullOrWhiteSpace(meshOptimizerPath)
             ? null
             : meshOptimizerPath;
+        this.affineRewriteCheckpoint = affineRewriteCheckpoint;
         GeometryCodecCapability = MeshOptimizerCodecProbe.Probe(this.meshOptimizerPath);
     }
+
+    private void ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint checkpoint) =>
+        affineRewriteCheckpoint?.Invoke(checkpoint);
 
     public MeshOptimizerCodecCapability GeometryCodecCapability { get; }
 

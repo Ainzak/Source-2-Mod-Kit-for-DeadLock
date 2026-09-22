@@ -19,13 +19,13 @@ public sealed class Source2RewriteCapabilityTests
     }
 
     [Fact]
-    public void OnlyUniformPositionOnlyAffinePlanIsWritableBeforeAttributeWriter()
+    public void UniformAndPerAxisAffinePlansAreWritableWhenAttributeWriterIsAvailable()
     {
         var adapter = new Source2CompiledModelAdapter();
         var model = Model("MDAT", "MVTX", "MIDX");
 
         Assert.True(adapter.CanRewrite(model, AffinePlan(uniform: true)));
-        Assert.False(adapter.CanRewrite(model, AffinePlan(uniform: false)));
+        Assert.True(adapter.CanRewrite(model, AffinePlan(uniform: false)));
     }
 
     private static ModelSnapshot Model(params string[] blockTypes) => new(

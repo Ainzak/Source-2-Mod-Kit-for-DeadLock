@@ -21,7 +21,7 @@ public sealed partial class Source2CompiledModelAdapter
         return CanRewriteRemoval(model, plan)
             || CanRewriteTransform(model, plan)
             || CanRewriteCoupledTransform(model, plan)
-            || CanRewriteAffineUniformTransform(model, plan);
+            || CanRewriteAffineTransform(model, plan);
     }
 
     private static bool CanRewriteRemoval(ModelSnapshot model, MutationPlan plan)
@@ -69,9 +69,9 @@ public sealed partial class Source2CompiledModelAdapter
             return Task.FromResult(RewriteCoupledTransform(input, model, plan.Operations[0].CoupledTransformTarget!));
         }
 
-        if (IsAffineUniformTransformPlan(plan))
+        if (IsAffineTransformPlan(plan))
         {
-            return Task.FromResult(RewriteAffineUniformTransform(input, model, plan, cancellationToken));
+            return Task.FromResult(RewriteAffineTransform(input, model, plan, cancellationToken));
         }
 
         if (IsTransformPlan(plan))

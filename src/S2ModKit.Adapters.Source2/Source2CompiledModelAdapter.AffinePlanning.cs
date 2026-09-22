@@ -19,14 +19,6 @@ public sealed partial class Source2CompiledModelAdapter
     private static TransformPlanningResult PlanAffineTransform(TransformPlanningRequest request, ParsedModel parsed)
     {
         var operation = request.Operation;
-        if (operation.Transform.Rotation is not { Kind: "identity" })
-        {
-            throw Errors.Unsupported(
-                "AFFINE_ROTATION_UNSUPPORTED",
-                "Rotation planning is not implemented for the current Source 2 affine profile.",
-                "Use identity rotation until the bounded rotation writer is available.");
-        }
-
         var expectedLods = operation.ExpectedVerticesByLod.Keys
             .Select(ParseAffineLod)
             .Order()
@@ -64,13 +56,17 @@ public sealed partial class Source2CompiledModelAdapter
             expectedLods,
             boneEvidence));
         var scale = operation.Transform.Scale!;
+        var rotationIntent = operation.Transform.Rotation!;
+        var rotation = rotationIntent.Kind == "identity"
+            ? AxisAngleRotation.Identity
+            : new AxisAngleRotation(ToAffinePoint(rotationIntent.Axis!), rotationIntent.Degrees!.Value);
         var transform = new AffineTransform(
             ToAffinePoint(pivot.Point),
             new AffineScale(scale.X, scale.Y, scale.Z),
-            AxisAngleRotation.Identity,
+            rotation,
             new RigidFrame(ToAffineMatrix(frame.ToModel)),
             ToAffinePoint(operation.Transform.Translation));
-        var uniformPositionOnly = scale.X == scale.Y && scale.Y == scale.Z;
+        var uniformPositionOnly = rotation.IsIdentity && scale.X == scale.Y && scale.Y == scale.Z;
         var targets = profiles.Select(profile => PlanAffineGeometry(
             request,
             parsed,
@@ -457,9 +453,9 @@ public sealed partial class Source2CompiledModelAdapter
         var y = local.Y - inverseBindPose[7];
         var z = local.Z - inverseBindPose[11];
         var result = new Point3(
-            ((((e * i) - (f * h)) * x) + (((c * h) - (b * i)) * y) + (((b * f) - (c * e)) * z) ) * reciprocal,
-            ((((f * g) - (d * i)) * x) + (((a * i) - (c * g)) * y) + (((c * d) - (a * f)) * z) ) * reciprocal,
-            ((((d * h) - (e * g)) * x) + (((b * g) - (a * h)) * y) + (((a * e) - (b * d)) * z) ) * reciprocal);
+            ((((e * i) - (f * h)) * x) + (((c * h) - (b * i)) * y) + (((b * f) - (c * e)) * z)) * reciprocal,
+            ((((f * g) - (d * i)) * x) + (((a * i) - (c * g)) * y) + (((c * d) - (a * f)) * z)) * reciprocal,
+            ((((d * h) - (e * g)) * x) + (((b * g) - (a * h)) * y) + (((a * e) - (b * d)) * z)) * reciprocal);
         if (!float.IsFinite(result.X) || !float.IsFinite(result.Y) || !float.IsFinite(result.Z))
         {
             throw Errors.Unsupported(
