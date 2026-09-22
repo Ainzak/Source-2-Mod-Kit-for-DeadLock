@@ -1,12 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/recipe.schema.json",
-  "title": "S2ModKit recipe v5",
+  "$id": "https://s2modkit.local/schemas/v4/recipe.schema.json",
+  "title": "S2ModKit recipe v4",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "recipeId", "inputHash", "operations", "extensions"],
   "properties": {
-    "schemaVersion": { "enum": [5] },
+    "schemaVersion": { "enum": [4] },
     "recipeId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
     "inputHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "operations": {
@@ -17,9 +17,7 @@
           { "$ref": "#/definitions/removeComponent" },
           { "$ref": "#/definitions/transformComponent" },
           { "$ref": "#/definitions/coupledTransformComponent" },
-          { "$ref": "#/definitions/connectedComponentTransform" },
-          { "$ref": "#/definitions/affineDrawCallTransform" },
-          { "$ref": "#/definitions/affineConnectedComponentTransform" }
+          { "$ref": "#/definitions/connectedComponentTransform" }
         ]
       }
     },
@@ -96,45 +94,6 @@
         "connectedComponentIdsByLod": { "$ref": "#/definitions/connectedComponentIdsByLod" },
         "ownershipPolicy": { "enum": ["exclusive"] },
         "transform": { "$ref": "#/definitions/transform" },
-        "limits": { "$ref": "#/definitions/limitsV1" },
-        "extensions": { "type": "object" }
-      }
-    },
-    "affineDrawCallTransform": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "expectedVerticesByLod", "ownershipPolicy", "transform", "limits", "extensions"],
-      "properties": {
-        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
-        "kind": { "enum": ["transform_component"] },
-        "version": { "enum": [4] },
-        "granularity": { "enum": ["draw_call_vertices"] },
-        "selector": { "$ref": "#/definitions/selector" },
-        "lodPolicy": { "enum": ["all_present"] },
-        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
-        "expectedVerticesByLod": { "$ref": "#/definitions/lodExpectations" },
-        "ownershipPolicy": { "enum": ["exclusive"] },
-        "transform": { "$ref": "#/definitions/affineTransform" },
-        "limits": { "$ref": "#/definitions/limitsV1" },
-        "extensions": { "type": "object" }
-      }
-    },
-    "affineConnectedComponentTransform": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["operationId", "kind", "version", "granularity", "selector", "lodPolicy", "expectedMatchesByLod", "expectedVerticesByLod", "connectedComponentIdsByLod", "ownershipPolicy", "transform", "limits", "extensions"],
-      "properties": {
-        "operationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
-        "kind": { "enum": ["transform_component"] },
-        "version": { "enum": [4] },
-        "granularity": { "enum": ["connected_component_vertices"] },
-        "selector": { "$ref": "#/definitions/selector" },
-        "lodPolicy": { "enum": ["all_present"] },
-        "expectedMatchesByLod": { "$ref": "#/definitions/lodExpectations" },
-        "expectedVerticesByLod": { "$ref": "#/definitions/lodExpectations" },
-        "connectedComponentIdsByLod": { "$ref": "#/definitions/connectedComponentIdsByLod" },
-        "ownershipPolicy": { "enum": ["exclusive"] },
-        "transform": { "$ref": "#/definitions/affineTransform" },
         "limits": { "$ref": "#/definitions/limitsV1" },
         "extensions": { "type": "object" }
       }
@@ -251,103 +210,6 @@
           "properties": { "x": { "enum": [0.0] }, "y": { "enum": [0.0] }, "z": { "enum": [0.0] } }
         }
       }
-    },
-    "affineTransform": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["pivot", "scale", "rotation", "frame", "translation"],
-      "properties": {
-        "pivot": { "$ref": "#/definitions/affinePivot" },
-        "scale": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["x", "y", "z"],
-          "properties": {
-            "x": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
-            "y": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
-            "z": { "type": "number", "minimum": 0.25, "maximum": 4.0 }
-          }
-        },
-        "rotation": { "$ref": "#/definitions/affineRotation" },
-        "frame": { "$ref": "#/definitions/affineFrame" },
-        "translation": { "$ref": "#/definitions/vector3" }
-      },
-      "not": {
-        "properties": {
-          "scale": {
-            "properties": { "x": { "enum": [1.0] }, "y": { "enum": [1.0] }, "z": { "enum": [1.0] } },
-            "required": ["x", "y", "z"]
-          },
-          "rotation": { "properties": { "kind": { "enum": ["identity"] } }, "required": ["kind"] },
-          "translation": {
-            "properties": { "x": { "enum": [0.0] }, "y": { "enum": [0.0] }, "z": { "enum": [0.0] } },
-            "required": ["x", "y", "z"]
-          }
-        },
-        "required": ["scale", "rotation", "translation"]
-      }
-    },
-    "affinePivot": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "referenceLod"],
-          "properties": { "kind": { "enum": ["selection_bounds_center"] }, "referenceLod": { "type": "integer", "minimum": 0 } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "point"],
-          "properties": { "kind": { "enum": ["explicit_point"] }, "point": { "$ref": "#/definitions/vector3" } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "referenceLod", "face"],
-          "properties": {
-            "kind": { "enum": ["bounds_face"] },
-            "referenceLod": { "type": "integer", "minimum": 0 },
-            "face": { "enum": ["min_x", "max_x", "min_y", "max_y", "min_z", "max_z"] }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "referenceLod", "boneName"],
-          "properties": {
-            "kind": { "enum": ["bone_origin"] },
-            "referenceLod": { "type": "integer", "minimum": 0 },
-            "boneName": { "type": "string", "minLength": 1 }
-          }
-        }
-      ]
-    },
-    "affineRotation": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind"], "properties": { "kind": { "enum": ["identity"] } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "axis", "degrees"],
-          "properties": {
-            "kind": { "enum": ["axis_angle"] },
-            "axis": { "$ref": "#/definitions/vector3" },
-            "degrees": { "type": "number", "exclusiveMinimum": -180.0, "maximum": 180.0, "not": { "enum": [0.0] } }
-          }
-        }
-      ]
-    },
-    "affineFrame": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind"], "properties": { "kind": { "enum": ["model"] } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "boneName"],
-          "properties": { "kind": { "enum": ["bone_bind"] }, "boneName": { "type": "string", "minLength": 1 } }
-        }
-      ]
     },
     "limitsV1": {
       "type": "object",

@@ -78,6 +78,18 @@ public sealed class EvidenceReportRenderer : IReportRenderer, IVpkPackageReportR
                 AppendInvariantLine(text, $"  - Visual: {coupled.Visual.VertexCount} vertices; displacement {coupled.Visual.MaximumDisplacement:R}/{coupled.Visual.DisplacementLimit:R}");
                 AppendInvariantLine(text, $"  - Collision: {coupled.Collision.VertexCount} vertices; displacement {coupled.Collision.MaximumDisplacement:R}/{coupled.Collision.DisplacementLimit:R}");
             }
+
+            if (operation.AffineTransform is { } affine)
+            {
+                AppendInvariantLine(text, $"- Affine profile: `{Escape(affine.StructuralProfileId)}@{affine.StructuralProfileVersion}`; selection `{Escape(affine.SelectionKind)}`");
+                AppendInvariantLine(text, $"  - Pivot: `{Escape(affine.Pivot.Kind)}` at {Format(affine.Pivot.Point)}; frame `{Escape(affine.Frame.Kind)}`");
+                AppendInvariantLine(text, $"  - Scale: {Format(affine.Scale)}; rotation: `{Escape(affine.Rotation.Kind)}`; translation: {Format(affine.Translation)}");
+                AppendInvariantLine(text, $"  - Maximum displacement: {affine.MaximumDisplacement:R}/{affine.DisplacementLimit:R}");
+                foreach (var change in affine.GeometryChanges)
+                {
+                    AppendInvariantLine(text, $"  - LOD {change.Lod}, mesh {change.MeshOrdinal}: {change.VertexCount} vertices; attributes `{Escape(string.Join(",", change.ChangedAttributes))}`");
+                }
+            }
         }
 
         text.AppendLine().AppendLine("## Resource blocks").AppendLine();

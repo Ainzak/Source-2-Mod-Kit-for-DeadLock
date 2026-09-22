@@ -109,7 +109,11 @@ public sealed class MutationPlanner
             }
 
             var result = transformPlanner.PlanTransform(new TransformPlanningRequest(input, model, transform, selected));
-            if (transform.Version == 2)
+            if (transform.Version == 4)
+            {
+                AffineTransformPlanValidator.Validate(result, selected, blocksByIndex, transform);
+            }
+            else if (transform.Version == 2)
             {
                 ValidateCoupledTransformPlanningResult(result, selected, blocksByIndex, transform);
             }
@@ -127,6 +131,7 @@ public sealed class MutationPlanner
                 GeometryTargets = result.GeometryTargets.OrderBy(target => target.Lod).ThenBy(target => target.MeshOrdinal).ThenBy(target => target.VertexBufferOrdinal).ToArray(),
                 DistanceFieldTargets = result.DistanceFieldTargets.OrderBy(target => target.ResourceBlockIndex).ThenBy(target => target.FieldIndex).ToArray(),
                 CoupledTransformTarget = result.CoupledTransformTarget,
+                AffineTransformTarget = result.AffineTransformTarget,
             });
         }
 
@@ -404,8 +409,9 @@ public sealed class MutationPlanner
         TransformVector3 frozenPivot,
         Dictionary<int, ResourceBlockSnapshot> blocksByIndex)
     {
-        var expectedCellSize = target.GridCellSize * operation.Transform.UniformScale;
-        var expectedMaximumDistance = target.MaximumQuantizedDistance * operation.Transform.UniformScale;
+        var uniformScale = operation.Transform.UniformScale;
+        var expectedCellSize = target.GridCellSize * uniformScale;
+        var expectedMaximumDistance = target.MaximumQuantizedDistance * uniformScale;
         var expectedSampleCount = (long)target.ResolutionX * target.ResolutionY * target.ResolutionZ;
         return blocksByIndex.ContainsKey(target.ResourceBlockIndex)
             && target.FieldIndex >= 0
@@ -430,7 +436,7 @@ public sealed class MutationPlanner
                 target.BeforeBounds,
                 target.ExpectedAfterBounds,
                 frozenPivot,
-                operation.Transform.UniformScale,
+                uniformScale,
                 operation.Transform.Translation);
     }
 
@@ -669,16 +675,47 @@ public sealed class MutationPlanner
                     }
                 }
 
-                text.Append("|ownership=").Append(transform.OwnershipPolicy)
-                    .Append("|physics-policy=").Append(transform.PhysicsPolicy ?? string.Empty)
-                    .Append("|pivot=").Append(transform.Transform.Pivot.Kind).Append(':').Append(transform.Transform.Pivot.ReferenceLod)
-                    .Append("|scale=").Append(FormatSingle(transform.Transform.UniformScale))
-                    .Append("|translation=");
-                AppendVector(text, transform.Transform.Translation);
-                text.Append("|maximum-displacement=").Append(FormatSingle(transform.Limits.MaximumVertexDisplacement));
-                if (transform.Limits.MaximumCollisionDisplacement is { } collisionLimit)
+                if (transform.Version == 4)
                 {
-                    text.Append("|maximum-collision-displacement=").Append(FormatSingle(collisionLimit));
+                    text.Append("|ownership=").Append(transform.OwnershipPolicy)
+                        .Append("|physics-policy=").Append(transform.PhysicsPolicy ?? string.Empty)
+                        .Append("|pivot=").Append(transform.Transform.Pivot.Kind)
+                        .Append("|pivot-lod=").Append(transform.Transform.Pivot.ReferenceLod?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)
+                        .Append("|pivot-face=").Append(transform.Transform.Pivot.Face ?? string.Empty)
+                        .Append("|pivot-bone=").Append(transform.Transform.Pivot.BoneName ?? string.Empty)
+                        .Append("|pivot-point=");
+                    if (transform.Transform.Pivot.Point is { } point)
+                    {
+                        AppendVector(text, point);
+                    }
+
+                    text.Append("|scale=");
+                    AppendVector(text, transform.Transform.Scale!);
+                    text.Append("|rotation=").Append(transform.Transform.Rotation!.Kind).Append(':');
+                    if (transform.Transform.Rotation.Axis is { } axis)
+                    {
+                        AppendVector(text, axis);
+                    }
+
+                    text.Append(':').Append(transform.Transform.Rotation.Degrees is { } degrees ? FormatSingle(degrees) : string.Empty)
+                        .Append("|frame=").Append(transform.Transform.Frame!.Kind).Append(':').Append(transform.Transform.Frame.BoneName ?? string.Empty)
+                        .Append("|translation=");
+                    AppendVector(text, transform.Transform.Translation);
+                    text.Append("|maximum-displacement=").Append(FormatSingle(transform.Limits.MaximumVertexDisplacement));
+                }
+                else
+                {
+                    text.Append("|ownership=").Append(transform.OwnershipPolicy)
+                        .Append("|physics-policy=").Append(transform.PhysicsPolicy ?? string.Empty)
+                        .Append("|pivot=").Append(transform.Transform.Pivot.Kind).Append(':').Append(transform.Transform.Pivot.ReferenceLod)
+                        .Append("|scale=").Append(FormatSingle(transform.Transform.UniformScale))
+                        .Append("|translation=");
+                    AppendVector(text, transform.Transform.Translation);
+                    text.Append("|maximum-displacement=").Append(FormatSingle(transform.Limits.MaximumVertexDisplacement));
+                    if (transform.Limits.MaximumCollisionDisplacement is { } collisionLimit)
+                    {
+                        text.Append("|maximum-collision-displacement=").Append(FormatSingle(collisionLimit));
+                    }
                 }
             }
 
@@ -762,6 +799,11 @@ public sealed class MutationPlanner
             if (plan.CoupledTransformTarget is { } coupled)
             {
                 text.Append("coupled|").Append(JsonDefaults.Serialize(coupled)).Append('\n');
+            }
+
+            if (plan.AffineTransformTarget is { } affine)
+            {
+                text.Append("affine-v1|").Append(JsonDefaults.Serialize(affine)).Append('\n');
             }
         }
 

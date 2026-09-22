@@ -33,6 +33,8 @@ public sealed record PlannedOperation(
     public IReadOnlyList<PlannedDistanceFieldTarget> DistanceFieldTargets { get; init; } = [];
 
     public PlannedCoupledTransformTarget? CoupledTransformTarget { get; init; }
+
+    public PlannedAffineTransformTarget? AffineTransformTarget { get; init; }
 }
 
 public sealed record GeometryBounds(
@@ -50,6 +52,91 @@ public sealed record GeometryCodecIdentity(
     string Platform,
     ContentHash BinaryHash,
     string Version);
+
+public sealed record TransformMatrix3(
+    float M11, float M12, float M13,
+    float M21, float M22, float M23,
+    float M31, float M32, float M33);
+
+public sealed record ResolvedTransformPivot(
+    string Kind,
+    TransformVector3 Point,
+    string CoordinateSpace,
+    string SourceIdentity,
+    ContentHash SourceHash,
+    int? ReferenceLod);
+
+public sealed record ResolvedTransformFrame(
+    string Kind,
+    string? BoneName,
+    TransformMatrix3 ToModel,
+    TransformMatrix3 ToFrame,
+    string SourceIdentity,
+    ContentHash SourceHash);
+
+public sealed record PackedFrameLayout(
+    string Format,
+    int Offset,
+    int Stride,
+    string EncodingProfile);
+
+public sealed record PlannedAffineGeometryTarget(
+    int Lod,
+    string ResourcePath,
+    int MeshOrdinal,
+    int ResourceBlockIndex,
+    int VertexBufferOrdinal,
+    int IndexBufferOrdinal,
+    int VertexResourceBlockIndex,
+    int IndexResourceBlockIndex,
+    ContentHash VertexBlockInputHash,
+    ContentHash IndexBlockInputHash,
+    ContentHash DecodedVertexBufferHash,
+    ContentHash ExpectedDecodedVertexBufferHash,
+    ContentHash DecodedIndexBufferHash,
+    ContentHash VertexSetHash,
+    int SelectedVertexCount,
+    PositionLayout PositionLayout,
+    PackedFrameLayout PackedFrameLayout,
+    GeometryBounds SelectionBeforeBounds,
+    GeometryBounds SelectionExpectedAfterBounds,
+    GeometryBounds MeshBeforeBounds,
+    GeometryBounds MeshExpectedAfterBounds,
+    float MaximumDisplacement,
+    ContentHash InputPackedFrameHash,
+    ContentHash ExpectedPackedFrameHash,
+    IReadOnlyList<string> AllowedChangedAttributes,
+    GeometryCodecIdentity Codec)
+{
+    public IReadOnlyList<string> ConnectedComponentIds { get; init; } = [];
+
+    public IReadOnlyList<PlannedAffineBoneBoundsTarget> BoneBoundsTargets { get; init; } = [];
+}
+
+public sealed record PlannedAffineBoneBoundsTarget(
+    int BoneIndex,
+    string BoneName,
+    ContentHash InverseBindPoseHash,
+    ContentHash InfluencedVertexSetHash,
+    int InfluencedVertexCount,
+    GeometryBounds BeforeBounds,
+    GeometryBounds ExpectedAfterBounds,
+    float BeforeSphereRadius,
+    float ExpectedSphereRadius);
+
+public sealed record PlannedAffineTransformTarget(
+    string SelectionKind,
+    string StructuralProfileId,
+    int StructuralProfileVersion,
+    ResolvedTransformPivot Pivot,
+    ResolvedTransformFrame Frame,
+    TransformVector3 Scale,
+    TransformRotation Rotation,
+    TransformVector3 Translation,
+    TransformMatrix3 LinearMap,
+    float MaximumDisplacement,
+    float DisplacementLimit,
+    IReadOnlyList<PlannedAffineGeometryTarget> GeometryTargets);
 
 public sealed record PlannedGeometryTarget(
     int Lod,

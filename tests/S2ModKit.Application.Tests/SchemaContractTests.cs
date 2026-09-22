@@ -186,6 +186,9 @@ public sealed partial class SchemaContractTests
         Assert.Empty(schema.Validate(valid));
         var document = JsonDefaults.Deserialize<RecipeDocument>(System.Text.Encoding.UTF8.GetBytes(valid), "Recipe");
         RecipeValidator.Validate(document);
+        var canonical = JsonDefaults.Serialize(document);
+        Assert.Equal(canonical, JsonDefaults.Serialize(document));
+        Assert.Empty(schema.Validate(canonical));
         Assert.Equal(2, document.Operations.Single().Version);
 
         Assert.NotEmpty(schema.Validate(valid.Replace(
@@ -228,7 +231,7 @@ public sealed partial class SchemaContractTests
               "extensions": {}
             }
             """;
-        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("recipe.schema.json"), TestContext.Current.CancellationToken);
+        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("v4/recipe.schema.json"), TestContext.Current.CancellationToken);
 
         Assert.Empty(schema.Validate(valid));
         var document = JsonDefaults.Deserialize<RecipeDocument>(System.Text.Encoding.UTF8.GetBytes(valid), "Recipe");
@@ -244,6 +247,53 @@ public sealed partial class SchemaContractTests
         Assert.NotEmpty(schema.Validate(duplicate));
         Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(
             JsonDefaults.Deserialize<RecipeDocument>(System.Text.Encoding.UTF8.GetBytes(duplicate), "Recipe")));
+    }
+
+    [Fact]
+    public async Task RecipeVersionFiveAcceptsStrictAffineContract()
+    {
+        const string valid = """
+            {
+              "schemaVersion": 5,
+              "recipeId": "affine-accessory",
+              "inputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "operations": [{
+                "operationId": "affine-accessory",
+                "kind": "transform_component",
+                "version": 4,
+                "granularity": "draw_call_vertices",
+                "selector": { "kind": "draw_call_ids", "drawCallIds": ["dc_0123456789abcdef01234567"] },
+                "lodPolicy": "all_present",
+                "expectedMatchesByLod": { "0": 1 },
+                "expectedVerticesByLod": { "0": 12 },
+                "ownershipPolicy": "exclusive",
+                "transform": {
+                  "pivot": { "kind": "bounds_face", "referenceLod": 0, "face": "min_z" },
+                  "scale": { "x": 2.0, "y": 1.0, "z": 0.5 },
+                  "rotation": { "kind": "axis_angle", "axis": { "x": 0.0, "y": 0.0, "z": 1.0 }, "degrees": 45.0 },
+                  "frame": { "kind": "bone_bind", "boneName": "weapon" },
+                  "translation": { "x": 1.0, "y": 0.0, "z": 0.0 }
+                },
+                "limits": { "maximumVertexDisplacement": 96.0 },
+                "extensions": {}
+              }],
+              "extensions": {}
+            }
+            """;
+        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("recipe.schema.json"), TestContext.Current.CancellationToken);
+
+        Assert.Empty(schema.Validate(valid));
+        var document = JsonDefaults.Deserialize<RecipeDocument>(System.Text.Encoding.UTF8.GetBytes(valid), "Recipe");
+        RecipeValidator.Validate(document);
+        var operation = Assert.IsType<TransformComponentOperation>(Assert.Single(document.Operations));
+        Assert.Equal(4, operation.Version);
+        Assert.Equal(0f, operation.Transform.UniformScale);
+        Assert.Equal("bone_bind", operation.Transform.Frame!.Kind);
+
+        Assert.NotEmpty(schema.Validate(valid.Replace("\"extensions\": {}", "\"unexpected\": true, \"extensions\": {}", StringComparison.Ordinal)));
+        var nonUnitAxis = valid.Replace("\"z\": 1.0 }, \"degrees\"", "\"z\": 2.0 }, \"degrees\"", StringComparison.Ordinal);
+        Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(
+            JsonDefaults.Deserialize<RecipeDocument>(System.Text.Encoding.UTF8.GetBytes(nonUnitAxis), "Recipe")));
     }
 
     private static string GetSchemaPath(string fileName)

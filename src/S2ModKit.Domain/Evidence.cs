@@ -22,7 +22,45 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CoupledTransformEvidence? CoupledTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AffineTransformEvidence? AffineTransform { get; init; }
 }
+
+public sealed record AffineTransformEvidence(
+    string SelectionKind,
+    string StructuralProfileId,
+    int StructuralProfileVersion,
+    ResolvedTransformPivot Pivot,
+    ResolvedTransformFrame Frame,
+    TransformVector3 Scale,
+    TransformRotation Rotation,
+    TransformVector3 Translation,
+    TransformMatrix3 LinearMap,
+    float MaximumDisplacement,
+    float DisplacementLimit,
+    IReadOnlyList<AffineGeometryChangeEvidence> GeometryChanges);
+
+public sealed record AffineGeometryChangeEvidence(
+    int Lod,
+    string ResourcePath,
+    int MeshOrdinal,
+    int ResourceBlockIndex,
+    ContentHash VertexSetHash,
+    int VertexCount,
+    GeometryBounds SelectionBeforeBounds,
+    GeometryBounds SelectionAfterBounds,
+    GeometryBounds MeshBeforeBounds,
+    GeometryBounds MeshAfterBounds,
+    ContentHash InputVertexBlockHash,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] ContentHash? OutputVertexBlockHash,
+    ContentHash InputDecodedVertexBufferHash,
+    ContentHash ExpectedDecodedVertexBufferHash,
+    ContentHash InputPackedFrameHash,
+    ContentHash ExpectedPackedFrameHash,
+    float MaximumDisplacement,
+    IReadOnlyList<string> ChangedAttributes,
+    GeometryCodecIdentity Codec);
 
 public sealed record CoupledTransformEvidence(
     string PhysicsPolicy,
@@ -81,7 +119,7 @@ public sealed record ResourceBlockEvidence(
 
 public sealed record EvidenceReport
 {
-    public int SchemaVersion { get; init; } = 5;
+    public int SchemaVersion { get; init; } = 6;
 
     public string ReportId { get; init; } = string.Empty;
 

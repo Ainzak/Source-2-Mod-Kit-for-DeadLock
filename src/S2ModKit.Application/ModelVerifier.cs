@@ -21,6 +21,11 @@ public sealed class ModelVerifier
             return VerifyCoupledTransform(before, after, plan);
         }
 
+        if (plan.Operations is [{ Kind: "transform_component", Version: 4, AffineTransformTarget: not null }])
+        {
+            return VerifyAffineTransform(before, after, plan);
+        }
+
         var selected = plan.Operations.SelectMany(operation => operation.SelectedDrawCalls).ToArray();
         var selectedKeys = new HashSet<DrawCallSemanticKey>(selected.Select(DrawCallSemanticKey.From));
         var beforeCalls = Flatten(before).ToArray();
@@ -133,6 +138,97 @@ public sealed class ModelVerifier
         boundaries.Add(lodsPreserved
             ? new BoundaryEvidence("lod_inventory_preserved", "passed", "The LOD inventory is unchanged.")
             : new BoundaryEvidence("lod_inventory_preserved", "failed", "The LOD inventory changed."));
+
+        return new VerificationResult(boundaries.All(boundary => boundary.Status == "passed"), boundaries, []);
+    }
+
+    private static VerificationResult VerifyAffineTransform(ModelSnapshot before, ModelSnapshot after, MutationPlan plan)
+    {
+        var operation = plan.Operations.Single();
+        var affine = operation.AffineTransformTarget!;
+        var boundaries = new List<BoundaryEvidence>();
+        var callsPreserved = DictionariesEqual(Multiset(Flatten(before)), Multiset(Flatten(after)));
+        boundaries.Add(callsPreserved
+            ? new BoundaryEvidence("all_draw_calls_preserved", "passed", "All draw-call semantics are unchanged.")
+            : new BoundaryEvidence("all_draw_calls_preserved", "failed", "Draw-call semantics changed during the affine rewrite."));
+
+        var beforeLods = before.Lods.Select(lod => lod.Level).Order().ToArray();
+        var afterLods = after.Lods.Select(lod => lod.Level).Order().ToArray();
+        boundaries.Add(beforeLods.SequenceEqual(afterLods)
+            ? new BoundaryEvidence("lod_inventory_preserved", "passed", "The LOD inventory is unchanged.")
+            : new BoundaryEvidence("lod_inventory_preserved", "failed", "The LOD inventory changed during the affine rewrite."));
+
+        var beforeBlocks = before.Artifact.Blocks.ToDictionary(block => (block.Type, block.Index));
+        var afterBlocks = after.Artifact.Blocks.ToDictionary(block => (block.Type, block.Index));
+        var targets = operation.TargetBlocks.ToDictionary(block => (block.Type, block.Index));
+        var inventoryPreserved = beforeBlocks.Keys.ToHashSet().SetEquals(afterBlocks.Keys);
+        boundaries.Add(inventoryPreserved
+            ? new BoundaryEvidence("resource_block_inventory_preserved", "passed", "All resource block identities are preserved.")
+            : new BoundaryEvidence("resource_block_inventory_preserved", "failed", "Resource block inventory changed."));
+
+        var targetInputsMatch = inventoryPreserved && targets.All(entry =>
+            beforeBlocks.TryGetValue(entry.Key, out var block) && block.ContentHash == entry.Value.InputHash);
+        boundaries.Add(targetInputsMatch
+            ? new BoundaryEvidence("target_block_fingerprints", "passed", "Every affine target block matches the dry-run input hash.")
+            : new BoundaryEvidence("target_block_fingerprints", "failed", "An affine target block differs from the dry-run input."));
+
+        var targetsChanged = inventoryPreserved && targets.Keys.All(key => beforeBlocks[key].ContentHash != afterBlocks[key].ContentHash);
+        boundaries.Add(targetsChanged
+            ? new BoundaryEvidence("affine_target_blocks_changed", "passed", "Every planned affine target block changed.")
+            : new BoundaryEvidence("affine_target_blocks_changed", "failed", "At least one planned affine target block did not change."));
+
+        var unrelatedPreserved = inventoryPreserved && beforeBlocks
+            .Where(entry => !targets.ContainsKey(entry.Key))
+            .All(entry => afterBlocks[entry.Key].ContentHash == entry.Value.ContentHash);
+        boundaries.Add(unrelatedPreserved
+            ? new BoundaryEvidence("non_target_blocks_byte_identical", "passed", "Every unrelated resource block remains byte-identical.")
+            : new BoundaryEvidence("non_target_blocks_byte_identical", "failed", "An unrelated resource block changed."));
+
+        var indexPreserved = inventoryPreserved && beforeBlocks
+            .Where(entry => entry.Key.Type is "MIDX" or "VBIB")
+            .All(entry => afterBlocks[entry.Key].ContentHash == entry.Value.ContentHash);
+        boundaries.Add(indexPreserved
+            ? new BoundaryEvidence("index_payloads_byte_identical", "passed", "Every index payload remains byte-identical.")
+            : new BoundaryEvidence("index_payloads_byte_identical", "failed", "At least one index payload changed."));
+
+        var beforeMeshes = before.Lods.SelectMany(lod => lod.Meshes.Select(mesh => ((lod.Level, mesh.MeshOrdinal), mesh))).ToDictionary();
+        var afterMeshes = after.Lods.SelectMany(lod => lod.Meshes.Select(mesh => ((lod.Level, mesh.MeshOrdinal), mesh))).ToDictionary();
+        var geometryMatches = affine.GeometryTargets.All(target =>
+        {
+            if (!beforeMeshes.TryGetValue((target.Lod, target.MeshOrdinal), out var beforeMesh)
+                || !afterMeshes.TryGetValue((target.Lod, target.MeshOrdinal), out var afterMesh)
+                || beforeMesh.Geometry is not { Status: "ready" } beforeGeometry
+                || afterMesh.Geometry is not { Status: "ready" } afterGeometry
+                || (uint)target.VertexBufferOrdinal >= (uint)beforeGeometry.VertexBuffers.Count
+                || (uint)target.VertexBufferOrdinal >= (uint)afterGeometry.VertexBuffers.Count
+                || (uint)target.IndexBufferOrdinal >= (uint)beforeGeometry.IndexBuffers.Count
+                || (uint)target.IndexBufferOrdinal >= (uint)afterGeometry.IndexBuffers.Count)
+            {
+                return false;
+            }
+
+            var beforeVertex = beforeGeometry.VertexBuffers[target.VertexBufferOrdinal];
+            var afterVertex = afterGeometry.VertexBuffers[target.VertexBufferOrdinal];
+            var beforeIndex = beforeGeometry.IndexBuffers[target.IndexBufferOrdinal];
+            var afterIndex = afterGeometry.IndexBuffers[target.IndexBufferOrdinal];
+            return beforeVertex.ResourceBlockIndex == target.VertexResourceBlockIndex
+                && beforeVertex.EncodedHash == target.VertexBlockInputHash
+                && beforeVertex.DecodedHash == target.DecodedVertexBufferHash
+                && afterVertex.ResourceBlockIndex == beforeVertex.ResourceBlockIndex
+                && afterVertex.VertexCount == beforeVertex.VertexCount
+                && afterVertex.Stride == beforeVertex.Stride
+                && afterVertex.PositionLayout == beforeVertex.PositionLayout
+                && afterVertex.DecodedHash == target.ExpectedDecodedVertexBufferHash
+                && beforeIndex.ResourceBlockIndex == target.IndexResourceBlockIndex
+                && beforeIndex.EncodedHash == target.IndexBlockInputHash
+                && beforeIndex.DecodedHash == target.DecodedIndexBufferHash
+                && afterIndex == beforeIndex
+                && beforeGeometry.Codec == target.Codec
+                && afterGeometry.Codec == target.Codec;
+        });
+        boundaries.Add(geometryMatches
+            ? new BoundaryEvidence("affine_geometry_postconditions", "passed", "Affine buffer identities, decoded results, index payloads, and codecs match the plan.")
+            : new BoundaryEvidence("affine_geometry_postconditions", "failed", "Affine geometry differs from the planned postconditions."));
 
         return new VerificationResult(boundaries.All(boundary => boundary.Status == "passed"), boundaries, []);
     }

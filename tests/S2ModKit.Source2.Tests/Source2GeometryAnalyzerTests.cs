@@ -79,6 +79,25 @@ public sealed class Source2GeometryAnalyzerTests
     }
 
     [Fact]
+    public void AnalyzeDetailedRetainsCharacterizedPackedFrameLayoutForAffinePlanning()
+    {
+        var vertices = VertexBytes(24, (0, 0, 0), (1, 0, 0), (0, 1, 0));
+        var indices = IndexBytes(0, 1, 2);
+        using var codec = new FakeCodec();
+
+        var analysis = Source2GeometryAnalyzer.AnalyzeDetailed(
+            Descriptor(AffineVertexDescriptor(0, 3, 24), IndexDescriptor(1, 3, 2)),
+            Envelope(("MVTX", vertices), ("MIDX", indices)),
+            [DrawCall(0, 0, 3, 0, 3)],
+            codec,
+            "affine planning mesh");
+
+        Assert.Equal(
+            new PackedFrameLayout("R32_UINT", 16, 24, Source2PackedFrameCodec.EncodingProfile),
+            Assert.Single(analysis.VertexBuffers).PackedFrameLayout);
+    }
+
+    [Fact]
     public void AnalyzeReportsStableDisconnectedTriangleComponents()
     {
         var vertices = VertexBytes(
@@ -380,6 +399,29 @@ public sealed class Source2GeometryAnalyzerTests
             ("m_nOffset", 0),
             ("m_nSlot", 0),
             ("m_nSlotType", "RENDER_SLOT_PER_VERTEX")))));
+
+    private static KVObject AffineVertexDescriptor(int block, int count, int stride) => Object(
+        ("m_nBlockIndex", block),
+        ("m_nElementCount", count),
+        ("m_nElementSizeInBytes", stride),
+        ("m_bMeshoptCompressed", true),
+        ("m_bMeshoptIndexSequence", false),
+        ("m_bCompressedZSTD", false),
+        ("m_inputLayoutFields", Array(
+            Object(
+                ("m_pSemanticName", "POSITION"),
+                ("m_nSemanticIndex", 0),
+                ("m_Format", 6u),
+                ("m_nOffset", 0),
+                ("m_nSlot", 0),
+                ("m_nSlotType", "RENDER_SLOT_PER_VERTEX")),
+            Object(
+                ("m_pSemanticName", "NORMAL"),
+                ("m_nSemanticIndex", 0),
+                ("m_Format", 42u),
+                ("m_nOffset", 16),
+                ("m_nSlot", 0),
+                ("m_nSlotType", "RENDER_SLOT_PER_VERTEX")))));
 
     private static KVObject IndexDescriptor(int block, int count, int stride) => Object(
         ("m_nBlockIndex", block),

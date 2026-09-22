@@ -15,7 +15,10 @@ internal sealed record GeometryDrawCallInput(
 
 internal sealed record Source2VertexBufferAnalysis(
     VertexBufferSnapshot Snapshot,
-    byte[] Decoded);
+    byte[] Decoded)
+{
+    public PackedFrameLayout? PackedFrameLayout { get; init; }
+}
 
 internal sealed record Source2IndexBufferAnalysis(
     IndexBufferSnapshot Snapshot,
@@ -44,6 +47,7 @@ internal static class Source2GeometryAnalyzer
     private const int MaximumDrawCallsPerGeometryMesh = 256;
     private const int MaximumDecodedBufferBytes = 512 * 1024 * 1024;
     private const uint R32G32B32Float = 6;
+    private const uint R32UInt = 42;
 
     public static MeshGeometrySnapshot Analyze(
         KVObject embeddedMeshDescriptor,
@@ -325,8 +329,62 @@ internal static class Source2GeometryAnalyzer
             ContentHash.Compute(block.Payload.Span),
             roundTrip.DecodedHash,
             new PositionLayout("R32G32B32_FLOAT", positionOffset, stride));
-        return new Source2VertexBufferAnalysis(snapshot, roundTrip.Decoded);
+        return new Source2VertexBufferAnalysis(snapshot, roundTrip.Decoded)
+        {
+            PackedFrameLayout = ReadPackedFrameLayout(layout, positionOffset, stride, context, ordinal),
+        };
     }
+
+    private static PackedFrameLayout? ReadPackedFrameLayout(
+        KVObject layout,
+        int positionOffset,
+        int stride,
+        string context,
+        int ordinal)
+    {
+        var normalFields = layout.Values
+            .Where(field => field.IsCollection
+                && TryString(field, "m_pSemanticName", out var semantic)
+                && string.Equals(semantic, "NORMAL", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var tangentFields = layout.Values
+            .Where(field => field.IsCollection
+                && TryString(field, "m_pSemanticName", out var semantic)
+                && string.Equals(semantic, "TANGENT", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (normalFields.Length != 1 || tangentFields.Length != 0)
+        {
+            return null;
+        }
+
+        var normal = normalFields[0];
+        if (RequireInt32(normal, "m_nSemanticIndex", context) != 0
+            || RequireUInt32(normal, "m_Format", context) != R32UInt
+            || RequireInt32(normal, "m_nSlot", context) != 0
+            || !string.Equals(RequireString(normal, "m_nSlotType", context), "RENDER_SLOT_PER_VERTEX", StringComparison.Ordinal)
+            || ReadOptionalInt32(normal, "m_nInstanceStepRate", context) != 0)
+        {
+            return null;
+        }
+
+        var normalOffset = RequireInt32(normal, "m_nOffset", context);
+        if (normalOffset < 0
+            || normalOffset > stride - sizeof(uint)
+            || RangesOverlap(positionOffset, sizeof(float) * 3, normalOffset, sizeof(uint)))
+        {
+            throw new InvalidDataException(
+                $"{context} vertex buffer {ordinal} NORMAL R32_UINT escapes the stride or overlaps POSITION.");
+        }
+
+        return new PackedFrameLayout(
+            "R32_UINT",
+            normalOffset,
+            stride,
+            Source2PackedFrameCodec.EncodingProfile);
+    }
+
+    private static bool RangesOverlap(int firstOffset, int firstLength, int secondOffset, int secondLength) =>
+        firstOffset < secondOffset + secondLength && secondOffset < firstOffset + firstLength;
 
     private static Source2IndexBufferAnalysis ReadIndexBuffer(
         KVObject descriptor,

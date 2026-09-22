@@ -180,6 +180,44 @@ public sealed record TransformPlanningResult(
     IReadOnlyList<PlannedTargetBlock> TargetBlocks)
 {
     public PlannedCoupledTransformTarget? CoupledTransformTarget { get; init; }
+
+    public PlannedAffineTransformTarget? AffineTransformTarget { get; init; }
+}
+
+public sealed record AffineSelectionBoundsEvidence(
+    int Lod,
+    GeometryBounds Bounds,
+    ContentHash VertexSetHash);
+
+public sealed record AffineBindMatrix(
+    float M11, float M12, float M13, float M14,
+    float M21, float M22, float M23, float M24,
+    float M31, float M32, float M33, float M34);
+
+public sealed record AffineBoneBindEvidence(
+    int Lod,
+    string SkeletonIdentity,
+    string BoneName,
+    bool InfluencesSelection,
+    ContentHash InverseBindPoseHash,
+    AffineBindMatrix InverseBindPose);
+
+public sealed record TypedPivotResolutionRequest(
+    TransformPivot Pivot,
+    IReadOnlyList<int> ExpectedLods,
+    IReadOnlyList<AffineSelectionBoundsEvidence> SelectionBounds,
+    IReadOnlyList<AffineBoneBindEvidence> BoneBindings);
+
+public sealed record TypedFrameResolutionRequest(
+    TransformFrame Frame,
+    IReadOnlyList<int> ExpectedLods,
+    IReadOnlyList<AffineBoneBindEvidence> BoneBindings);
+
+public interface IAffineEvidenceResolver
+{
+    ResolvedTransformPivot ResolvePivot(TypedPivotResolutionRequest request);
+
+    ResolvedTransformFrame ResolveFrame(TypedFrameResolutionRequest request);
 }
 
 public sealed record ComponentCapabilitySelection(

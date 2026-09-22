@@ -102,6 +102,11 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Selection("TRANSFORM_SELECTION_INVALID", "The transform selection is empty or contains duplicate draw-call identities.", "Regenerate a non-empty canonical selection.");
         }
 
+        if (request.Operation.Version == 4)
+        {
+            return PlanAffineTransform(request, parsed);
+        }
+
         if (request.Operation.Version == 2)
         {
             var mesh = parsed.MeshesByOrdinal.Values.SingleOrDefault();

@@ -168,6 +168,66 @@ public sealed class DomainTests
             Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(duplicate)).Error.Code);
     }
 
+    [Theory]
+    [InlineData("selection_bounds_center")]
+    [InlineData("explicit_point")]
+    [InlineData("bounds_face")]
+    [InlineData("bone_origin")]
+    public void RecipeValidatorAcceptsEveryPublishedAffinePivot(string pivotKind)
+    {
+        var recipe = ValidAffineRecipe(pivotKind);
+
+        RecipeValidator.Validate(recipe);
+
+        Assert.Equal(4, recipe.Operations.Single().Version);
+    }
+
+    [Fact]
+    public void RecipeValidatorRejectsAffineIdentityReflectionAndAmbiguousFields()
+    {
+        var operation = (TransformComponentOperation)ValidAffineRecipe("explicit_point").Operations.Single();
+        var identity = ValidAffineRecipe("explicit_point") with
+        {
+            Operations = [operation with
+            {
+                Transform = operation.Transform with
+                {
+                    Scale = new TransformVector3 { X = 1, Y = 1, Z = 1 },
+                    Translation = new TransformVector3(),
+                },
+            }],
+        };
+        var reflection = ValidAffineRecipe("explicit_point") with
+        {
+            Operations = [operation with
+            {
+                Transform = operation.Transform with { Scale = new TransformVector3 { X = -1, Y = 1, Z = 1 } },
+            }],
+        };
+        var ambiguous = ValidAffineRecipe("explicit_point") with
+        {
+            Operations = [operation with
+            {
+                Transform = operation.Transform with
+                {
+                    Pivot = operation.Transform.Pivot with { ReferenceLod = 0 },
+                },
+            }],
+        };
+
+        Assert.Equal("TRANSFORM_IDENTITY", Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(identity)).Error.Code);
+        Assert.Equal("TRANSFORM_SCALE_OUT_OF_RANGE", Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(reflection)).Error.Code);
+        Assert.Equal("PIVOT_INVALID", Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(ambiguous)).Error.Code);
+    }
+
+    [Fact]
+    public void RecipeValidatorKeepsVersionFourOutOfEarlierSchema()
+    {
+        var recipe = ValidAffineRecipe("selection_bounds_center") with { SchemaVersion = 4 };
+
+        Assert.Equal("SCHEMA_OPERATION_MISMATCH", Assert.Throws<S2ModKitException>(() => RecipeValidator.Validate(recipe)).Error.Code);
+    }
+
     private static RecipeDocument ValidRecipe() => new()
     {
         SchemaVersion = 1,
@@ -211,4 +271,43 @@ public sealed class DomainTests
             },
         ],
     };
+
+    private static RecipeDocument ValidAffineRecipe(string pivotKind)
+    {
+        var pivot = pivotKind switch
+        {
+            "selection_bounds_center" => new TransformPivot { Kind = pivotKind, ReferenceLod = 0 },
+            "explicit_point" => new TransformPivot { Kind = pivotKind, Point = new TransformVector3 { X = 1, Y = 2, Z = 3 } },
+            "bounds_face" => new TransformPivot { Kind = pivotKind, ReferenceLod = 0, Face = "min_z" },
+            "bone_origin" => new TransformPivot { Kind = pivotKind, ReferenceLod = 0, BoneName = "weapon" },
+            _ => throw new ArgumentOutOfRangeException(nameof(pivotKind)),
+        };
+        return new RecipeDocument
+        {
+            SchemaVersion = 5,
+            RecipeId = "affine-accessory",
+            InputHash = ContentHash.Compute([3]),
+            Operations =
+            [
+                new TransformComponentOperation
+                {
+                    OperationId = "affine-accessory",
+                    Version = 4,
+                    Granularity = "draw_call_vertices",
+                    Selector = new ComponentSelector { Kind = "draw_call_ids", DrawCallIds = ["dc_0123456789abcdef01234567"] },
+                    ExpectedMatchesByLod = new Dictionary<string, int> { ["0"] = 1 },
+                    ExpectedVerticesByLod = new Dictionary<string, int> { ["0"] = 12 },
+                    Transform = new ComponentTransform
+                    {
+                        Pivot = pivot,
+                        Scale = new TransformVector3 { X = 2, Y = 1, Z = 1 },
+                        Rotation = new TransformRotation { Kind = "identity" },
+                        Frame = new TransformFrame { Kind = "model" },
+                        Translation = new TransformVector3(),
+                    },
+                    Limits = new TransformLimits { MaximumVertexDisplacement = 32 },
+                },
+            ],
+        };
+    }
 }

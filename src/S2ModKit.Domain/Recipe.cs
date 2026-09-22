@@ -73,7 +73,17 @@ public sealed record ComponentTransform
 {
     public TransformPivot Pivot { get; init; } = new();
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public float UniformScale { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TransformVector3? Scale { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TransformRotation? Rotation { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TransformFrame? Frame { get; init; }
 
     public TransformVector3 Translation { get; init; } = new();
 }
@@ -82,7 +92,36 @@ public sealed record TransformPivot
 {
     public string Kind { get; init; } = string.Empty;
 
-    public int ReferenceLod { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ReferenceLod { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TransformVector3? Point { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Face { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BoneName { get; init; }
+}
+
+public sealed record TransformRotation
+{
+    public string Kind { get; init; } = string.Empty;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TransformVector3? Axis { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public float? Degrees { get; init; }
+}
+
+public sealed record TransformFrame
+{
+    public string Kind { get; init; } = string.Empty;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BoneName { get; init; }
 }
 
 public sealed record TransformVector3

@@ -299,6 +299,17 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             operationWarnings.Add("transform_component@3 changes only explicitly selected connected-component position bytes; offline checks do not prove live runtime behavior.");
         }
 
+        if (plan.Operations.Any(operation => operation.Kind == "transform_component" && operation.Version == 4))
+        {
+            var changesPackedFrames = plan.Operations
+                .Where(operation => operation.Kind == "transform_component" && operation.Version == 4)
+                .SelectMany(operation => operation.AffineTransformTarget?.GeometryTargets ?? [])
+                .Any(target => target.AllowedChangedAttributes.Contains("normal_tangent", StringComparer.Ordinal));
+            operationWarnings.Add(changesPackedFrames
+                ? "transform_component@4 changes planned positions, packed normal/tangent frames, and reproduced bounds; offline checks do not prove live runtime behavior."
+                : "transform_component@4 routes a typed-pivot uniform transform through the proven position path and reproduces required bounds; offline checks do not prove live runtime behavior.");
+        }
+
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -368,7 +379,53 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 ExpectedDecodedVertexBufferHash = target.ExpectedDecodedVertexBufferHash,
             }).ToArray(),
             CoupledTransform = CreateCoupledTransformEvidence(operation.CoupledTransformTarget),
+            AffineTransform = CreateAffineTransformEvidence(operation.AffineTransformTarget, outputBlocks),
         };
+    }
+
+    private static AffineTransformEvidence? CreateAffineTransformEvidence(
+        PlannedAffineTransformTarget? target,
+        Dictionary<int, ResourceBlockSnapshot>? outputBlocks)
+    {
+        if (target is null)
+        {
+            return null;
+        }
+
+        return new AffineTransformEvidence(
+            target.SelectionKind,
+            target.StructuralProfileId,
+            target.StructuralProfileVersion,
+            target.Pivot,
+            target.Frame,
+            target.Scale,
+            target.Rotation,
+            target.Translation,
+            target.LinearMap,
+            target.MaximumDisplacement,
+            target.DisplacementLimit,
+            target.GeometryTargets.Select(geometry => new AffineGeometryChangeEvidence(
+                geometry.Lod,
+                geometry.ResourcePath,
+                geometry.MeshOrdinal,
+                geometry.ResourceBlockIndex,
+                geometry.VertexSetHash,
+                geometry.SelectedVertexCount,
+                geometry.SelectionBeforeBounds,
+                geometry.SelectionExpectedAfterBounds,
+                geometry.MeshBeforeBounds,
+                geometry.MeshExpectedAfterBounds,
+                geometry.VertexBlockInputHash,
+                outputBlocks is not null && outputBlocks.TryGetValue(geometry.VertexResourceBlockIndex, out var block)
+                    ? block.ContentHash
+                    : null,
+                geometry.DecodedVertexBufferHash,
+                geometry.ExpectedDecodedVertexBufferHash,
+                geometry.InputPackedFrameHash,
+                geometry.ExpectedPackedFrameHash,
+                geometry.MaximumDisplacement,
+                geometry.AllowedChangedAttributes,
+                geometry.Codec)).ToArray());
     }
 
     private static CoupledTransformEvidence? CreateCoupledTransformEvidence(PlannedCoupledTransformTarget? target)

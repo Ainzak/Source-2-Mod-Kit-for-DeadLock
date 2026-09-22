@@ -171,6 +171,7 @@ public sealed partial class SchemaContractTests
         };
         var report = new EvidenceReport
         {
+            SchemaVersion = 5,
             ReportId = "coupled-evidence",
             CreatedUtc = DateTimeOffset.UnixEpoch,
             Command = "build",
@@ -179,10 +180,53 @@ public sealed partial class SchemaContractTests
             PlanFingerprint = ContentHash.Compute("plan"u8),
             Operations = [operation],
         };
-        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("evidence.schema.json"), TestContext.Current.CancellationToken);
+        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("v5/evidence.schema.json"), TestContext.Current.CancellationToken);
 
         Assert.Empty(schema.Validate(JsonDefaults.Serialize(report)));
         Assert.Empty(schema.Definitions["coupledTransformOperationEvidence"].Validate(JsonDefaults.Serialize(operation)));
+    }
+
+    [Fact]
+    public async Task AffineEvidenceConformsToVersionSixSchema()
+    {
+        var hash = ContentHash.Compute("affine"u8);
+        var bounds = new GeometryBounds(new TransformVector3(), new TransformVector3 { X = 1, Y = 1, Z = 1 });
+        var identity = new TransformMatrix3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+        var geometry = new AffineGeometryChangeEvidence(
+            0, "models/accessory.vmesh_c", 0, 1, hash, 12,
+            bounds, bounds, bounds, bounds, hash, null, hash, ContentHash.Compute("output"u8),
+            hash, ContentHash.Compute("packed-output"u8), 2f,
+            ["normal_tangent", "position"],
+            new GeometryCodecIdentity("meshoptimizer", "s2-v1", "win-x64", hash, "configured"));
+        var operation = new OperationEvidence(
+            "affine-accessory", "transform_component", 4,
+            ["dc_0123456789abcdef01234567"], ["models/accessory.vmesh_c"])
+        {
+            AffineTransform = new AffineTransformEvidence(
+                "draw_call_vertices", "root-mvtx-affine", 1,
+                new ResolvedTransformPivot("explicit_point", new TransformVector3(), "model", "explicit", hash, null),
+                new ResolvedTransformFrame("model", null, identity, identity, "model", hash),
+                new TransformVector3 { X = 2, Y = 1, Z = 1 },
+                new TransformRotation { Kind = "identity" },
+                new TransformVector3(), identity, 2, 96, [geometry]),
+        };
+        var report = new EvidenceReport
+        {
+            ReportId = "affine-evidence",
+            CreatedUtc = DateTimeOffset.UnixEpoch,
+            Command = "plan",
+            Status = "passed",
+            Input = new ArtifactEvidence("models/accessory.vmdl_c", hash, 5),
+            PlanFingerprint = hash,
+            Operations = [operation],
+        };
+        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("evidence.schema.json"), TestContext.Current.CancellationToken);
+        var json = JsonDefaults.Serialize(report);
+
+        Assert.Equal(6, report.SchemaVersion);
+        Assert.Empty(schema.Validate(json));
+        Assert.Empty(schema.Definitions["affineTransformOperationEvidence"].Validate(JsonDefaults.Serialize(operation)));
+        Assert.NotEmpty(schema.Validate(json.Replace("\"selectionKind\": \"draw_call_vertices\"", "\"selectionKind\": \"unknown\"", StringComparison.Ordinal)));
     }
 
 }

@@ -26,6 +26,8 @@ public sealed partial class SchemaContractTests
     [InlineData("v3/evidence.schema.json")]
     [InlineData("v3/recipe.schema.json")]
     [InlineData("v4/evidence.schema.json")]
+    [InlineData("v4/recipe.schema.json")]
+    [InlineData("v5/evidence.schema.json")]
     public async Task PublishedSchemaLoadsAsDraftSeven(string fileName)
     {
         var schema = await JsonSchema.FromFileAsync(GetSchemaPath(fileName), TestContext.Current.CancellationToken);

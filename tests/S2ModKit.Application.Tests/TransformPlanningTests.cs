@@ -122,6 +122,75 @@ public sealed class TransformPlanningTests
         Assert.Equal(ErrorCategory.UnsupportedCapability, exception.Error.Category);
     }
 
+    [Fact]
+    public void CreatePlanPublishesDeterministicAffineContract()
+    {
+        var (artifact, model) = CreateModel();
+        var recipe = CreateAffineRecipe(artifact.ContentHash);
+        var planner = new SyntheticAffinePlanner(model);
+
+        var first = MutationPlanner.CreatePlan(model, recipe, artifact, planner);
+        var second = MutationPlanner.CreatePlan(model, recipe, artifact, planner);
+
+        Assert.Equal(first.Fingerprint, second.Fingerprint);
+        var target = Assert.Single(first.Operations).AffineTransformTarget;
+        Assert.NotNull(target);
+        Assert.Equal("root-mvtx-affine", target.StructuralProfileId);
+        Assert.Equal(3, target.GeometryTargets.Count);
+        Assert.Empty(first.Operations.Single().GeometryTargets);
+    }
+
+    [Fact]
+    public void CreatePlanFingerprintIncludesResolvedAffineEvidence()
+    {
+        var (artifact, model) = CreateModel();
+        var recipe = CreateAffineRecipe(artifact.ContentHash);
+        var baseline = MutationPlanner.CreatePlan(model, recipe, artifact, new SyntheticAffinePlanner(model));
+        var changedProfile = MutationPlanner.CreatePlan(model, recipe, artifact, new SyntheticAffinePlanner(model, profileId: "root-mvtx-affine-v2"));
+        var changedPackedEvidence = MutationPlanner.CreatePlan(model, recipe, artifact, new SyntheticAffinePlanner(model, packedSuffix: "different"));
+
+        Assert.NotEqual(baseline.Fingerprint, changedProfile.Fingerprint);
+        Assert.NotEqual(baseline.Fingerprint, changedPackedEvidence.Fingerprint);
+    }
+
+    [Fact]
+    public void CreatePlanRejectsAffinePivotAndMatrixDrift()
+    {
+        var (artifact, model) = CreateModel();
+        var recipe = CreateAffineRecipe(artifact.ContentHash);
+        var pivotDrift = Assert.Throws<S2ModKitException>(() => MutationPlanner.CreatePlan(
+            model, recipe, artifact, new SyntheticAffinePlanner(model, pivotPoint: new TransformVector3 { X = 1 })));
+        var matrixDrift = Assert.Throws<S2ModKitException>(() => MutationPlanner.CreatePlan(
+            model, recipe, artifact, new SyntheticAffinePlanner(model, forgeLinearMap: true)));
+        var hashDrift = Assert.Throws<S2ModKitException>(() => MutationPlanner.CreatePlan(
+            model, recipe, artifact, new SyntheticAffinePlanner(model, pivotHash: ContentHash.Compute("different-pivot"u8))));
+
+        Assert.Equal("AFFINE_PIVOT_DRIFT", pivotDrift.Error.Code);
+        Assert.Equal("AFFINE_RESULT_DRIFT", matrixDrift.Error.Code);
+        Assert.Equal("AFFINE_PIVOT_DRIFT", hashDrift.Error.Code);
+    }
+
+    [Fact]
+    public void CreatePlanAcceptsUniformAffinePositionOnlyRoute()
+    {
+        var (artifact, model) = CreateModel();
+        var recipe = CreateAffineRecipe(artifact.ContentHash, uniform: true);
+
+        var plan = MutationPlanner.CreatePlan(
+            model,
+            recipe,
+            artifact,
+            new SyntheticAffinePlanner(model, uniform: true));
+
+        var affine = Assert.Single(plan.Operations).AffineTransformTarget;
+        Assert.NotNull(affine);
+        Assert.All(affine.GeometryTargets, target =>
+        {
+            Assert.Equal(["position"], target.AllowedChangedAttributes);
+            Assert.Equal(target.InputPackedFrameHash, target.ExpectedPackedFrameHash);
+        });
+    }
+
     private static RecipeDocument CreateRecipe(ContentHash inputHash, float scale) => new()
     {
         SchemaVersion = 2,
@@ -141,6 +210,36 @@ public sealed class TransformPlanningTests
                     UniformScale = scale,
                 },
                 Limits = new TransformLimits { MaximumVertexDisplacement = 32f },
+            },
+        ],
+    };
+
+    private static RecipeDocument CreateAffineRecipe(ContentHash inputHash, bool uniform = false) => new()
+    {
+        SchemaVersion = 5,
+        RecipeId = "affine-accessory",
+        InputHash = inputHash,
+        Operations =
+        [
+            new TransformComponentOperation
+            {
+                OperationId = "affine-accessory",
+                Version = 4,
+                Granularity = "draw_call_vertices",
+                Selector = new ComponentSelector { Kind = "material_exact", MaterialPath = "materials/accessory.vmat" },
+                ExpectedMatchesByLod = new Dictionary<string, int> { ["0"] = 1, ["1"] = 1, ["2"] = 1 },
+                ExpectedVerticesByLod = new Dictionary<string, int> { ["0"] = 3, ["1"] = 3, ["2"] = 3 },
+                Transform = new ComponentTransform
+                {
+                    Pivot = new TransformPivot { Kind = "explicit_point", Point = new TransformVector3() },
+                    Scale = uniform
+                        ? new TransformVector3 { X = 2, Y = 2, Z = 2 }
+                        : new TransformVector3 { X = 2, Y = 1, Z = 1 },
+                    Rotation = new TransformRotation { Kind = "identity" },
+                    Frame = new TransformFrame { Kind = "model" },
+                    Translation = new TransformVector3(),
+                },
+                Limits = new TransformLimits { MaximumVertexDisplacement = 32 },
             },
         ],
     };
@@ -265,6 +364,92 @@ public sealed class TransformPlanningTests
                     staleTargetBlock && block.Index == 0 ? ContentHash.Compute("stale"u8) : block.ContentHash))
                 .ToArray();
             return new TransformPlanningResult(targets, [], blocks);
+        }
+    }
+
+    private sealed class SyntheticAffinePlanner(
+        ModelSnapshot model,
+        string profileId = "root-mvtx-affine",
+        ContentHash? pivotHash = null,
+        TransformVector3? pivotPoint = null,
+        bool forgeLinearMap = false,
+        string packedSuffix = "default",
+        bool uniform = false) : ITransformOperationPlanner
+    {
+        public TransformPlanningResult PlanTransform(TransformPlanningRequest request)
+        {
+            var identity = new TransformMatrix3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+            var linear = forgeLinearMap
+                ? identity
+                : uniform
+                    ? new TransformMatrix3(2, 0, 0, 0, 2, 0, 0, 0, 2)
+                    : new TransformMatrix3(2, 0, 0, 0, 1, 0, 0, 0, 1);
+            var codec = new GeometryCodecIdentity("synthetic-codec", "affine-v1", "portable", ContentHash.Compute("codec"u8), "1");
+            var before = new GeometryBounds(new TransformVector3 { X = -1, Y = -1, Z = -1 }, new TransformVector3 { X = 1, Y = 1, Z = 1 });
+            var after = uniform
+                ? new GeometryBounds(new TransformVector3 { X = -2, Y = -2, Z = -2 }, new TransformVector3 { X = 2, Y = 2, Z = 2 })
+                : new GeometryBounds(new TransformVector3 { X = -2, Y = -1, Z = -1 }, new TransformVector3 { X = 2, Y = 1, Z = 1 });
+            var geometry = request.SelectedDrawCalls.Select(selected =>
+            {
+                var vertex = model.Artifact.Blocks.Single(block => block.Index == (selected.Lod * 3) + 1);
+                var index = model.Artifact.Blocks.Single(block => block.Index == (selected.Lod * 3) + 2);
+                return new PlannedAffineGeometryTarget(
+                    selected.Lod, selected.ResourcePath, selected.MeshOrdinal, selected.ResourceBlockIndex,
+                    0, 0, vertex.Index, index.Index, vertex.ContentHash, index.ContentHash,
+                    ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"decoded-{selected.Lod}")),
+                    ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"expected-{selected.Lod}")),
+                    ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"indices-{selected.Lod}")),
+                    ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"vertices-{selected.Lod}")),
+                    3,
+                    new PositionLayout("R32G32B32_FLOAT", 0, 24),
+                    new PackedFrameLayout("R32_UINT", 16, 24, "source2_normal_tangent_v2"),
+                    before, after, before, after, 1,
+                    ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"packed-{selected.Lod}")),
+                    uniform
+                        ? ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"packed-{selected.Lod}"))
+                        : ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes($"packed-expected-{selected.Lod}-{packedSuffix}")),
+                    uniform ? ["position"] : ["normal_tangent", "position"], codec)
+                {
+                    BoneBoundsTargets =
+                    [
+                        new PlannedAffineBoneBoundsTarget(
+                            0,
+                            "synthetic_bone",
+                            ContentHash.Compute("inverse-bind"u8),
+                            ContentHash.Compute("influenced"u8),
+                            3,
+                            before,
+                            after,
+                            1,
+                            2),
+                    ],
+                };
+            }).OrderBy(item => item.Lod).ToArray();
+            var lods = request.Operation.ExpectedVerticesByLod.Keys.Select(int.Parse).Order().ToArray();
+            var resolver = new AffineEvidenceResolver();
+            var resolvedPivot = resolver.ResolvePivot(new TypedPivotResolutionRequest(request.Operation.Transform.Pivot, lods, [], []));
+            if (pivotPoint is not null || pivotHash is not null)
+            {
+                resolvedPivot = resolvedPivot with
+                {
+                    Point = pivotPoint ?? resolvedPivot.Point,
+                    SourceHash = pivotHash ?? resolvedPivot.SourceHash,
+                };
+            }
+
+            var resolvedFrame = resolver.ResolveFrame(new TypedFrameResolutionRequest(request.Operation.Transform.Frame!, lods, []));
+            var affine = new PlannedAffineTransformTarget(
+                "draw_call_vertices", profileId, 1,
+                resolvedPivot,
+                resolvedFrame,
+                request.Operation.Transform.Scale!, request.Operation.Transform.Rotation!, request.Operation.Transform.Translation,
+                linear, 1, request.Operation.Limits.MaximumVertexDisplacement, geometry);
+            var blocks = geometry.SelectMany(item => new[] { item.ResourceBlockIndex, item.VertexResourceBlockIndex })
+                .Distinct().Order()
+                .Select(index => model.Artifact.Blocks.Single(block => block.Index == index))
+                .Select(block => new PlannedTargetBlock(block.Index, block.Type, block.ContentHash))
+                .ToArray();
+            return new TransformPlanningResult([], [], blocks) { AffineTransformTarget = affine };
         }
     }
 }
