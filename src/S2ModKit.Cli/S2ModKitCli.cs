@@ -462,13 +462,14 @@ public sealed partial class S2ModKitCli
         };
         var intent = new Option<string>("--intent")
         {
-            Description = "Existing operation intent: remove, uniform-scale, or translate.",
+            Description = "Operation intent: remove, uniform-scale, translate, or affine.",
             Required = true,
         };
         intent.AcceptOnlyFromAmong(
             RecipeScaffoldContract.RemoveIntent,
             RecipeScaffoldContract.UniformScaleIntent,
-            RecipeScaffoldContract.TranslateIntent);
+            RecipeScaffoldContract.TranslateIntent,
+            RecipeScaffoldContract.AffineIntent);
         var outputPath = RequiredStringOption("--output", "New recipe JSON path; existing files are never overwritten.");
         var scale = new Option<string?>("--scale")
         {
@@ -498,6 +499,17 @@ public sealed partial class S2ModKitCli
         {
             Description = "Required collision safety cap for a discovered transform_component@2 profile.",
         };
+        var scaleX = new Option<string?>("--scale-x") { Description = "Affine X scale in [0.25, 4.0]; defaults to 1." };
+        var scaleY = new Option<string?>("--scale-y") { Description = "Affine Y scale in [0.25, 4.0]; defaults to 1." };
+        var scaleZ = new Option<string?>("--scale-z") { Description = "Affine Z scale in [0.25, 4.0]; defaults to 1." };
+        var rotateAxis = new Option<string?>("--rotate-axis") { Description = "Unit rotation axis as x,y,z in the selected frame." };
+        var rotateDegrees = new Option<string?>("--rotate-degrees") { Description = "Signed rotation degrees in (-180, 180]." };
+        var pivot = new Option<string?>("--pivot") { Description = "Affine anchor: selection-center, point, face, or bone." };
+        var pivotPoint = new Option<string?>("--pivot-point") { Description = "Explicit model-space anchor as x,y,z." };
+        var pivotFace = new Option<string?>("--pivot-face") { Description = "Named bounds face: min_x, max_x, min_y, max_y, min_z, or max_z." };
+        var pivotBone = new Option<string?>("--pivot-bone") { Description = "Exact influencing bone name for a bone-origin anchor." };
+        var frame = new Option<string?>("--frame") { Description = "Affine axes: model or bone-bind." };
+        var frameBone = new Option<string?>("--frame-bone") { Description = "Exact influencing bone name for bone-bind axes." };
         foreach (var option in new Option[]
                  {
                      project,
@@ -511,6 +523,17 @@ public sealed partial class S2ModKitCli
                      referenceLod,
                      maximumDisplacement,
                      maximumCollisionDisplacement,
+                     scaleX,
+                     scaleY,
+                     scaleZ,
+                     rotateAxis,
+                     rotateDegrees,
+                     pivot,
+                     pivotPoint,
+                     pivotFace,
+                     pivotBone,
+                     frame,
+                     frameBone,
                  })
         {
             scaffold.Options.Add(option);
@@ -533,7 +556,21 @@ public sealed partial class S2ModKitCli
                     ParseOptionalSingle(parseResult.GetValue(translateZ), "--translate-z"),
                     ParseOptionalNonNegativeInt32(parseResult.GetValue(referenceLod), "--reference-lod"),
                     ParseOptionalSingle(parseResult.GetValue(maximumDisplacement), "--max-displacement"),
-                    ParseOptionalSingle(parseResult.GetValue(maximumCollisionDisplacement), "--max-collision-displacement")),
+                    ParseOptionalSingle(parseResult.GetValue(maximumCollisionDisplacement), "--max-collision-displacement"),
+                    ParseAffineScaffoldOptions(
+                        parseResult.GetRequiredValue(intent),
+                        new AffineScaffoldCliOptions(
+                            parseResult.GetValue(scaleX),
+                            parseResult.GetValue(scaleY),
+                            parseResult.GetValue(scaleZ),
+                            parseResult.GetValue(rotateAxis),
+                            parseResult.GetValue(rotateDegrees),
+                            parseResult.GetValue(pivot),
+                            parseResult.GetValue(pivotPoint),
+                            parseResult.GetValue(pivotFace),
+                            parseResult.GetValue(pivotBone),
+                            parseResult.GetValue(frame),
+                            parseResult.GetValue(frameBone)))),
                 cancellationToken),
             renderText: null,
             cancellationToken));

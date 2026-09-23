@@ -8,7 +8,7 @@ using ValveResourceFormat.Utils;
 
 namespace S2ModKit.Source2.Tests;
 
-public sealed class Source2TransformMetadataAnalyzerTests
+public sealed partial class Source2TransformMetadataAnalyzerTests
 {
     private static readonly ContentHash EmptyHash = ContentHash.Compute(ReadOnlySpan<byte>.Empty);
 
@@ -35,6 +35,30 @@ public sealed class Source2TransformMetadataAnalyzerTests
         var bounds = Assert.Single(analysis.BoneBounds);
         Assert.Equal("weapon", bounds.BoneName);
         Assert.Equal([0, 1, 2], bounds.InfluencedVertices);
+    }
+
+    [Fact]
+    public void AffineWholeMeshReadsBoneBoxSizeAsHalfExtentWithoutChangingLegacyReader()
+    {
+        var meshData = WithWeightCount(
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("weapon", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            1);
+        var geometry = RigidGeometry(
+            ((0f, 0f, 0f), [0, 0, 0, 0]),
+            ((1f, 0f, 0f), [0, 0, 0, 0]),
+            ((2f, 0f, 0f), [0, 0, 0, 0]));
+
+        var affine = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            RigidVertexDescriptor(), meshData, geometry, "affine mesh", boneSizeIsHalfExtent: true);
+        var legacy = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            RigidVertexDescriptor(), meshData, geometry, "legacy mesh");
+
+        Assert.Equal(0f, Assert.Single(affine.BoneBounds).LocalBounds.Min.X);
+        Assert.Equal(2f, Assert.Single(affine.BoneBounds).LocalBounds.Max.X);
+        Assert.Equal(0.5f, Assert.Single(legacy.BoneBounds).LocalBounds.Min.X);
+        Assert.Equal(1.5f, Assert.Single(legacy.BoneBounds).LocalBounds.Max.X);
     }
 
     [Fact]

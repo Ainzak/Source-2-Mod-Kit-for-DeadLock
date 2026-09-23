@@ -27,9 +27,14 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
             model,
             grouped.Candidates,
             cancellationToken).ConfigureAwait(false);
+        var affineAnalyses = await AnalyzeAffineCapabilitiesAsync(
+            input,
+            model,
+            grouped.Candidates,
+            cancellationToken).ConfigureAwait(false);
 
         var candidates = grouped.Candidates
-            .Select(draft => CreateCandidate(draft, analyses))
+            .Select(draft => CreateCandidate(draft, analyses, affineAnalyses))
             .OrderBy(CandidateKindRank)
             .ThenBy(CandidateSortKey, StringComparer.Ordinal)
             .ThenBy(candidate => candidate.CandidateId, StringComparer.Ordinal)
@@ -264,7 +269,7 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
                     "Reject the analyzer output and rerun with one result per requested selection.");
             }
 
-            ValidateAnalysis(analysis, model.Lods.Select(lod => lod.Level).Order().ToArray());
+            ValidateAnalysis(analysis, model.Lods.Select(lod => lod.Level).Order().ToArray(), 1, 2);
         }
 
         var missing = expected.Keys.Except(analyses.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
@@ -279,17 +284,81 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
         return analyses;
     }
 
-    private static ComponentCandidateV2 CreateCandidate(
-        ComponentCandidateDraft draft,
-        IReadOnlyDictionary<string, ComponentCapabilityAnalysis> analyses)
+    private async Task<IReadOnlyDictionary<string, ComponentCapabilityAnalysis>> AnalyzeAffineCapabilitiesAsync(
+        ArtifactContent input,
+        ModelSnapshot model,
+        IReadOnlyList<ComponentCandidateDraft> drafts,
+        CancellationToken cancellationToken)
     {
-        var capabilities = new[]
+        if (capabilityAnalyzer is not IAffineComponentCapabilityAnalyzer affineAnalyzer
+            || !capabilityAnalyzer.CanAnalyze(input, model))
+        {
+            return new Dictionary<string, ComponentCapabilityAnalysis>(StringComparer.Ordinal);
+        }
+
+        var complete = drafts.Where(draft => draft.IsLodComplete).ToArray();
+        if (complete.Length == 0)
+        {
+            return new Dictionary<string, ComponentCapabilityAnalysis>(StringComparer.Ordinal);
+        }
+
+        var selections = complete.Select(draft => new ComponentCapabilitySelection(
+            draft.CandidateId,
+            draft.Kind,
+            draft.MaterialPaths,
+            draft.SelectedDrawCalls)).ToArray();
+        var returned = await affineAnalyzer.AnalyzeAffineAsync(
+            new ComponentCapabilityAnalysisRequest(input, model, selections),
+            cancellationToken).ConfigureAwait(false);
+        if (returned is null)
+        {
+            throw DiscoveryError("COMPONENT_CAPABILITY_ANALYSIS_INCOMPLETE", "The affine analyzer returned no results.", "Reject the incomplete analyzer output.");
+        }
+
+        var expected = complete.Select(draft => draft.CandidateId).ToHashSet(StringComparer.Ordinal);
+        var analyses = new Dictionary<string, ComponentCapabilityAnalysis>(StringComparer.Ordinal);
+        foreach (var analysis in returned)
+        {
+            if (analysis is null || !expected.Contains(analysis.SelectionId)
+                || !analyses.TryAdd(analysis.SelectionId, analysis))
+            {
+                throw DiscoveryError("COMPONENT_CAPABILITY_ANALYSIS_AMBIGUOUS", "The affine analyzer returned an unknown or duplicate selection.", "Reject the inconsistent analyzer output.");
+            }
+
+            ValidateAnalysis(analysis, model.Lods.Select(lod => lod.Level).Order().ToArray(), 4);
+        }
+
+        if (analyses.Count != expected.Count)
+        {
+            throw DiscoveryError("COMPONENT_CAPABILITY_ANALYSIS_INCOMPLETE", "The affine analyzer omitted a requested selection.", "Reject the incomplete analyzer output.");
+        }
+
+        return analyses;
+    }
+
+    private ComponentCandidateV2 CreateCandidate(
+        ComponentCandidateDraft draft,
+        IReadOnlyDictionary<string, ComponentCapabilityAnalysis> analyses,
+        IReadOnlyDictionary<string, ComponentCapabilityAnalysis> affineAnalyses)
+    {
+        var capabilities = new List<ComponentCapability>
         {
             draft.IsLodComplete
                 ? AvailableCapability(RemoveOperation)
                 : IncompleteLodCapability(RemoveOperation, "The material group is absent from one or more present LODs required by all_present."),
             CreateTransformCapability(draft, analyses),
         };
+        if (capabilityAnalyzer is IAffineComponentCapabilityAnalyzer)
+        {
+            capabilities.Add(draft.IsLodComplete
+                ? CreateAffineCapability(draft, affineAnalyses)
+                : new ComponentCapability(
+                    TransformOperation,
+                    4,
+                    ComponentDiscoveryContract.Unsupported,
+                    [new ComponentCapabilityReason("COMPONENT_INCOMPLETE_LOD_COVERAGE", "The candidate has no draw call in one or more present LODs.")],
+                    []));
+        }
         if (draft.Kind == ComponentDiscoveryV2Contract.MaterialGroupKind)
         {
             return new MaterialGroupComponentCandidateV2(
@@ -345,6 +414,20 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
             analysis.GeometryByLod.OrderBy(item => item.Lod).ToArray());
     }
 
+    private static ComponentCapability CreateAffineCapability(
+        ComponentCandidateDraft draft,
+        IReadOnlyDictionary<string, ComponentCapabilityAnalysis> analyses)
+    {
+        var analysis = analyses[draft.CandidateId];
+        return new ComponentCapability(
+            analysis.OperationKind,
+            analysis.OperationVersion,
+            analysis.Availability,
+            analysis.Reasons.OrderBy(reason => reason.Code, StringComparer.Ordinal)
+                .ThenBy(reason => reason.Summary, StringComparer.Ordinal).ToArray(),
+            analysis.GeometryByLod.OrderBy(item => item.Lod).ToArray());
+    }
+
     private static ComponentCapability AvailableCapability(string operationKind) => new(
         operationKind,
         OperationVersion,
@@ -363,10 +446,11 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
 
     private static void ValidateAnalysis(
         ComponentCapabilityAnalysis analysis,
-        IReadOnlyList<int> presentLods)
+        IReadOnlyList<int> presentLods,
+        params int[] allowedVersions)
     {
         if (!string.Equals(analysis.OperationKind, TransformOperation, StringComparison.Ordinal)
-            || analysis.OperationVersion is not (1 or 2))
+            || !allowedVersions.Contains(analysis.OperationVersion))
         {
             throw DiscoveryError(
                 "COMPONENT_CAPABILITY_OPERATION_INVALID",
@@ -382,7 +466,7 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
             throw DiscoveryError(
                 "COMPONENT_CAPABILITY_AVAILABILITY_INVALID",
                 $"Selection '{analysis.SelectionId}' returned unknown availability '{analysis.Availability}'.",
-                "Use an availability value accepted by ADR-0016 and ADR-0017.");
+                "Use a supported component availability value.");
         }
 
         if (analysis.Reasons is null

@@ -11,6 +11,8 @@ human-guided front end.
 3. Import an immutable VPK or compiled model, then use inspection and component discovery before
    writing a recipe. Never invent draw-call IDs, mesh ordinals, paths, or LODs.
 4. Treat unsupported or ambiguous results as a hard stop. Do not hand-edit a recipe to bypass them.
+   For per-axis scale, rotation, or a typed pivot, require an available `transform_component@4`
+   assessment and let `recipe scaffold --intent affine` dry-run the exact parameters.
 5. Keep project, recipe, plan, build, package, and receipt paths in the configured workspace. Never
    overwrite an imported input or an active addon.
 6. A successful offline verify is not live-game evidence. Installation requires explicit user

@@ -112,7 +112,7 @@ internal static class Source2GeometryAnalyzer
         var connectedComponents = AnalyzeConnectedComponents(drawCalls, analyzedCalls, vertices, indices, context);
         var snapshot = new MeshGeometrySnapshot(
             "ready",
-            $"{vertices.Length} vertex buffer(s), {indices.Length} index buffer(s), and {analyzedCalls.Length} draw call(s) passed the Stage 4 float3/meshoptimizer profile.",
+            $"{vertices.Length} vertex buffer(s), {indices.Length} index buffer(s), and {analyzedCalls.Length} draw call(s) passed the float3/meshoptimizer profile.",
             vertices.Select(item => item.Snapshot).ToArray(),
             indices.Select(item => item.Snapshot).ToArray(),
             analyzedCalls.Select(item => item.Snapshot).ToArray(),

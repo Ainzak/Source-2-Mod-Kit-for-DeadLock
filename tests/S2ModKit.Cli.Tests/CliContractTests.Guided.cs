@@ -379,6 +379,86 @@ public sealed partial class CliContractTests
     }
 
     [Fact]
+    public async Task InteractiveAffineInputsRecoverFromInvalidNumbersAndAxis()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        try
+        {
+            var application = new FakeApplication(affineAvailable: true);
+            var cli = new S2ModKitCli(application, "test-adapter", "1", externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
+            using var input = new StringReader("1\n1\n1\n1\n5\nwrong\n1.5\n\n0.8\nwrong\n45\nwrong\nz\n1\n1\n\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = await cli.RunAsync(
+                ["interactive", "--catalogue", cataloguePath, "--session", sessionPath, "--base-vpk", "pak01_dir.vpk"],
+                input, output, error, TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken), "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(GuidedWorkflowContract.OutputSelectionStep, session.Step);
+            Assert.Equal(RecipeScaffoldContract.AffineIntent, application.LastScaffoldRequest?.Intent);
+            Assert.Equal(1.5f, application.LastScaffoldRequest?.Affine?.Scale.X);
+            Assert.Equal(1f, application.LastScaffoldRequest?.Affine?.Scale.Y);
+            Assert.Equal(0.8f, application.LastScaffoldRequest?.Affine?.Scale.Z);
+            Assert.Equal(45f, application.LastScaffoldRequest?.Affine?.Rotation.Degrees);
+            Assert.Equal(1f, application.LastScaffoldRequest?.Affine?.Rotation.Axis?.Z);
+            Assert.Equal(256f, application.LastScaffoldRequest?.MaximumVertexDisplacement);
+            Assert.Contains("Enter a finite scale", output.ToString(), StringComparison.Ordinal);
+            Assert.Contains("forming a unit axis", output.ToString(), StringComparison.Ordinal);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
+    public async Task InteractiveBackFromAffineActionKeepsProjectAndClearsDependentChoice()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        try
+        {
+            var inventory = new FakeCatalogueInventoryFactory(directoryHash);
+            var cli = new S2ModKitCli(new FakeApplication(affineAvailable: true), "test-adapter", "1",
+                externalVerifierAvailable: false, catalogueInventoryFactory: inventory);
+            using var input = new StringReader("1\n1\n1\n1\n0\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = await cli.RunAsync(
+                ["interactive", "--catalogue", cataloguePath, "--session", sessionPath, "--base-vpk", "pak01_dir.vpk"],
+                input, output, error, TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken), "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(GuidedWorkflowContract.ComponentSelectionStep, session.Step);
+            Assert.True(session.ProjectReady);
+            Assert.NotNull(session.ProjectRoot);
+            Assert.Null(session.SelectedComponentId);
+            Assert.Null(session.SelectedIntent);
+            Assert.Null(session.RecipePath);
+            Assert.Equal(1, inventory.OpenCount);
+            Assert.Contains("0. Back to component selection", output.ToString(), StringComparison.Ordinal);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
     public async Task InteractiveRejectsJsonFormatAsHumanTerminalError()
     {
         var cli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1", externalVerifierAvailable: false);

@@ -135,12 +135,14 @@ public sealed partial class CliContractTests
         private readonly Exception? failure;
         private readonly ModelSnapshot snapshot;
         private readonly bool writeScaffoldedRecipe;
+        private readonly bool affineAvailable;
 
-        public FakeApplication(Exception? failure = null, ModelSnapshot? snapshot = null, bool writeScaffoldedRecipe = false)
+        public FakeApplication(Exception? failure = null, ModelSnapshot? snapshot = null, bool writeScaffoldedRecipe = false, bool affineAvailable = false)
         {
             this.failure = failure;
             this.snapshot = snapshot ?? TestSnapshot;
             this.writeScaffoldedRecipe = writeScaffoldedRecipe;
+            this.affineAvailable = affineAvailable;
         }
 
         public ContentHash? LastExpectedDirectoryHash { get; private set; }
@@ -201,7 +203,7 @@ public sealed partial class CliContractTests
             string projectRoot,
             CancellationToken cancellationToken = default) =>
             failure is null
-                ? Task.FromResult(TestDiscovery)
+                ? Task.FromResult(affineAvailable ? CreateAffineDiscovery() : TestDiscovery)
                 : Task.FromException<ComponentDiscoveryResultV2>(failure);
 
         public Task<RecipeScaffoldResult> ScaffoldRecipeAsync(
@@ -229,6 +231,8 @@ public sealed partial class CliContractTests
                 : new TransformComponentOperation
                 {
                     OperationId = "transform-test",
+                    Version = request.Intent == RecipeScaffoldContract.AffineIntent ? 4 : 1,
+                    Granularity = request.Intent == RecipeScaffoldContract.AffineIntent ? "draw_call_vertices" : "draw_call_owned_vertices",
                     Selector = new ComponentSelector
                     {
                         Kind = "draw_call_ids",
@@ -238,8 +242,13 @@ public sealed partial class CliContractTests
                     ExpectedVerticesByLod = new Dictionary<string, int> { ["0"] = 12 },
                     Transform = new ComponentTransform
                     {
-                        Pivot = new TransformPivot { Kind = "selection_bounds_center", ReferenceLod = 0 },
-                        UniformScale = request.UniformScale ?? 1f,
+                        Pivot = request.Affine?.Pivot is { } affinePivot
+                            ? affinePivot.Kind == "explicit_point" ? affinePivot : affinePivot with { ReferenceLod = 0 }
+                            : new TransformPivot { Kind = "selection_bounds_center", ReferenceLod = 0 },
+                        UniformScale = request.Intent == RecipeScaffoldContract.AffineIntent ? 0f : request.UniformScale ?? 1f,
+                        Scale = request.Affine?.Scale,
+                        Rotation = request.Affine?.Rotation,
+                        Frame = request.Affine?.Frame,
                         Translation = new TransformVector3
                         {
                             X = request.TranslationX ?? 0f,
@@ -251,7 +260,7 @@ public sealed partial class CliContractTests
                 };
             var recipe = new RecipeDocument
             {
-                SchemaVersion = request.Intent == RecipeScaffoldContract.RemoveIntent ? 1 : 2,
+                SchemaVersion = request.Intent == RecipeScaffoldContract.RemoveIntent ? 1 : request.Intent == RecipeScaffoldContract.AffineIntent ? 5 : 2,
                 RecipeId = "scaffold-test",
                 InputHash = TestHash,
                 Operations = [operation],
@@ -362,6 +371,22 @@ public sealed partial class CliContractTests
             []);
 
         private static ComponentDiscoveryResultV2 TestDiscovery { get; } = CreateDiscovery();
+
+        private static ComponentDiscoveryResultV2 CreateAffineDiscovery()
+        {
+            var affine = new ComponentCapability(
+                "transform_component",
+                4,
+                ComponentDiscoveryContract.Available,
+                [new ComponentCapabilityReason("COMPONENT_CAPABILITY_AVAILABLE", "Affine geometry is available.")],
+                [new ComponentGeometryLodFacts(0, 12, ContentHash.Compute("vertices"u8), true)]);
+            return TestDiscovery with
+            {
+                Candidates = TestDiscovery.Candidates
+                    .Select(candidate => candidate with { Capabilities = [.. candidate.Capabilities, affine] })
+                    .ToArray(),
+            };
+        }
 
         private static ComponentDiscoveryResultV2 CreateDiscovery()
         {

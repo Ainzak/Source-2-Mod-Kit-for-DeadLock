@@ -11,7 +11,7 @@ internal sealed record Source2RawMbufRewriteResult(
 
 /// <summary>
 /// Produces only isolated MBUF and in-memory visual-metadata results. It intentionally cannot
-/// rebuild an envelope or return a publishable candidate; Task 18 composes it with PHYS.
+/// rebuild an envelope or return a publishable candidate; the coupled writer composes it with PHYS.
 /// </summary>
 internal static class Source2RawMbufWriter
 {

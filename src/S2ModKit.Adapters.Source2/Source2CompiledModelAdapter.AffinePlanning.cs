@@ -14,6 +14,7 @@ namespace S2ModKit.Adapters.Source2;
 public sealed partial class Source2CompiledModelAdapter
 {
     private const string RootAffineProfileId = "root_mvtx_affine";
+    private const string MultiBufferAffineProfileId = "root_mvtx_affine_multi_buffer";
     private const int RootAffineProfileVersion = 1;
 
     private static TransformPlanningResult PlanAffineTransform(TransformPlanningRequest request, ParsedModel parsed)
@@ -32,7 +33,8 @@ public sealed partial class Source2CompiledModelAdapter
             .ToArray();
         var actualLods = profiles.Select(profile => profile.Mesh.Lod).Distinct().Order().ToArray();
         if (!actualLods.SequenceEqual(expectedLods)
-            || profiles.GroupBy(profile => profile.Mesh.Lod).Any(group => group.Count() != 1))
+            || profiles.GroupBy(profile => profile.Mesh.Lod).Any(group => group.Count() != 1)
+            || profiles.Select(profile => profile.IsMultiBuffer).Distinct().Count() != 1)
         {
             throw Errors.Selection(
                 "TRANSFORM_GEOMETRY_LOD_COVERAGE_INCOMPLETE",
@@ -98,7 +100,7 @@ public sealed partial class Source2CompiledModelAdapter
         {
             AffineTransformTarget = new PlannedAffineTransformTarget(
                 operation.Granularity,
-                RootAffineProfileId,
+                profiles[0].IsMultiBuffer ? MultiBufferAffineProfileId : RootAffineProfileId,
                 RootAffineProfileVersion,
                 pivot,
                 frame,
@@ -123,8 +125,7 @@ public sealed partial class Source2CompiledModelAdapter
             || mesh.BlockIndex != first.ResourceBlockIndex
             || mesh.GeometryAnalysis is null
             || mesh.Geometry.Codec is null
-            || mesh.GeometryAnalysis.VertexBuffers.Count != 1
-            || mesh.GeometryAnalysis.IndexBuffers.Count != 1
+            || mesh.GeometryAnalysis.VertexBuffers.Count != mesh.GeometryAnalysis.IndexBuffers.Count
             || selected.Any(item => item.Lod != mesh.Lod
                 || item.ResourceBlockIndex != mesh.BlockIndex
                 || !string.Equals(StableIdentity.NormalizePath(item.ResourcePath), request.Input.LogicalPath, StringComparison.Ordinal)))
@@ -132,7 +133,7 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Unsupported(
                 "AFFINE_LAYOUT_UNSUPPORTED",
                 "The affine selection is not one characterized root MVTX/MIDX geometry profile.",
-                "Use one decoded single-buffer root mesh per LOD.");
+                "Use one decoded root mesh with a characterized buffer profile per LOD.");
         }
 
         if (mesh.RawMbufAnalysis is not null || mesh.PhysicsAnalysis is not null)
@@ -152,8 +153,22 @@ public sealed partial class Source2CompiledModelAdapter
         }
 
         var geometry = mesh.GeometryAnalysis;
-        var vertices = geometry.VertexBuffers[0];
-        var indices = geometry.IndexBuffers[0];
+        var selectedIds = selected.Select(item => item.DrawCallId).ToHashSet(StringComparer.Ordinal);
+        var selectedCalls = geometry.DrawCalls.Where(call => selectedIds.Contains(call.Snapshot.DrawCallId)).ToArray();
+        var selectedPairs = selectedCalls.Select(call => (call.Snapshot.VertexBufferOrdinal, call.Snapshot.IndexBufferOrdinal))
+            .Distinct().ToArray();
+        if (selectedCalls.Length != selectedIds.Count || selectedPairs.Length != 1
+            || selectedPairs[0].VertexBufferOrdinal != selectedPairs[0].IndexBufferOrdinal
+            || (uint)selectedPairs[0].VertexBufferOrdinal >= (uint)geometry.VertexBuffers.Count)
+        {
+            throw Errors.Unsupported("AFFINE_MULTI_BUFFER_OWNERSHIP_UNSUPPORTED",
+                "The affine selection must own exactly one matching vertex/index buffer pair.",
+                "Select one complete buffer in each LOD.");
+        }
+
+        var selectedOrdinal = selectedPairs[0].VertexBufferOrdinal;
+        var vertices = geometry.VertexBuffers[selectedOrdinal];
+        var indices = geometry.IndexBuffers[selectedOrdinal];
         var packedLayout = vertices.PackedFrameLayout;
         if (packedLayout is null
             || mesh.DrawCalls.Any(location => !Mesh.IsCompressedNormalTangent(location.Data)))
@@ -164,12 +179,12 @@ public sealed partial class Source2CompiledModelAdapter
                 "Use the characterized packed normal/tangent profile.");
         }
 
-        var metadata = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
-            mesh.Descriptor,
-            mesh.Block.Data,
-            geometry,
-            $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}");
-        var selectedIds = selected.Select(item => item.DrawCallId).ToHashSet(StringComparer.Ordinal);
+        var isMultiBuffer = geometry.VertexBuffers.Count > 1;
+        var metadata = isMultiBuffer
+            ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data, geometry,
+                $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}")
+            : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data, geometry,
+                $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}", boneSizeIsHalfExtent: true);
         if (selected.Any(item => !mesh.DrawCalls.Any(location => Matches(location.Snapshot, item))))
         {
             throw Errors.Verification(
@@ -210,13 +225,13 @@ public sealed partial class Source2CompiledModelAdapter
                     $"LOD {mesh.Lod} connected component '{id}' is absent.",
                     "Regenerate the recipe from current discovery evidence.")).ToArray();
             if (components.Any(component => !selectedIds.Contains(component.Snapshot.DrawCallId)
-                || component.Snapshot.VertexBufferOrdinal != 0
-                || component.Snapshot.IndexBufferOrdinal != 0))
+                || component.Snapshot.VertexBufferOrdinal != selectedOrdinal
+                || component.Snapshot.IndexBufferOrdinal != selectedOrdinal))
             {
                 throw Errors.Unsupported(
                     "AFFINE_MULTI_BUFFER_OWNERSHIP_UNSUPPORTED",
                     "A selected connected component drifted outside the planned draw calls or root buffers.",
-                    "Regenerate one exact single-buffer component selection.");
+                    "Regenerate one exact buffer-owned component selection.");
             }
 
             selectedVertices = components.SelectMany(component => component.VertexIndices).Distinct().Order().ToArray();
@@ -237,7 +252,8 @@ public sealed partial class Source2CompiledModelAdapter
 
         var selectedSet = selectedVertices.ToHashSet();
         var shared = geometry.DrawCalls
-            .Where(call => !selectedIds.Contains(call.Snapshot.DrawCallId))
+            .Where(call => call.Snapshot.VertexBufferOrdinal == selectedOrdinal
+                && !selectedIds.Contains(call.Snapshot.DrawCallId))
             .SelectMany(call => call.VertexIndices)
             .Any(selectedSet.Contains);
         if (shared)
@@ -259,6 +275,38 @@ public sealed partial class Source2CompiledModelAdapter
 
         var selectionBounds = ToAffineBounds(Bounds3.FromPoints(
             selectedVertices.Select(vertex => Source2GeometryAnalyzer.ReadPosition(vertices, vertex)).ToArray()));
+        var bufferBaseOffset = geometry.VertexBuffers.Take(selectedOrdinal).Sum(buffer => buffer.Snapshot.VertexCount);
+        var allBeforePositions = geometry.VertexBuffers
+            .SelectMany(buffer => Enumerable.Range(0, buffer.Snapshot.VertexCount)
+                .Select(vertex => Source2GeometryAnalyzer.ReadPosition(buffer, vertex)))
+            .ToArray();
+        // Every affine profile must reproduce affected bounds from all participating vertices.
+        {
+            var affected = selectedVertices.Select(vertex => vertex + bufferBaseOffset).ToHashSet();
+            foreach (var bone in metadata.BoneBounds.Where(bone => bone.InfluencedVertices.Any(affected.Contains)))
+            {
+                var local = bone.InfluencedVertices.Select(vertex =>
+                    Source2TransformMetadataAnalyzer.TransformPoint(allBeforePositions[vertex], bone.InverseBindPose)).ToArray();
+                var exactRadius = local.Max(point => MathF.Sqrt((point.X * point.X) + (point.Y * point.Y) + (point.Z * point.Z)));
+                var tolerance = MathF.Max(0.0001f, MathF.Max(exactRadius, bone.SphereRadius) * 0.00001f);
+                if (MathF.Abs(exactRadius - bone.SphereRadius) > tolerance)
+                {
+                    throw Errors.Unsupported("AFFINE_BOUNDS_UNSUPPORTED",
+                        $"LOD {mesh.Lod} affected bone '{bone.BoneName}' culling sphere cannot be reproduced " +
+                        $"(computed {exactRadius.ToString("R", CultureInfo.InvariantCulture)}, stored {bone.SphereRadius.ToString("R", CultureInfo.InvariantCulture)}).",
+                        "Select geometry with independently reproducible affected bone bounds.");
+                }
+
+                var exactBounds = ToAffineBounds(Bounds3.FromPoints(local));
+                if (!NearlySameAffineBounds(exactBounds, bone.LocalBounds))
+                {
+                    throw Errors.Unsupported("AFFINE_BOUNDS_UNSUPPORTED",
+                        $"LOD {mesh.Lod} affected bone '{bone.BoneName}' stored box does not match geometry-derived local bounds.",
+                        "Select geometry with independently reproducible affected bone bounds.");
+                }
+            }
+        }
+
         return new Source2AffineProfile(
             mesh,
             vertices,
@@ -268,7 +316,10 @@ public sealed partial class Source2CompiledModelAdapter
             selectedVertices,
             componentIds,
             new ContentHash(VertexSetHash.Compute(selectedVertices)),
-            selectionBounds);
+            selectionBounds,
+            isMultiBuffer,
+            bufferBaseOffset,
+            allBeforePositions);
     }
 
     private static PlannedAffineGeometryTarget PlanAffineGeometry(
@@ -323,12 +374,17 @@ public sealed partial class Source2CompiledModelAdapter
             output,
             profile.PackedFrameLayout,
             profile.SelectedVertices);
-        var allAfterPoints = Enumerable.Range(0, profile.Vertices.Snapshot.VertexCount)
-            .Select(vertex => ReadPosition(output, profile.Vertices.Snapshot.PositionLayout, vertex))
-            .ToArray();
+        var allAfterPoints = (Point3[])profile.AllBeforePositions.Clone();
+        for (var vertex = 0; vertex < profile.Vertices.Snapshot.VertexCount; vertex++)
+        {
+            allAfterPoints[profile.BufferBaseOffset + vertex] =
+                ReadPosition(output, profile.Vertices.Snapshot.PositionLayout, vertex);
+        }
+
+        var selectedGlobal = profile.SelectedVertices.Select(vertex => vertex + profile.BufferBaseOffset).ToHashSet();
         var boneTargets = profile.Metadata.BoneBounds
-            .Where(bone => bone.InfluencedVertices.Intersect(profile.SelectedVertices).Any())
-            .Select(bone => PlanAffineBoneBounds(bone, allAfterPoints, transform))
+            .Where(bone => bone.InfluencedVertices.Any(selectedGlobal.Contains))
+            .Select(bone => PlanAffineBoneBounds(bone, allAfterPoints))
             .OrderBy(bone => bone.BoneIndex)
             .ThenBy(bone => bone.BoneName, StringComparer.Ordinal)
             .ToArray();
@@ -377,33 +433,12 @@ public sealed partial class Source2CompiledModelAdapter
 
     private static PlannedAffineBoneBoundsTarget PlanAffineBoneBounds(
         Source2BoneBoundsAnalysis bone,
-        Point3[] postTransformPositions,
-        AffineTransform transform)
+        Point3[] postTransformPositions)
     {
-        var min = ToPoint(bone.LocalBounds.Min);
-        var max = ToPoint(bone.LocalBounds.Max);
-        var transformedCorners = new List<Point3>(8);
-        for (var x = 0; x < 2; x++)
-        {
-            for (var y = 0; y < 2; y++)
-            {
-                for (var z = 0; z < 2; z++)
-                {
-                    var localCorner = new Point3(
-                        x == 0 ? min.X : max.X,
-                        y == 0 ? min.Y : max.Y,
-                        z == 0 ? min.Z : max.Z);
-                    var model = TransformBoneLocalToModel(localCorner, bone.InverseBindPose, bone.BoneName);
-                    var changed = transform.Apply(model);
-                    transformedCorners.Add(Source2TransformMetadataAnalyzer.TransformPoint(changed, bone.InverseBindPose));
-                }
-            }
-        }
-
         var local = bone.InfluencedVertices
             .Select(vertex => Source2TransformMetadataAnalyzer.TransformPoint(postTransformPositions[vertex], bone.InverseBindPose))
             .ToArray();
-        var bounds = CanonicalizeBoneBounds(Bounds3.FromPoints(transformedCorners), bone.BoneName);
+        var bounds = CanonicalizeBoneBounds(Bounds3.FromPoints(local), bone.BoneName);
         var radius = local.Max(point => MathF.Sqrt((point.X * point.X) + (point.Y * point.Y) + (point.Z * point.Z)));
         if (!float.IsFinite(radius))
         {
@@ -423,48 +458,6 @@ public sealed partial class Source2CompiledModelAdapter
             bounds,
             bone.SphereRadius,
             radius);
-    }
-
-    private static Point3 TransformBoneLocalToModel(
-        Point3 local,
-        ImmutableArray<float> inverseBindPose,
-        string boneName)
-    {
-        var a = inverseBindPose[0];
-        var b = inverseBindPose[1];
-        var c = inverseBindPose[2];
-        var d = inverseBindPose[4];
-        var e = inverseBindPose[5];
-        var f = inverseBindPose[6];
-        var g = inverseBindPose[8];
-        var h = inverseBindPose[9];
-        var i = inverseBindPose[10];
-        var determinant = (a * ((e * i) - (f * h))) - (b * ((d * i) - (f * g))) + (c * ((d * h) - (e * g)));
-        if (!float.IsFinite(determinant) || determinant == 0f)
-        {
-            throw Errors.Unsupported(
-                "AFFINE_BOUNDS_UNSUPPORTED",
-                $"Bone '{boneName}' inverse bind pose cannot map its stored bounds into the model frame.",
-                "Reject the candidate until this bone frame is characterized.");
-        }
-
-        var reciprocal = 1f / determinant;
-        var x = local.X - inverseBindPose[3];
-        var y = local.Y - inverseBindPose[7];
-        var z = local.Z - inverseBindPose[11];
-        var result = new Point3(
-            ((((e * i) - (f * h)) * x) + (((c * h) - (b * i)) * y) + (((b * f) - (c * e)) * z)) * reciprocal,
-            ((((f * g) - (d * i)) * x) + (((a * i) - (c * g)) * y) + (((c * d) - (a * f)) * z)) * reciprocal,
-            ((((d * h) - (e * g)) * x) + (((b * g) - (a * h)) * y) + (((a * e) - (b * d)) * z)) * reciprocal);
-        if (!float.IsFinite(result.X) || !float.IsFinite(result.Y) || !float.IsFinite(result.Z))
-        {
-            throw Errors.Unsupported(
-                "AFFINE_BOUNDS_UNSUPPORTED",
-                $"Bone '{boneName}' inverse bind pose produced non-finite model-space bounds.",
-                "Reject the candidate rather than publish invalid culling bounds.");
-        }
-
-        return result;
     }
 
     private static GeometryBounds CanonicalizeBoneBounds(Bounds3 exact, string boneName)
@@ -525,7 +518,7 @@ public sealed partial class Source2CompiledModelAdapter
             profile.Metadata.BoneBounds
                 .OrderBy(bone => bone.BoneIndex)
                 .Select(bone => $"{bone.BoneIndex}:{bone.BoneName}:{bone.InverseBindPoseHash}")))).ToString();
-        var selected = profile.SelectedVertices.ToHashSet();
+        var selected = profile.SelectedVertices.Select(vertex => vertex + profile.BufferBaseOffset).ToHashSet();
         return profile.Metadata.BoneBounds.Select(bone => new AffineBoneBindEvidence(
             profile.Mesh.Lod,
             skeletonIdentity,
@@ -538,7 +531,10 @@ public sealed partial class Source2CompiledModelAdapter
     private static void RejectAffectedDistanceFields(ParsedModel parsed, IReadOnlyList<Source2AffineProfile> profiles)
     {
         var affected = profiles.SelectMany(profile => profile.Metadata.BoneBounds
-                .Where(bone => bone.InfluencedVertices.Intersect(profile.SelectedVertices).Any())
+                .Where(bone => bone.InfluencedVertices.Any(vertex =>
+                    vertex >= profile.BufferBaseOffset
+                    && vertex < profile.BufferBaseOffset + profile.Vertices.Snapshot.VertexCount
+                    && Array.BinarySearch(profile.SelectedVertices, vertex - profile.BufferBaseOffset) >= 0))
                 .Select(bone => ValveResourceFormat.Utils.StringToken.Get(bone.BoneName)))
             .ToHashSet();
         for (var index = 0; index < parsed.Resource.Blocks.Count; index++)
@@ -619,6 +615,15 @@ public sealed partial class Source2CompiledModelAdapter
         new TransformVector3 { X = value.Min.X, Y = value.Min.Y, Z = value.Min.Z },
         new TransformVector3 { X = value.Max.X, Y = value.Max.Y, Z = value.Max.Z });
 
+    private static bool NearlySameAffineBounds(GeometryBounds left, GeometryBounds right)
+    {
+        static bool Near(float a, float b) => MathF.Abs(a - b) <=
+            MathF.Max(0.00001f, MathF.Max(MathF.Abs(a), MathF.Abs(b)) * 0.00001f);
+        return Near(left.Min.X, right.Min.X) && Near(left.Min.Y, right.Min.Y)
+            && Near(left.Min.Z, right.Min.Z) && Near(left.Max.X, right.Max.X)
+            && Near(left.Max.Y, right.Max.Y) && Near(left.Max.Z, right.Max.Z);
+    }
+
     private sealed record Source2AffineProfile(
         ParsedMesh Mesh,
         Source2VertexBufferAnalysis Vertices,
@@ -628,5 +633,8 @@ public sealed partial class Source2CompiledModelAdapter
         int[] SelectedVertices,
         string[] ComponentIds,
         ContentHash VertexSetHash,
-        GeometryBounds SelectionBounds);
+        GeometryBounds SelectionBounds,
+        bool IsMultiBuffer,
+        int BufferBaseOffset,
+        Point3[] AllBeforePositions);
 }

@@ -372,7 +372,7 @@ public sealed class ComponentDiscoveryService(IComponentCapabilityAnalyzer? capa
             throw DiscoveryError(
                 "COMPONENT_CAPABILITY_AVAILABILITY_INVALID",
                 $"Selection '{analysis.SelectionId}' returned unknown availability '{analysis.Availability}'.",
-                "Use an availability value accepted by ADR-0016.");
+                "Use a supported component availability value.");
         }
 
         if (analysis.Reasons.Count == 0

@@ -49,7 +49,7 @@ internal sealed record Source2DistanceFieldAnalysis(
     ContentHash QuantizedDataHash,
     int QuantizedDataLength);
 
-internal static class Source2TransformMetadataAnalyzer
+internal static partial class Source2TransformMetadataAnalyzer
 {
     private const uint R8G8B8A8Unorm = 28;
     private const uint R8G8B8A8Uint = 30;
@@ -60,7 +60,8 @@ internal static class Source2TransformMetadataAnalyzer
         KVObject embeddedMeshDescriptor,
         KVObject meshData,
         Source2GeometryAnalysis geometry,
-        string context)
+        string context,
+        bool boneSizeIsHalfExtent = false)
     {
         ArgumentNullException.ThrowIfNull(embeddedMeshDescriptor);
         ArgumentNullException.ThrowIfNull(geometry);
@@ -93,7 +94,7 @@ internal static class Source2TransformMetadataAnalyzer
             }
         }
 
-        return AnalyzeWholeMeshCore(meshData, geometry, indexOffset, weightOffset, context);
+        return AnalyzeWholeMeshCore(meshData, geometry, indexOffset, weightOffset, context, boneSizeIsHalfExtent);
     }
 
     public static Source2WholeMeshTransformAnalysis AnalyzeRawMbufWholeMesh(
@@ -110,7 +111,8 @@ internal static class Source2TransformMetadataAnalyzer
         Source2GeometryAnalysis geometry,
         int indexOffset,
         int? weightOffset,
-        string context)
+        string context,
+        bool boneSizeIsHalfExtent = false)
     {
         ArgumentNullException.ThrowIfNull(meshData);
         ArgumentNullException.ThrowIfNull(geometry);
@@ -172,7 +174,7 @@ internal static class Source2TransformMetadataAnalyzer
                 $"{context} has no BLENDWEIGHT field but declares blend weight count {declaredWeightCount}; the rigid profile requires exactly one influence per vertex.");
         }
 
-        var bones = ReadSkeleton(meshData, context);
+        var bones = ReadSkeleton(meshData, context, boneSizeIsHalfExtent: boneSizeIsHalfExtent);
         var influencedIndices = new HashSet<int>();
         var verticesByBone = new Dictionary<int, HashSet<int>>();
         foreach (var vertex in selectedVertices)
@@ -361,13 +363,17 @@ internal static class Source2TransformMetadataAnalyzer
         return result;
     }
 
-    private static Bone[] ReadSkeleton(KVObject meshData, string context)
+    private static Bone[] ReadSkeleton(
+        KVObject meshData,
+        string context,
+        bool allowExtendedInventory = false,
+        bool boneSizeIsHalfExtent = false)
     {
         var skeleton = RequireCollectionProperty(meshData, "m_skeleton", context);
         var values = RequireArray(skeleton, "m_bones", context);
-        if (values.Count == 0 || values.Count > byte.MaxValue + 1)
+        if (values.Count == 0 || values.Count > (allowExtendedInventory ? 4096 : byte.MaxValue + 1))
         {
-            throw new InvalidDataException($"{context} skeleton bone count {values.Count} is unsupported for packed byte indices.");
+            throw new InvalidDataException($"{context} skeleton bone count {values.Count} exceeds the characterized layout limit.");
         }
 
         var bones = new Bone[values.Count];
@@ -383,7 +389,8 @@ internal static class Source2TransformMetadataAnalyzer
             }
 
             var inverseBindPose = ReadMatrix(bone, "m_invBindPose", context);
-            var (localBoundsCenter, localBoundsSize, localBounds) = ReadCenterSizeBounds(bone, "m_bbox", context);
+            var (localBoundsCenter, localBoundsSize, localBounds) = ReadCenterSizeBounds(
+                bone, "m_bbox", context, boneSizeIsHalfExtent);
             var sphereRadius = RequireNonNegativeFiniteSingle(bone, "m_flSphereRadius", context);
             bones[index] = new Bone(index, name, parent, -1, inverseBindPose, localBoundsCenter, localBoundsSize, localBounds, sphereRadius);
         }
@@ -427,7 +434,8 @@ internal static class Source2TransformMetadataAnalyzer
     private static (TransformVector3 Center, TransformVector3 Size, GeometryBounds Bounds) ReadCenterSizeBounds(
         KVObject parent,
         string key,
-        string context)
+        string context,
+        bool sizeIsHalfExtent)
     {
         var bounds = RequireCollectionProperty(parent, key, context);
         var center = ReadVector(bounds, "m_vecCenter", context);
@@ -437,9 +445,9 @@ internal static class Source2TransformMetadataAnalyzer
             throw new InvalidDataException($"{context}.{key} contains a negative size.");
         }
 
-        var halfX = size.X * 0.5f;
-        var halfY = size.Y * 0.5f;
-        var halfZ = size.Z * 0.5f;
+        var halfX = sizeIsHalfExtent ? size.X : size.X * 0.5f;
+        var halfY = sizeIsHalfExtent ? size.Y : size.Y * 0.5f;
+        var halfZ = sizeIsHalfExtent ? size.Z : size.Z * 0.5f;
         return (
             center,
             size,

@@ -46,7 +46,7 @@
     "projectReady": { "type": "boolean" },
     "selectedComponentId": { "type": "string", "minLength": 1 },
     "selectedComponentLabel": { "type": "string", "minLength": 1 },
-    "selectedIntent": { "enum": ["remove", "uniform-scale", "translate"] },
+    "selectedIntent": { "enum": ["remove", "uniform-scale", "translate", "affine"] },
     "selectedOperationKind": { "enum": ["remove_component", "transform_component"] },
     "selectedOperationVersion": { "type": "integer", "minimum": 1 },
     "uniformScale": { "type": "number", "minimum": 0.25, "maximum": 4.0 },

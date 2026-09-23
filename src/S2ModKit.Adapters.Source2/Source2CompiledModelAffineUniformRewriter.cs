@@ -167,7 +167,8 @@ public sealed partial class Source2CompiledModelAdapter
 
                 replacements.Add(target.VertexResourceBlockIndex, encoded);
                 intendedDecoded.Add(target.VertexResourceBlockIndex, intended);
-                UpdateAffineMeshMetadata(profile.Mesh.Block.Data, profile.Metadata, target);
+                UpdateAffineMeshMetadata(profile.Mesh.Block.Data, profile.Metadata, target,
+                    boneSizeIsHalfExtent: true);
                 ReachAffineRewriteCheckpoint(AffineRewriteCheckpoint.BoundsUpdated);
                 expectedSemanticHashes.Add(target.ResourceBlockIndex, KvSemanticHasher.ComputeComplete(profile.Mesh.Block.Data));
                 replacements.Add(
@@ -233,8 +234,13 @@ public sealed partial class Source2CompiledModelAdapter
             || !string.Equals(StableIdentity.NormalizePath(target.ResourcePath), input.LogicalPath, StringComparison.Ordinal)
             || mesh.GeometryAnalysis is null
             || mesh.Geometry.Codec != codecIdentity
-            || mesh.GeometryAnalysis.VertexBuffers.Count != 1
-            || mesh.GeometryAnalysis.IndexBuffers.Count != 1)
+            || mesh.GeometryAnalysis.VertexBuffers.Count != mesh.GeometryAnalysis.IndexBuffers.Count
+            || (operation.AffineTransformTarget!.StructuralProfileId == RootAffineProfileId
+                ? mesh.GeometryAnalysis.VertexBuffers.Count != 1
+                : operation.AffineTransformTarget.StructuralProfileId != MultiBufferAffineProfileId
+                    || mesh.GeometryAnalysis.VertexBuffers.Count < 2)
+            || (uint)target.VertexBufferOrdinal >= (uint)mesh.GeometryAnalysis.VertexBuffers.Count
+            || target.IndexBufferOrdinal != target.VertexBufferOrdinal)
         {
             throw Errors.Verification(
                 "AFFINE_RESULT_DRIFT",
@@ -246,11 +252,11 @@ public sealed partial class Source2CompiledModelAdapter
         var vertices = geometry.VertexBuffers[target.VertexBufferOrdinal];
         var indices = geometry.IndexBuffers[target.IndexBufferOrdinal];
         var selectedVertices = ResolveAffineVertices(mesh, operation, target);
-        var metadata = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
-            mesh.Descriptor,
-            mesh.Block.Data,
-            geometry,
-            $"embedded mesh {mesh.MeshOrdinal}");
+        var metadata = geometry.VertexBuffers.Count > 1
+            ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data,
+                geometry, $"embedded mesh {mesh.MeshOrdinal}")
+            : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data,
+                geometry, $"embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true);
         if (vertices.Snapshot.ResourceBlockIndex != target.VertexResourceBlockIndex
             || indices.Snapshot.ResourceBlockIndex != target.IndexResourceBlockIndex
             || vertices.Snapshot.EncodedHash != target.VertexBlockInputHash
@@ -290,9 +296,16 @@ public sealed partial class Source2CompiledModelAdapter
         if (target.ConnectedComponentIds.Count > 0)
         {
             var byId = geometry.ConnectedComponents.ToDictionary(item => item.Snapshot.Id, StringComparer.Ordinal);
-            return target.ConnectedComponentIds.Select(id => byId.TryGetValue(id, out var component)
+            var components = target.ConnectedComponentIds.Select(id => byId.TryGetValue(id, out var component)
                     ? component
-                    : throw new InvalidDataException($"LOD {target.Lod} connected component '{id}' is missing."))
+                    : throw new InvalidDataException($"LOD {target.Lod} connected component '{id}' is missing.")).ToArray();
+            if (components.Any(component => component.Snapshot.VertexBufferOrdinal != target.VertexBufferOrdinal
+                || component.Snapshot.IndexBufferOrdinal != target.IndexBufferOrdinal))
+            {
+                throw new InvalidDataException($"LOD {target.Lod} affine component escaped its planned buffer pair.");
+            }
+
+            return components
                 .SelectMany(component => component.VertexIndices)
                 .Distinct()
                 .Order()
@@ -308,7 +321,15 @@ public sealed partial class Source2CompiledModelAdapter
             throw new InvalidDataException($"LOD {target.Lod} affine draw-call selection is empty.");
         }
 
-        return geometry.DrawCalls.Where(call => selectedIds.Contains(call.Snapshot.DrawCallId))
+        var calls = geometry.DrawCalls.Where(call => selectedIds.Contains(call.Snapshot.DrawCallId)).ToArray();
+        if (calls.Length != selectedIds.Count || calls.Any(call =>
+            call.Snapshot.VertexBufferOrdinal != target.VertexBufferOrdinal
+            || call.Snapshot.IndexBufferOrdinal != target.IndexBufferOrdinal))
+        {
+            throw new InvalidDataException($"LOD {target.Lod} affine draw calls escaped their planned buffer pair.");
+        }
+
+        return calls
             .SelectMany(call => call.VertexIndices)
             .Distinct()
             .Order()
@@ -318,7 +339,8 @@ public sealed partial class Source2CompiledModelAdapter
     private static void UpdateAffineMeshMetadata(
         KVObject meshData,
         Source2WholeMeshTransformAnalysis metadata,
-        PlannedAffineGeometryTarget target)
+        PlannedAffineGeometryTarget target,
+        bool boneSizeIsHalfExtent)
     {
         var sceneObjects = RequireArray(meshData, "m_sceneObjects", $"MDAT mesh {target.MeshOrdinal}");
         if (sceneObjects.Count != 1)
@@ -356,7 +378,18 @@ public sealed partial class Source2CompiledModelAdapter
             }
 
             KvNumericMutation.ReplaceVector3(box, "m_vecCenter", source.LocalBoundsCenter, BoundsCenter(planned.ExpectedAfterBounds), $"MDAT mesh {target.MeshOrdinal}.bone[{planned.BoneIndex}].m_bbox");
-            KvNumericMutation.ReplaceVector3(box, "m_vecSize", source.LocalBoundsSize, BoundsSize(planned.ExpectedAfterBounds), $"MDAT mesh {target.MeshOrdinal}.bone[{planned.BoneIndex}].m_bbox");
+            var expectedSize = BoundsSize(planned.ExpectedAfterBounds);
+            if (boneSizeIsHalfExtent)
+            {
+                expectedSize = new TransformVector3
+                {
+                    X = expectedSize.X * 0.5f,
+                    Y = expectedSize.Y * 0.5f,
+                    Z = expectedSize.Z * 0.5f,
+                };
+            }
+
+            KvNumericMutation.ReplaceVector3(box, "m_vecSize", source.LocalBoundsSize, expectedSize, $"MDAT mesh {target.MeshOrdinal}.bone[{planned.BoneIndex}].m_bbox");
             KvNumericMutation.ReplaceSingle(bone, "m_flSphereRadius", planned.BeforeSphereRadius, planned.ExpectedSphereRadius, $"MDAT mesh {target.MeshOrdinal}.bone[{planned.BoneIndex}]");
         }
     }
@@ -462,11 +495,11 @@ public sealed partial class Source2CompiledModelAdapter
                     "Reject the candidate.");
             }
 
-            var metadata = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
-                mesh.Descriptor,
-                mesh.Block.Data,
-                mesh.GeometryAnalysis,
-                $"reopened embedded mesh {mesh.MeshOrdinal}");
+            var metadata = mesh.GeometryAnalysis.VertexBuffers.Count > 1
+                ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data,
+                    mesh.GeometryAnalysis, $"reopened embedded mesh {mesh.MeshOrdinal}")
+                : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data,
+                    mesh.GeometryAnalysis, $"reopened embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true);
             if (metadata.SceneBounds != target.MeshExpectedAfterBounds)
             {
                 throw Errors.Verification("AFFINE_RESULT_DRIFT", $"LOD {target.Lod} scene bounds differ after reopen.", "Reject the candidate.");

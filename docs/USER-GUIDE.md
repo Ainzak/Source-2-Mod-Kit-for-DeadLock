@@ -217,9 +217,41 @@ $recipe = "$workspaceRoot\recipes\scale-weapon.json"
 ```
 
 `--scale` must be in `0.25..4.0`; `--max-displacement` must be greater than zero and at most `256`.
-Numbers always use a decimal point (`1.5`, not `1,5`), regardless of Windows locale. The current
-pivot is `selection_bounds_center` at the reference LOD. An explicit translation can compensate
-for a known attachment point; typed bone and attachment pivots are future work.
+Numbers always use a decimal point (`1.5`, not `1,5`), regardless of Windows locale. This legacy
+uniform operation uses the selection center at the reference LOD.
+
+### Scale individual axes or rotate
+
+When `components list` reports an available `transform_component@4` capability, scaffold an affine
+recipe. The command checks the exact parameters with the ordinary dry-run planner before saving it:
+
+```powershell
+$recipe = "$workspaceRoot\recipes\affine-weapon.json"
+
+& $s2mod recipe scaffold `
+  --project $project `
+  --component 'cmp_id-from-components-list' `
+  --intent affine `
+  --output $recipe `
+  --scale-x 1.6 `
+  --scale-y 1 `
+  --scale-z 0.7 `
+  --rotate-axis '0,0,1' `
+  --rotate-degrees 30 `
+  --pivot selection-center `
+  --max-displacement 256
+```
+
+The X/Y/Z scales are in `0.25..4.0`; unspecified axes stay at `1`. Rotation uses a unit axis in
+the chosen frame and signed degrees in `(-180, 180]`. `--pivot point --pivot-point 'x,y,z'` uses an
+explicit model-space point; `--pivot face --pivot-face max_z` uses a selected bounds face; and
+`--pivot bone --pivot-bone name` uses an exact influencing bone origin. The options
+`--frame bone-bind --frame-bone name` express the axes in one verified bind frame. The default frame
+is model space.
+Every LOD must satisfy the selected geometry, bounds, skinning, codec, and displacement rules.
+An unavailable capability reason is a stop, not a suggestion to hand-edit around the check.
+For a component that offers version 4 but not the older uniform profile, the ordinary
+`--intent uniform-scale --scale 1.5` command automatically uses version 4 with equal axis scales.
 
 If discovery reports `transform_component@2`, use the same `uniform-scale` intent and add an
 independent collision ceiling:
@@ -256,15 +288,14 @@ $recipe = "$workspaceRoot\recipes\move-accessory.json"
   --component 'cmp_0123456789abcdef01234567' `
   --intent translate `
   --output $recipe `
-  --translate-x 1.25 `
+  --translate-x 6 `
   --translate-y 0 `
   --translate-z -2 `
   --max-displacement 16
 ```
 
-At least one translation axis is required. The current transform is uniform scale plus translation
-only: no anisotropic scale, rotation, falloff, weight changes, normals/tangents, topology changes,
-or body/garment shaping.
+At least one translation axis is required. This legacy `translate` intent remains a position-only
+uniform transform; affine scale and rotation use `--intent affine`.
 
 ## 4. Dry-run before mutation
 

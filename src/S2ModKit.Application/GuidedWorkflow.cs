@@ -394,6 +394,28 @@ public static class GuidedWorkflow
                         false));
                 }
             }
+            else if (capability.OperationKind == "transform_component" && capability.OperationVersion == 4)
+            {
+                actions.Add(new GuidedActionChoice(
+                    "transform_component@4:uniform-scale",
+                    "Scale uniformly",
+                    RecipeScaffoldContract.UniformScaleIntent,
+                    capability.OperationKind,
+                    capability.OperationVersion,
+                    true,
+                    false,
+                    false));
+                actions.Add(new GuidedActionChoice(
+                    "transform_component@4:affine",
+                    "Scale axes / rotate",
+                    RecipeScaffoldContract.AffineIntent,
+                    capability.OperationKind,
+                    capability.OperationVersion,
+                    false,
+                    false,
+                    false,
+                    RequiresAffine: true));
+            }
         }
 
         return actions;

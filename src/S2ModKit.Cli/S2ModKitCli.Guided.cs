@@ -212,259 +212,273 @@ public sealed partial class S2ModKitCli
         ValidateGuidedSelectionCheckpoint(session, selection);
 
         IReadOnlyList<GuidedComponentChoice>? components = null;
-        while (session.Step is GuidedWorkflowContract.HeroSelectionStep
-                or GuidedWorkflowContract.ResourceSelectionStep
-                or GuidedWorkflowContract.ComponentSelectionStep)
+        while (true)
         {
-            while (session.Step is GuidedWorkflowContract.HeroSelectionStep or GuidedWorkflowContract.ResourceSelectionStep)
+            while (session.Step is GuidedWorkflowContract.HeroSelectionStep
+                    or GuidedWorkflowContract.ResourceSelectionStep
+                    or GuidedWorkflowContract.ComponentSelectionStep)
             {
-                if (session.Step == GuidedWorkflowContract.HeroSelectionStep)
+                while (session.Step is GuidedWorkflowContract.HeroSelectionStep or GuidedWorkflowContract.ResourceSelectionStep)
                 {
-                    var heroes = selection.Heroes.Where(hero => hero.Selectable).ToArray();
-                    output.WriteLine("Choose a hero:");
-                    for (var index = 0; index < heroes.Length; index++)
+                    if (session.Step == GuidedWorkflowContract.HeroSelectionStep)
                     {
-                        output.WriteLine(session.Expert
-                            ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {heroes[index].DisplayName} [{heroes[index].HeroId}; {heroes[index].RosterStatus}]")
-                            : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {heroes[index].DisplayName}"));
+                        var heroes = selection.Heroes.Where(hero => hero.Selectable).ToArray();
+                        output.WriteLine("Choose a hero:");
+                        for (var index = 0; index < heroes.Length; index++)
+                        {
+                            output.WriteLine(session.Expert
+                                ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {heroes[index].DisplayName} [{heroes[index].HeroId}; {heroes[index].RosterStatus}]")
+                                : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {heroes[index].DisplayName}"));
+                        }
+
+                        var selectedHeroIndex = await ReadGuidedChoiceAsync(input, output, heroes.Length, cancellationToken).ConfigureAwait(false);
+                        if (selectedHeroIndex is null)
+                        {
+                            return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        session = session with
+                        {
+                            SelectedHeroId = heroes[selectedHeroIndex.Value].HeroId,
+                            Step = GuidedWorkflowContract.ResourceSelectionStep,
+                        };
+                        await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
 
-                    var selectedHeroIndex = await ReadGuidedChoiceAsync(input, output, heroes.Length, cancellationToken).ConfigureAwait(false);
-                    if (selectedHeroIndex is null)
+                    var hero = selection.Heroes.Single(item =>
+                        string.Equals(item.HeroId, session.SelectedHeroId, StringComparison.Ordinal));
+                    var resources = hero.Resources.Where(resource => resource.Selectable).ToArray();
+                    output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Choose a {hero.DisplayName} resource:"));
+                    for (var index = 0; index < resources.Length; index++)
+                    {
+                        output.WriteLine(session.Expert
+                            ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {resources[index].DisplayName} [{resources[index].ResourceId}; {resources[index].Role}] {resources[index].LogicalPath}")
+                            : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {resources[index].DisplayName} ({FormatResourceRole(resources[index].Role)})"));
+                    }
+
+                    output.WriteLine("  0. Back to hero selection");
+                    var selectedResourceIndex = await ReadGuidedChoiceAsync(input, output, resources.Length, cancellationToken, allowBack: true).ConfigureAwait(false);
+                    if (selectedResourceIndex is null)
                     {
                         return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
                     }
 
+                    if (selectedResourceIndex.Value == GuidedBackChoice)
+                    {
+                        session = session with
+                        {
+                            SelectedHeroId = null,
+                            SelectedResourceId = null,
+                            SelectedLogicalPath = null,
+                            Step = GuidedWorkflowContract.HeroSelectionStep,
+                        };
+                        await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var resource = resources[selectedResourceIndex.Value];
                     session = session with
                     {
-                        SelectedHeroId = heroes[selectedHeroIndex.Value].HeroId,
-                        Step = GuidedWorkflowContract.ResourceSelectionStep,
+                        SelectedResourceId = resource.ResourceId,
+                        SelectedLogicalPath = resource.LogicalPath,
+                        Step = GuidedWorkflowContract.ComponentSelectionStep,
                     };
                     await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-                    continue;
                 }
 
-                var hero = selection.Heroes.Single(item =>
-                    string.Equals(item.HeroId, session.SelectedHeroId, StringComparison.Ordinal));
-                var resources = hero.Resources.Where(resource => resource.Selectable).ToArray();
-                output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Choose a {hero.DisplayName} resource:"));
-                for (var index = 0; index < resources.Length; index++)
-                {
-                    output.WriteLine(session.Expert
-                        ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {resources[index].DisplayName} [{resources[index].ResourceId}; {resources[index].Role}] {resources[index].LogicalPath}")
-                        : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {resources[index].DisplayName} ({FormatResourceRole(resources[index].Role)})"));
-                }
-
-                output.WriteLine("  0. Back to hero selection");
-                var selectedResourceIndex = await ReadGuidedChoiceAsync(input, output, resources.Length, cancellationToken, allowBack: true).ConfigureAwait(false);
-                if (selectedResourceIndex is null)
-                {
-                    return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
-                }
-
-                if (selectedResourceIndex.Value == GuidedBackChoice)
-                {
-                    session = session with
-                    {
-                        SelectedHeroId = null,
-                        SelectedResourceId = null,
-                        SelectedLogicalPath = null,
-                        Step = GuidedWorkflowContract.HeroSelectionStep,
-                    };
-                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                var resource = resources[selectedResourceIndex.Value];
-                session = session with
-                {
-                    SelectedResourceId = resource.ResourceId,
-                    SelectedLogicalPath = resource.LogicalPath,
-                    Step = GuidedWorkflowContract.ComponentSelectionStep,
-                };
-                await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-            }
-
-            session = await EnsureGuidedProjectAsync(
-                fullSessionPath,
-                session,
-                selectedSource,
-                catalogue,
-                cancellationToken).ConfigureAwait(false);
-            var discovery = await application
-                .DiscoverComponentsAsync(session.ProjectRoot!, cancellationToken)
-                .ConfigureAwait(false);
-            components = GuidedWorkflow.CreateComponentChoices(discovery);
-            var hiddenComponentCount = discovery.Candidates.Count - components.Count;
-            if (hiddenComponentCount > 0)
-            {
-                output.WriteLine(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{hiddenComponentCount} component(s) have no guided action and are not selectable."));
-            }
-
-            output.WriteLine("Choose a component:");
-            for (var index = 0; index < components.Count; index++)
-            {
-                var component = components[index];
-                var actions = string.Join(", ", component.Actions.Select(action => action.DisplayName));
-                output.WriteLine(session.Expert
-                    ? string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"  {index + 1}. {component.DisplayLabel} [{component.Kind}; {component.CandidateId}; LODs={string.Join(",", component.Lods)}] — {actions}")
-                    : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {component.DisplayLabel} — {actions}"));
-            }
-
-            output.WriteLine("  0. Back to resource selection");
-            var selectedIndex = await ReadGuidedChoiceAsync(input, output, components.Count, cancellationToken, allowBack: true).ConfigureAwait(false);
-            if (selectedIndex is null)
-            {
-                return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (selectedIndex.Value == GuidedBackChoice)
-            {
-                session = ResetGuidedResourceSelection(session);
-                await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-                components = null;
-                continue;
-            }
-
-            var chosenComponent = components[selectedIndex.Value];
-            session = session with
-            {
-                SelectedComponentId = chosenComponent.CandidateId,
-                SelectedComponentLabel = chosenComponent.DisplayLabel,
-                Step = GuidedWorkflowContract.ActionSelectionStep,
-            };
-            await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-        }
-
-        RecipeDocument? currentRecipe = null;
-        if (session.Step is GuidedWorkflowContract.ActionSelectionStep or GuidedWorkflowContract.ReviewStep)
-        {
-            session = await EnsureGuidedProjectAsync(
-                fullSessionPath,
-                session,
-                selectedSource,
-                catalogue,
-                cancellationToken).ConfigureAwait(false);
-            if (components is null)
-            {
+                session = await EnsureGuidedProjectAsync(
+                    fullSessionPath,
+                    session,
+                    selectedSource,
+                    catalogue,
+                    cancellationToken).ConfigureAwait(false);
                 var discovery = await application
                     .DiscoverComponentsAsync(session.ProjectRoot!, cancellationToken)
                     .ConfigureAwait(false);
                 components = GuidedWorkflow.CreateComponentChoices(discovery);
-            }
-
-            var selectedComponent = components.SingleOrDefault(component =>
-                string.Equals(component.CandidateId, session.SelectedComponentId, StringComparison.Ordinal))
-                ?? throw Errors.Selection(
-                    "GUIDED_COMPONENT_STALE",
-                    "The saved component is no longer present with a guided action.",
-                    "Start a new session and select from current discovery results.");
-
-            if (session.Step == GuidedWorkflowContract.ActionSelectionStep)
-            {
-                GuidedActionChoice action;
-                if (session.SelectedIntent is null)
+                var hiddenComponentCount = discovery.Candidates.Count - components.Count;
+                if (hiddenComponentCount > 0)
                 {
-                    output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Choose an action for {selectedComponent.DisplayLabel}:"));
-                    for (var index = 0; index < selectedComponent.Actions.Count; index++)
-                    {
-                        var item = selectedComponent.Actions[index];
-                        output.WriteLine(session.Expert
-                            ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {item.DisplayName} [{item.OperationKind}@{item.OperationVersion}]")
-                            : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {item.DisplayName}"));
-                    }
-
-                    var selectedIndex = await ReadGuidedChoiceAsync(input, output, selectedComponent.Actions.Count, cancellationToken).ConfigureAwait(false);
-                    if (selectedIndex is null)
-                    {
-                        return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    action = selectedComponent.Actions[selectedIndex.Value];
-                    session = session with
-                    {
-                        SelectedIntent = action.Intent,
-                        SelectedOperationKind = action.OperationKind,
-                        SelectedOperationVersion = action.OperationVersion,
-                    };
-                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    action = selectedComponent.Actions.SingleOrDefault(item =>
-                        string.Equals(item.Intent, session.SelectedIntent, StringComparison.Ordinal)
-                        && string.Equals(item.OperationKind, session.SelectedOperationKind, StringComparison.Ordinal)
-                        && item.OperationVersion == session.SelectedOperationVersion)
-                        ?? throw Errors.Selection(
-                            "GUIDED_ACTION_STALE",
-                            "The saved action is no longer available for the selected component.",
-                            "Start a new session and select from current capability results.");
+                    output.WriteLine(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{hiddenComponentCount} component(s) have no guided action and are not selectable."));
                 }
 
-                var parameters = await ReadGuidedActionParametersAsync(action, input, output, cancellationToken).ConfigureAwait(false);
-                if (parameters is null)
+                output.WriteLine("Choose a component:");
+                for (var index = 0; index < components.Count; index++)
+                {
+                    var component = components[index];
+                    var actions = string.Join(", ", component.Actions.Select(action => action.DisplayName));
+                    output.WriteLine(session.Expert
+                        ? string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"  {index + 1}. {component.DisplayLabel} [{component.Kind}; {component.CandidateId}; LODs={string.Join(",", component.Lods)}] — {actions}")
+                        : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {component.DisplayLabel} — {actions}"));
+                }
+
+                output.WriteLine("  0. Back to resource selection");
+                var selectedIndex = await ReadGuidedChoiceAsync(input, output, components.Count, cancellationToken, allowBack: true).ConfigureAwait(false);
+                if (selectedIndex is null)
                 {
                     return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
                 }
 
-                var recipePath = session.RecipePath ?? CreateGuidedRecipePath(fullSessionPath);
+                if (selectedIndex.Value == GuidedBackChoice)
+                {
+                    session = ResetGuidedResourceSelection(session);
+                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                    components = null;
+                    continue;
+                }
+
+                var chosenComponent = components[selectedIndex.Value];
                 session = session with
                 {
-                    UniformScale = parameters.UniformScale,
-                    TranslationX = parameters.TranslationX,
-                    TranslationY = parameters.TranslationY,
-                    TranslationZ = parameters.TranslationZ,
-                    MaximumVertexDisplacement = parameters.MaximumVertexDisplacement,
-                    MaximumCollisionDisplacement = parameters.MaximumCollisionDisplacement,
-                    RecipePath = recipePath,
+                    SelectedComponentId = chosenComponent.CandidateId,
+                    SelectedComponentLabel = chosenComponent.DisplayLabel,
+                    Step = GuidedWorkflowContract.ActionSelectionStep,
                 };
-                await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
-                var scaffold = await application.ScaffoldRecipeAsync(
-                    session.ProjectRoot!,
-                    new RecipeScaffoldRequest(
-                        [session.SelectedComponentId!],
-                        action.Intent,
-                        recipePath,
-                        parameters.UniformScale,
-                        parameters.TranslationX,
-                        parameters.TranslationY,
-                        parameters.TranslationZ,
-                        ReferenceLod: null,
-                        parameters.MaximumVertexDisplacement,
-                        parameters.MaximumCollisionDisplacement),
-                    cancellationToken).ConfigureAwait(false);
-                session = session with
-                {
-                    RecipePath = scaffold.OutputPath,
-                    RecipeContentHash = scaffold.RecipeContentHash,
-                    Step = GuidedWorkflowContract.ReviewStep,
-                };
-                currentRecipe = scaffold.Recipe;
                 await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
             }
 
-            if (session.Step == GuidedWorkflowContract.ReviewStep)
+            RecipeDocument? currentRecipe = null;
+            if (session.Step is GuidedWorkflowContract.ActionSelectionStep or GuidedWorkflowContract.ReviewStep)
             {
-                var recipe = currentRecipe
-                    ?? await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
-                var plan = await application.PlanAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
-                var review = GuidedWorkflow.CreateDryRunReview(plan);
-                session = session with
+                session = await EnsureGuidedProjectAsync(
+                    fullSessionPath,
+                    session,
+                    selectedSource,
+                    catalogue,
+                    cancellationToken).ConfigureAwait(false);
+                if (components is null)
                 {
-                    PlanFingerprint = review.PlanFingerprint,
-                    PlannedDrawCallCount = review.SelectedDrawCallCount,
-                    PlannedLodCount = review.LodCount,
-                    PlannedTargetBlockCount = review.TargetBlockCount,
-                    PlannedVertexCount = review.SelectedVertexCount,
-                    PlannedCoupledCollision = review.IncludesCoupledCollision,
-                    Step = GuidedWorkflowContract.OutputSelectionStep,
-                };
-                await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                    var discovery = await application
+                        .DiscoverComponentsAsync(session.ProjectRoot!, cancellationToken)
+                        .ConfigureAwait(false);
+                    components = GuidedWorkflow.CreateComponentChoices(discovery);
+                }
+
+                var selectedComponent = components.SingleOrDefault(component =>
+                    string.Equals(component.CandidateId, session.SelectedComponentId, StringComparison.Ordinal))
+                    ?? throw Errors.Selection(
+                        "GUIDED_COMPONENT_STALE",
+                        "The saved component is no longer present with a guided action.",
+                        "Start a new session and select from current discovery results.");
+
+                if (session.Step == GuidedWorkflowContract.ActionSelectionStep)
+                {
+                    GuidedActionChoice action;
+                    if (session.SelectedIntent is null)
+                    {
+                        output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Choose an action for {selectedComponent.DisplayLabel}:"));
+                        for (var index = 0; index < selectedComponent.Actions.Count; index++)
+                        {
+                            var item = selectedComponent.Actions[index];
+                            output.WriteLine(session.Expert
+                                ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {item.DisplayName} [{item.OperationKind}@{item.OperationVersion}]")
+                                : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {item.DisplayName}"));
+                        }
+
+                        output.WriteLine("  0. Back to component selection");
+                        var selectedIndex = await ReadGuidedChoiceAsync(input, output, selectedComponent.Actions.Count, cancellationToken, allowBack: true).ConfigureAwait(false);
+                        if (selectedIndex is null)
+                        {
+                            return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        if (selectedIndex.Value == GuidedBackChoice)
+                        {
+                            session = ResetGuidedComponentSelection(session);
+                            await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+
+                        action = selectedComponent.Actions[selectedIndex.Value];
+                        session = session with
+                        {
+                            SelectedIntent = action.Intent,
+                            SelectedOperationKind = action.OperationKind,
+                            SelectedOperationVersion = action.OperationVersion,
+                        };
+                        await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        action = selectedComponent.Actions.SingleOrDefault(item =>
+                            string.Equals(item.Intent, session.SelectedIntent, StringComparison.Ordinal)
+                            && string.Equals(item.OperationKind, session.SelectedOperationKind, StringComparison.Ordinal)
+                            && item.OperationVersion == session.SelectedOperationVersion)
+                            ?? throw Errors.Selection(
+                                "GUIDED_ACTION_STALE",
+                                "The saved action is no longer available for the selected component.",
+                                "Start a new session and select from current capability results.");
+                    }
+
+                    var parameters = await ReadGuidedActionParametersAsync(action, input, output, cancellationToken).ConfigureAwait(false);
+                    if (parameters is null)
+                    {
+                        return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    var recipePath = session.RecipePath ?? CreateGuidedRecipePath(fullSessionPath);
+                    session = session with
+                    {
+                        UniformScale = parameters.UniformScale,
+                        TranslationX = parameters.TranslationX,
+                        TranslationY = parameters.TranslationY,
+                        TranslationZ = parameters.TranslationZ,
+                        MaximumVertexDisplacement = parameters.MaximumVertexDisplacement,
+                        MaximumCollisionDisplacement = parameters.MaximumCollisionDisplacement,
+                        RecipePath = recipePath,
+                    };
+                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                    var scaffold = await application.ScaffoldRecipeAsync(
+                        session.ProjectRoot!,
+                        new RecipeScaffoldRequest(
+                            [session.SelectedComponentId!],
+                            action.Intent,
+                            recipePath,
+                            parameters.UniformScale,
+                            parameters.TranslationX,
+                            parameters.TranslationY,
+                            parameters.TranslationZ,
+                            ReferenceLod: null,
+                            parameters.MaximumVertexDisplacement,
+                            parameters.MaximumCollisionDisplacement,
+                            parameters.Affine),
+                        cancellationToken).ConfigureAwait(false);
+                    session = session with
+                    {
+                        RecipePath = scaffold.OutputPath,
+                        RecipeContentHash = scaffold.RecipeContentHash,
+                        Step = GuidedWorkflowContract.ReviewStep,
+                    };
+                    currentRecipe = scaffold.Recipe;
+                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (session.Step == GuidedWorkflowContract.ReviewStep)
+                {
+                    var recipe = currentRecipe
+                        ?? await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
+                    var plan = await application.PlanAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
+                    var review = GuidedWorkflow.CreateDryRunReview(plan);
+                    session = session with
+                    {
+                        PlanFingerprint = review.PlanFingerprint,
+                        PlannedDrawCallCount = review.SelectedDrawCallCount,
+                        PlannedLodCount = review.LodCount,
+                        PlannedTargetBlockCount = review.TargetBlockCount,
+                        PlannedVertexCount = review.SelectedVertexCount,
+                        PlannedCoupledCollision = review.IncludesCoupledCollision,
+                        Step = GuidedWorkflowContract.OutputSelectionStep,
+                    };
+                    await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                }
             }
+
+            break;
         }
 
         if (session.Step == GuidedWorkflowContract.OutputSelectionStep)
@@ -765,6 +779,11 @@ public sealed partial class S2ModKitCli
         TextWriter output,
         CancellationToken cancellationToken)
     {
+        if (action.RequiresAffine)
+        {
+            return await ReadGuidedAffineParametersAsync(input, output, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!action.RequiresScale && !action.RequiresTranslation)
         {
             return new GuidedActionParameters(null, null, null, null, null, null);
@@ -1038,6 +1057,7 @@ public sealed partial class S2ModKitCli
     {
         RecipeScaffoldContract.RemoveIntent => "Remove",
         RecipeScaffoldContract.UniformScaleIntent => "Scale uniformly",
+        RecipeScaffoldContract.AffineIntent => "Scale axes / rotate",
         _ => "Move",
     };
 
@@ -1139,6 +1159,42 @@ public sealed partial class S2ModKitCli
         SelectedLogicalPath = null,
         ProjectRoot = null,
         ProjectReady = false,
+        SelectedComponentId = null,
+        SelectedComponentLabel = null,
+        SelectedIntent = null,
+        SelectedOperationKind = null,
+        SelectedOperationVersion = null,
+        UniformScale = null,
+        TranslationX = null,
+        TranslationY = null,
+        TranslationZ = null,
+        MaximumVertexDisplacement = null,
+        MaximumCollisionDisplacement = null,
+        RecipePath = null,
+        RecipeContentHash = null,
+        PlanFingerprint = null,
+        PlannedDrawCallCount = null,
+        PlannedLodCount = null,
+        PlannedTargetBlockCount = null,
+        PlannedVertexCount = null,
+        PlannedCoupledCollision = null,
+        OutputChoice = null,
+        BuildId = null,
+        BuildContentHash = null,
+        PackageId = null,
+        PackageContentHash = null,
+        ExportPath = null,
+        ExportContentHash = null,
+        AddonsRoot = null,
+        InstallationId = null,
+        InstallationTargetFileName = null,
+        InstallationSlot = null,
+        InstallationStatus = null,
+    };
+
+    private static GuidedWorkflowSession ResetGuidedComponentSelection(GuidedWorkflowSession session) => session with
+    {
+        Step = GuidedWorkflowContract.ComponentSelectionStep,
         SelectedComponentId = null,
         SelectedComponentLabel = null,
         SelectedIntent = null,
@@ -1434,7 +1490,8 @@ public sealed partial class S2ModKitCli
         float? TranslationY,
         float? TranslationZ,
         float? MaximumVertexDisplacement,
-        float? MaximumCollisionDisplacement);
+        float? MaximumCollisionDisplacement,
+        AffineScaffoldOptions? Affine = null);
 
     private readonly record struct GuidedNumberResult(bool Canceled, float Value);
 }

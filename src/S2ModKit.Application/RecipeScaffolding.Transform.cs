@@ -10,6 +10,11 @@ public sealed partial class ComponentRecipeScaffolder
         RecipeScaffoldRequest request,
         IEnumerable<string> lodKeys)
     {
+        if (request.Affine is not null)
+        {
+            throw Errors.InvalidRecipe("SCAFFOLD_OPTIONS_INVALID", "Affine options require the affine intent.", "Choose --intent affine or remove the affine options.");
+        }
+
         if (request.Intent == RecipeScaffoldContract.RemoveIntent)
         {
             if (request.UniformScale is not null

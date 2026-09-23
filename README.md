@@ -11,14 +11,16 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
 
 - Remove complete draw-call components across every present LOD.
 - Uniformly scale and/or translate exclusively owned vertex components.
+- Apply bounded per-axis scale or rotation around a typed pivot on characterized vertex buffers.
 - Transform the supported embedded visual/convex-physics accessory profile atomically.
 - Transform explicitly selected disconnected triangle islands inside a broader draw call.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
 
 Support is structural, not hero-name based. Unknown layouts, incomplete LOD coverage, ambiguous
-selectors, shared ownership, input drift, and unexplained resource changes fail closed. Rotation,
-anisotropic scaling, topology edits, morph edits, and arbitrary partial regions are not supported.
+selectors, shared ownership, input drift, and unexplained resource changes fail closed. Affine
+transforms require a reported version-4 capability and independently verified bounds; they do not
+enable topology edits, morph edits, or arbitrary vertex selection.
 
 ## Quick start
 

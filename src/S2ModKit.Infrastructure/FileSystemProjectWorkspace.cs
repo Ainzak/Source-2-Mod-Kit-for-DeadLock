@@ -111,7 +111,7 @@ public sealed partial class FileSystemProjectWorkspace : IProjectWorkspace, IVpk
             || (project.SchemaVersion == 2 && !HasSourceEvidence(project.Input))
             || (project.SchemaVersion == 2 && project.Dependencies.Any(dependency => !HasSourceEvidence(dependency))))
         {
-            throw Errors.Input("PROJECT_MANIFEST_INVALID", "The project manifest does not satisfy Stage 1 invariants.", "Validate it against schemas/project.schema.json or recreate the project.");
+            throw Errors.Input("PROJECT_MANIFEST_INVALID", "The project manifest does not satisfy the required invariants.", "Validate it against schemas/project.schema.json or recreate the project.");
         }
 
         return project;
@@ -162,7 +162,7 @@ public sealed partial class FileSystemProjectWorkspace : IProjectWorkspace, IVpk
         {
             if (size > MaxInMemoryArtifactBytes)
             {
-                throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{source.SourceIdentity}' exceeds the Stage 1 limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
+                throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{source.SourceIdentity}' exceeds the supported limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
             }
 
             await using (var destination = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
@@ -243,7 +243,7 @@ public sealed partial class FileSystemProjectWorkspace : IProjectWorkspace, IVpk
         var info = new FileInfo(path);
         if (info.Length != expectedSize || info.Length > MaxInMemoryArtifactBytes)
         {
-            throw Errors.Input("OBJECT_SIZE_INVALID", $"Object size {info.Length} does not match expected {expectedSize} or exceeds the Stage 1 memory limit.", "Restore the object or use a resource below 512 MiB.");
+            throw Errors.Input("OBJECT_SIZE_INVALID", $"Object size {info.Length} does not match expected {expectedSize} or exceeds the supported memory limit.", "Restore the object or use a resource below 512 MiB.");
         }
 
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);

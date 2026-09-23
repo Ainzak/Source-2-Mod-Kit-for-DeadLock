@@ -90,7 +90,7 @@ public static partial class RecipeValidator
     {
         if (operation.LodPolicy != "all_present")
         {
-            throw Errors.InvalidRecipe("LOD_POLICY_UNSUPPORTED", "Phase 1 requires lodPolicy all_present.", "Set lodPolicy to all_present and declare every LOD count.");
+            throw Errors.InvalidRecipe("LOD_POLICY_UNSUPPORTED", "The current recipe format requires lodPolicy all_present.", "Set lodPolicy to all_present and declare every LOD count.");
         }
 
         ValidateLodExpectations(operation.ExpectedMatchesByLod, "expectedMatchesByLod");

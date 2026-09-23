@@ -183,7 +183,8 @@ public sealed record GuidedActionChoice(
     int OperationVersion,
     bool RequiresScale,
     bool RequiresTranslation,
-    bool RequiresCollisionLimit);
+    bool RequiresCollisionLimit,
+    bool RequiresAffine = false);
 
 public sealed record GuidedComponentChoice(
     string CandidateId,

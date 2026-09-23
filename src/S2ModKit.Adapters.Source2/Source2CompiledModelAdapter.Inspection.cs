@@ -46,7 +46,7 @@ public sealed partial class Source2CompiledModelAdapter
             resource.Dispose();
             stream.Dispose();
             throw new S2ModKitException(
-                new S2Error("SOURCE2_SEMANTIC_LAYOUT_UNSUPPORTED", "source2_adapter", "VRF could not parse the compiled model through the supported Stage 1 semantic profile.", "Inspect the input with a compatible Source 2 tool and add a reviewed layout profile before mutation.", ErrorCategory.UnsupportedCapability),
+                new S2Error("SOURCE2_SEMANTIC_LAYOUT_UNSUPPORTED", "source2_adapter", "VRF could not parse the compiled model through a supported semantic profile.", "Inspect the input with a compatible Source 2 tool and add a reviewed layout profile before mutation.", ErrorCategory.UnsupportedCapability),
                 exception);
         }
     }

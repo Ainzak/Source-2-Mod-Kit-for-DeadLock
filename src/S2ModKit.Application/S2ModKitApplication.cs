@@ -89,7 +89,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var (_, input, _) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
+        var (_, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
         var discovery = await new PreciseComponentDiscoveryService(componentCapabilityAnalyzer)
@@ -101,6 +101,11 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var canonicalJson = JsonDefaults.SerializeToUtf8(recipe);
         var reparsed = JsonDefaults.Deserialize<RecipeDocument>(canonicalJson, "Scaffolded recipe");
         RecipeValidator.Validate(reparsed);
+        if (request.Intent == RecipeScaffoldContract.AffineIntent)
+        {
+            _ = CreatePlan(input, model, reparsed, dependencies);
+        }
+
         if (!canonicalJson.AsSpan().SequenceEqual(JsonDefaults.SerializeToUtf8(reparsed)))
         {
             throw Errors.Verification(
@@ -156,7 +161,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
 
         if (!rewriter.CanRewrite(before, plan))
         {
-            throw Errors.Unsupported("REWRITE_CAPABILITY_UNAVAILABLE", "The configured adapter cannot safely rewrite this model layout.", "Use inspect output to select a supported Stage 1 layout or install a compatible adapter.");
+            throw Errors.Unsupported("REWRITE_CAPABILITY_UNAVAILABLE", "The configured adapter cannot safely rewrite this model layout.", "Use inspect output to select a supported layout or install a compatible adapter.");
         }
 
         var candidate = await rewriter.RewriteAsync(input, before, plan, cancellationToken).ConfigureAwait(false);

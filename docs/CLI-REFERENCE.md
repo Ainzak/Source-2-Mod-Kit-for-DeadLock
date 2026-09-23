@@ -173,8 +173,9 @@ buffer profile is decoded. These IDs can drive `transform_component@3` inside a 
 Lists discovery-v2 `material_group` and exact source-authored whole-mesh `mesh_lineage` candidates
 with capability explanations. The two kinds may overlap. Text and JSON include material membership,
 per-LOD draw calls, and, for a lineage, its mechanical source label and exact mesh/block membership.
-The command is read-only. Capability output reports the available operation version; the coupled
-raw-MBUF/convex-PHYS profile reports `transform_component@2`.
+The command is read-only. Capability output reports each assessed operation version, including
+`transform_component@4` on characterized affine geometry. The coupled raw-MBUF/convex-PHYS profile
+reports `transform_component@2` and remains uniform-only.
 
 | Option | Required | Meaning |
 |---|---:|---|
@@ -184,14 +185,15 @@ raw-MBUF/convex-PHYS profile reports `transform_component@2`.
 
 ### `s2mod recipe scaffold`
 
-Creates a new canonical existing-operation recipe from current candidate IDs. It does not create a
-plan or a model and never overwrites `--output`.
+Creates a new canonical recipe from current candidate IDs. Affine scaffolding checks the generated
+recipe with the ordinary dry-run planner before writing it. The command does not publish a plan or
+model and never overwrites `--output`.
 
 | Option | Required | Meaning |
 |---|---:|---|
 | `--project` | Yes | Project root. |
 | `--component` | Yes | Candidate ID from `components list`; repeat for an explicit union. |
-| `--intent` | Yes | `remove`, `uniform-scale`, or `translate`. |
+| `--intent` | Yes | `remove`, `uniform-scale`, `translate`, or `affine`. |
 | `--output` | Yes | New recipe JSON path. |
 | `--scale` | For `uniform-scale` | Positive uniform scale in the accepted operation range. |
 | `--translate-x` | For `translate` | Optional finite X translation. |
@@ -200,12 +202,34 @@ plan or a model and never overwrites `--output`.
 | `--reference-lod` | No | Pivot LOD; default is the lowest selected LOD. |
 | `--max-displacement` | For transforms | Positive safety cap, at most 256 Source units. |
 | `--max-collision-displacement` | For discovered `transform_component@2` | Independent positive collision cap, at most 256 Source units. |
+| `--scale-x` | No | Affine X scale in `0.25..4`; default `1`. |
+| `--scale-y` | No | Affine Y scale in `0.25..4`; default `1`. |
+| `--scale-z` | No | Affine Z scale in `0.25..4`; default `1`. |
+| `--rotate-axis` | With `--rotate-degrees` | Unit axis as `x,y,z` in the selected frame. |
+| `--rotate-degrees` | With `--rotate-axis` | Nonzero signed angle in `(-180, 180]`. |
+| `--pivot` | No | `selection-center` (default), `point`, `face`, or `bone`. |
+| `--pivot-point` | For point pivot | Finite model-space point as `x,y,z`. |
+| `--pivot-face` | For face pivot | `min_x`, `max_x`, `min_y`, `max_y`, `min_z`, or `max_z`. |
+| `--pivot-bone` | For bone pivot | Exact influencing bone name. |
+| `--frame` | No | `model` (default) or `bone-bind`. |
+| `--frame-bone` | For bone-bind frame | Exact influencing bone name. |
 | `--help` | No | Print help. |
 
 Scaffolding emits recipe schema version 1 for removal, version 2 for `transform_component@1`, and
-version 3 for the discovered coupled `transform_component@2` profile. Version 2 requires
+version 3 for the discovered coupled `transform_component@2` profile. The coupled profile requires
 `uniform-scale`, zero translation, and both displacement caps; it never falls back to a visual-only
 rewrite.
+
+When a component lacks the older uniform profile but has an available version-4 affine profile,
+`--intent uniform-scale --scale ...` emits a schema-5, version-4 recipe with equal axis scales and
+identity rotation. The same dry-run safety checks apply.
+
+The `affine` intent emits recipe schema version 5 and `transform_component@4` for a characterized
+root vertex selection, including a characterized single selected buffer within a multi-buffer mesh.
+It accepts per-axis scale, rotation, typed pivot and frame, optional final
+translation, and a required `--max-displacement`. The component must show an available version-4
+capability; the specific parameters must also pass the normal planner. An affected distance field,
+morph, or collision-coupled layout remains unsupported.
 
 Recipe schema version 4 also accepts `transform_component@3` at
 `connected_component_vertices` granularity. It requires explicit `connectedComponentIdsByLod` and

@@ -11,7 +11,15 @@ public static class RecipeScaffoldContract
     public const string UniformScaleIntent = "uniform-scale";
 
     public const string TranslateIntent = "translate";
+
+    public const string AffineIntent = "affine";
 }
+
+public sealed record AffineScaffoldOptions(
+    TransformVector3 Scale,
+    TransformRotation Rotation,
+    TransformPivot Pivot,
+    TransformFrame Frame);
 
 public sealed record RecipeScaffoldRequest(
     IReadOnlyList<string> ComponentIds,
@@ -23,7 +31,8 @@ public sealed record RecipeScaffoldRequest(
     float? TranslationZ = null,
     int? ReferenceLod = null,
     float? MaximumVertexDisplacement = null,
-    float? MaximumCollisionDisplacement = null);
+    float? MaximumCollisionDisplacement = null,
+    AffineScaffoldOptions? Affine = null);
 
 public sealed record RecipeScaffoldResult(
     string OutputPath,
@@ -54,6 +63,12 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         var union = ComponentCandidateUnionBuilder.Create(model, candidates);
         var selectedDrawCalls = union.SelectedDrawCalls;
         var matchesByLod = CreateLodCounts(model, selectedDrawCalls);
+        if (request.Intent == RecipeScaffoldContract.AffineIntent)
+        {
+            return await CreateAffineRecipeAsync(
+                input, model, candidates, union, matchesByLod, request, cancellationToken).ConfigureAwait(false);
+        }
+
         var transform = ParseTransform(request, matchesByLod.Keys);
 
         var seed = CreateIdentitySeed(input.ContentHash, candidates, request.Intent, transform);
@@ -71,11 +86,31 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         }
         else
         {
-            var analysis = await AnalyzeTransformUnionAsync(
-                input,
-                model,
-                union,
-                cancellationToken).ConfigureAwait(false);
+            ComponentCapabilityAnalysis analysis;
+            try
+            {
+                analysis = await AnalyzeTransformUnionAsync(
+                    input, model, union, cancellationToken).ConfigureAwait(false);
+            }
+            catch (S2ModKitException exception) when (
+                exception.Error.Code == "SCAFFOLD_TRANSFORM_UNSUPPORTED"
+                && request.Intent == RecipeScaffoldContract.UniformScaleIntent
+                && capabilityAnalyzer is IAffineComponentCapabilityAnalyzer
+                && transform.MaximumCollisionDisplacement is null)
+            {
+                var scale = transform.UniformScale;
+                return await CreateAffineRecipeAsync(input, model, candidates, union, matchesByLod,
+                    request with
+                    {
+                        Intent = RecipeScaffoldContract.AffineIntent,
+                        UniformScale = null,
+                        Affine = new AffineScaffoldOptions(
+                            new TransformVector3 { X = scale, Y = scale, Z = scale },
+                            new TransformRotation { Kind = "identity" },
+                            new TransformPivot { Kind = "selection_bounds_center", ReferenceLod = transform.ReferenceLod },
+                            new TransformFrame { Kind = "model" }),
+                    }, cancellationToken).ConfigureAwait(false);
+            }
             schemaVersion = analysis.OperationVersion == 2 ? 3 : 2;
             if (analysis.OperationVersion == 2
                 && (request.Intent != RecipeScaffoldContract.UniformScaleIntent

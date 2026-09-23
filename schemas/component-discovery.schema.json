@@ -149,7 +149,7 @@
       "required": ["operationKind", "operationVersion", "availability", "reasons", "geometryByLod"],
       "properties": {
         "operationKind": { "enum": ["remove_component", "transform_component"] },
-        "operationVersion": { "enum": [1] },
+        "operationVersion": { "enum": [1, 2, 4] },
         "availability": { "enum": ["available", "blocked", "unsupported", "ambiguous"] },
         "reasons": {
           "type": "array",

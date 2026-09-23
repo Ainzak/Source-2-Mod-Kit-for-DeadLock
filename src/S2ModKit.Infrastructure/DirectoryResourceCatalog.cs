@@ -33,7 +33,7 @@ public sealed class DirectoryResourceCatalog : IResourceCatalog
         var size = new FileInfo(path).Length;
         if (size > MaxInMemoryArtifactBytes)
         {
-            throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the Stage 1 limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
+            throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the supported limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
         }
 
         return Task.FromResult<ResourceCatalogEntry?>(new ResourceCatalogEntry(normalizedPath, path, size));
@@ -53,7 +53,7 @@ public sealed class DirectoryResourceCatalog : IResourceCatalog
         var size = new FileInfo(path).Length;
         if (size > MaxInMemoryArtifactBytes)
         {
-            throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the Stage 1 limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
+            throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the supported limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
         }
 
         byte[] bytes;
@@ -61,7 +61,7 @@ public sealed class DirectoryResourceCatalog : IResourceCatalog
         {
             if (stream.Length > MaxInMemoryArtifactBytes)
             {
-                throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the Stage 1 limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
+                throw Errors.Input("OBJECT_SIZE_LIMIT_EXCEEDED", $"Resource '{path}' exceeds the supported limit of {MaxInMemoryArtifactBytes} bytes.", "Use a compiled resource below 512 MiB or add a reviewed streaming profile.");
             }
 
             bytes = new byte[stream.Length];

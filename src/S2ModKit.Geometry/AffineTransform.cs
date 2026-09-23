@@ -198,7 +198,7 @@ public sealed record RigidFrame
 
 public sealed record TangentFrame(Point3 Normal, Point3 Tangent, float Handedness);
 
-/// <summary>Deterministic positive affine transform with the ADR-0026 composition order.</summary>
+/// <summary>Deterministic positive affine transform with scale, then rotation, then translation.</summary>
 public sealed record AffineTransform
 {
     public AffineTransform(

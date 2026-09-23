@@ -8,7 +8,6 @@ TestResults/
 # Local S2ModKit artifacts
 .workspaces/**
 !.workspaces/.gitkeep
-.stage8/**
 /exceptions.txt
 *.vpk
 *.vmdl_c

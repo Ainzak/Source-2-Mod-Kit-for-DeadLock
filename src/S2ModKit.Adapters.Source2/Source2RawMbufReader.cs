@@ -250,7 +250,7 @@ internal static class Source2RawMbufReader
             context);
         var snapshot = new MeshGeometrySnapshot(
             "ready",
-            "One raw embedded-MBUF vertex buffer, index buffer, and complete exclusively owned draw call passed the Stage 7 profile.",
+            "One raw embedded-MBUF vertex buffer, index buffer, and complete exclusively owned draw call passed the supported profile.",
             [vertexSnapshot],
             [indexSnapshot],
             [drawCallSnapshot],

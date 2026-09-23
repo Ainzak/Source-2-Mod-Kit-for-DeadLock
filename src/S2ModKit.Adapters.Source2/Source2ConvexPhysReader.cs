@@ -12,7 +12,7 @@ internal sealed record Source2PhysPlane(Point3 Normal, float Offset);
 
 /// <summary>
 /// Read-only facts for the characterized one-part/one-convex-hull embedded PHYS payload
-/// accepted by ADR-0020. All byte arrays are defensive copies; the hashes identify the
+/// accepted by the coupled visual/collision profile. All byte arrays are defensive copies; the hashes identify the
 /// byte-preserved topology and plane blobs for later coupled planning.
 /// </summary>
 internal sealed record Source2ConvexPhysAnalysis(

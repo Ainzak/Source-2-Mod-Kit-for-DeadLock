@@ -56,7 +56,7 @@ public static class ResourceEnvelopeReader
     {
         if (content.Length < FixedHeaderSize || content.Length > MaximumResourceSize)
         {
-            throw Errors.Unsupported("RESOURCE_SIZE_UNSUPPORTED", $"Resource size {content.Length} is outside the supported Stage 1 range.", "Use a compiled model resource between 16 bytes and 1 GiB.");
+            throw Errors.Unsupported("RESOURCE_SIZE_UNSUPPORTED", $"Resource size {content.Length} is outside the supported range.", "Use a compiled model resource between 16 bytes and 1 GiB.");
         }
 
         var bytes = content.Span;
@@ -188,7 +188,7 @@ public static class ResourceEnvelopeWriter
                 position = checked(position + envelope.Blocks[index].PaddingAfter.Length);
                 if (position > MaximumResourceSize)
                 {
-                    throw Errors.Unsupported("RESOURCE_OUTPUT_SIZE_UNSUPPORTED", "The rebuilt resource exceeds the 1 GiB Stage 1 limit.", "Use a smaller target block or a future streaming writer.");
+                    throw Errors.Unsupported("RESOURCE_OUTPUT_SIZE_UNSUPPORTED", "The rebuilt resource exceeds the supported 1 GiB limit.", "Use a smaller target block or a future streaming writer.");
                 }
             }
 

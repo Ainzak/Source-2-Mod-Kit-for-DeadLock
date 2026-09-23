@@ -77,6 +77,27 @@ public sealed class RecipeScaffoldingTests
     }
 
     [Fact]
+    public async Task UniformScaleScaffoldUsesAffineVersionWhenLegacyProfileIsUnavailable()
+    {
+        var fixture = await CreateFixtureAsync();
+        var request = Request([fixture.Sword.CandidateId], RecipeScaffoldContract.UniformScaleIntent) with
+        {
+            UniformScale = 1.5f,
+            MaximumVertexDisplacement = 64f,
+        };
+        var recipe = await new ComponentRecipeScaffolder(new AffineOnlyAnalyzer()).CreateAsync(
+            fixture.Input, fixture.Model, fixture.Discovery, request, TestContext.Current.CancellationToken);
+
+        var operation = Assert.IsType<TransformComponentOperation>(Assert.Single(recipe.Operations));
+        Assert.Equal(5, recipe.SchemaVersion);
+        Assert.Equal(4, operation.Version);
+        Assert.Equal(new TransformVector3 { X = 1.5f, Y = 1.5f, Z = 1.5f }, operation.Transform.Scale);
+        Assert.Equal("identity", operation.Transform.Rotation!.Kind);
+        Assert.Equal("selection_bounds_center", operation.Transform.Pivot.Kind);
+        RecipeValidator.Validate(recipe);
+    }
+
+    [Fact]
     public async Task ScaffoldedRecipesConformToTheirPublishedSchemas()
     {
         var fixture = await CreateFixtureAsync();
@@ -433,5 +454,40 @@ public sealed class RecipeScaffoldingTests
                     [new ComponentCapabilityReason("TEST_REASON", "Synthetic assessment.")],
                     geometry)]);
         }
+    }
+
+    private sealed class AffineOnlyAnalyzer : IComponentCapabilityAnalyzer, IAffineComponentCapabilityAnalyzer
+    {
+        public string AnalyzerName => "synthetic-affine";
+
+        public string AnalyzerVersion => "1";
+
+        public IReadOnlyDictionary<string, string> ComponentVersions { get; } = new Dictionary<string, string>();
+
+        public bool CanAnalyze(ArtifactContent input, ModelSnapshot model) => true;
+
+        public Task<IReadOnlyList<ComponentCapabilityAnalysis>> AnalyzeAsync(
+            ComponentCapabilityAnalysisRequest request,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ComponentCapabilityAnalysis>>(
+                [Assessment(request, 1, ComponentDiscoveryContract.Unsupported, [])]);
+
+        public Task<IReadOnlyList<ComponentCapabilityAnalysis>> AnalyzeAffineAsync(
+            ComponentCapabilityAnalysisRequest request,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ComponentCapabilityAnalysis>>(
+                [Assessment(request, 4, ComponentDiscoveryContract.Available,
+                    [new ComponentGeometryLodFacts(0, 33, ContentHash.Compute("lod-0"u8), true),
+                        new ComponentGeometryLodFacts(1, 21, ContentHash.Compute("lod-1"u8), true)])]);
+
+        private static ComponentCapabilityAnalysis Assessment(
+            ComponentCapabilityAnalysisRequest request,
+            int version,
+            string availability,
+            IReadOnlyList<ComponentGeometryLodFacts> geometry) => new(
+                Assert.Single(request.Selections).SelectionId,
+                "transform_component",
+                version,
+                availability,
+                [new ComponentCapabilityReason("TEST_REASON", "Synthetic assessment.")],
+                geometry);
     }
 }

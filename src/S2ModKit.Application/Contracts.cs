@@ -328,6 +328,13 @@ public interface IComponentCapabilityAnalyzer
         CancellationToken cancellationToken = default);
 }
 
+public interface IAffineComponentCapabilityAnalyzer
+{
+    Task<IReadOnlyList<ComponentCapabilityAnalysis>> AnalyzeAffineAsync(
+        ComponentCapabilityAnalysisRequest request,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IRecipeDocumentWriter
 {
     Task<string> WriteNewAsync(
