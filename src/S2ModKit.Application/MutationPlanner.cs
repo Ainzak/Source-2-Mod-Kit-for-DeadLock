@@ -42,6 +42,10 @@ public sealed class MutationPlanner
     {
         ArgumentNullException.ThrowIfNull(model);
         RecipeValidator.Validate(recipe);
+        if (recipe.SchemaVersion == 8)
+        {
+            EllipsoidContractValidator.ValidateRecipe(recipe);
+        }
 
         if (recipe.InputHash != model.Artifact.ContentHash)
         {
@@ -104,12 +108,18 @@ public sealed class MutationPlanner
             {
                 throw Errors.Unsupported(
                     "TRANSFORM_PLANNING_UNAVAILABLE",
-                    "transform_component@1 requires a configured adapter-specific geometry planner.",
+                    $"transform_component@{operation.Version} requires a configured adapter-specific geometry planner.",
                     "Configure the Source 2 geometry codec and rerun inspect before planning; no plan or build was published.");
             }
 
             var result = transformPlanner.PlanTransform(new TransformPlanningRequest(input, model, transform, selected));
-            if (transform.Version is 5 or 6)
+            if (transform.Version != 7 && result.EllipsoidTransformTarget is not null)
+                throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "A legacy planner returned a localized target outside its version boundary.", "Reject the mixed planner result.");
+            if (transform.Version == 7)
+            {
+                ValidateEllipsoidResult(result, transform, recipe.InputHash, blocksByIndex);
+            }
+            else if (transform.Version is 5 or 6)
             {
                 ExperimentalTransformPlanValidator.Validate(result, selected, blocksByIndex, transform);
             }
@@ -137,14 +147,15 @@ public sealed class MutationPlanner
                 CoupledTransformTarget = result.CoupledTransformTarget,
                 AffineTransformTarget = result.AffineTransformTarget,
                 ExperimentalTransformTarget = result.ExperimentalTransformTarget,
+                EllipsoidTransformTarget = result.EllipsoidTransformTarget,
             });
         }
 
-        if (recipe.SchemaVersion is 6 or 7)
+        if (recipe.SchemaVersion is 6 or 7 or 8)
         {
             var provisional = new MutationPlan(recipe.RecipeId, recipe.InputHash, recipe.InputHash, plannedOperations)
             {
-                SchemaVersion = recipe.SchemaVersion == 7 ? 3 : 2,
+                SchemaVersion = recipe.SchemaVersion == 8 ? 4 : recipe.SchemaVersion == 7 ? 3 : 2,
                 Inputs = inputs,
             };
             var experimental = provisional with { Fingerprint = MutationPlanJson.ComputeExperimentalFingerprint(provisional) };
@@ -206,6 +217,27 @@ public sealed class MutationPlanner
         }
 
         return selected;
+    }
+
+    private static void ValidateEllipsoidResult(TransformPlanningResult result, TransformComponentOperation intent,
+        ContentHash inputHash, Dictionary<int, ResourceBlockSnapshot> blocks)
+    {
+        var target = result.EllipsoidTransformTarget;
+        if (target is null || result.GeometryTargets.Count != 0 || result.DistanceFieldTargets.Count != 0
+            || result.ExperimentalTransformTarget is not null || result.AffineTransformTarget is not null || result.CoupledTransformTarget is not null)
+            throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "The planner returned a mixed or missing ellipsoid target.", "Regenerate the plan from immutable input.");
+        EllipsoidContractValidator.ValidateTarget(target);
+        var selector = intent.Selector.Kind == "material_exact"
+            ? intent.Selector with { MaterialPath = StableIdentity.NormalizePath(intent.Selector.MaterialPath!) }
+            : intent.Selector with { DrawCallIds = intent.Selector.DrawCallIds!.Order(StringComparer.Ordinal).ToArray() };
+        if (target.InputHash != inputHash || target.RuntimeMetadataPolicy != intent.RuntimeMetadataPolicy
+            || JsonDefaults.Serialize(target.LocalTransform) != JsonDefaults.Serialize(intent.LocalTransform)
+            || JsonDefaults.Serialize(target.Selector) != JsonDefaults.Serialize(selector)
+            || target.DisplacementLimit != intent.Limits.MaximumVertexDisplacement
+            || target.Buffers.Any(b => b.VertexCount != intent.ExpectedVerticesByLod[b.Lod.ToString(System.Globalization.CultureInfo.InvariantCulture)])
+            || target.SourceBlocks.Count != blocks.Count
+            || target.SourceBlocks.Any(b => !blocks.TryGetValue(b.Index, out var actual) || actual.Type != b.Type || actual.ContentHash != b.InputHash))
+            throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "Frozen ellipsoid facts disagree with the recipe or source inventory.", "Reject the adapter result.");
     }
 
     private static PlannedTargetBlock[] CreateRemovalTargetBlocks(

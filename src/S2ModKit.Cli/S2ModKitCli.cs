@@ -923,7 +923,7 @@ public sealed partial class S2ModKitCli
             async () =>
             {
                 var document = await ReadRecipeAsync(parseResult.GetRequiredValue(recipe), cancellationToken).ConfigureAwait(false);
-                if (document.SchemaVersion is 6 or 7)
+                if (document.SchemaVersion is 6 or 7 or 8)
                     error.WriteLine("WARNING: Experimental visual-only edit. Sphere containment, occlusion and collision correspondence are unverified; player testing is required.");
                 return await application.BuildAsync(parseResult.GetRequiredValue(project), document, cancellationToken).ConfigureAwait(false);
             },

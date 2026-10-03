@@ -121,7 +121,7 @@ public sealed class LocalExperimentalVisualIntegrationTests
         Assert.Equal(hash, ContentHash.Compute(await File.ReadAllBytesAsync(modelPath, token)));
     }
 
-    private static ArtifactContent MutateMesh(ArtifactContent output, int blockIndex, Action<KVObject> mutate)
+    internal static ArtifactContent MutateMesh(ArtifactContent output, int blockIndex, Action<KVObject> mutate)
     {
         using var stream = new MemoryStream(output.Bytes.ToArray(), writable: false);
         using var resource = new Resource { FileName = output.LogicalPath };
@@ -135,7 +135,7 @@ public sealed class LocalExperimentalVisualIntegrationTests
         return new(output.LogicalPath, ContentHash.Compute(bytes), bytes);
     }
 
-    private static TransformVector3 VectorWords(IReadOnlyList<uint> words, int offset) => new()
+    internal static TransformVector3 VectorWords(IReadOnlyList<uint> words, int offset) => new()
     {
         X = BitConverter.UInt32BitsToSingle(words[offset]),
         Y = BitConverter.UInt32BitsToSingle(words[offset + 1]),

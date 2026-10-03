@@ -12,6 +12,24 @@ namespace S2ModKit.Geometry;
 /// </summary>
 public static class CullingEnvelopeVerifier
 {
+    /// <summary>Diagnostic growth from serialized words; does not calculate a replacement envelope.</summary>
+    public static IReadOnlyList<EnvelopeGrowth> MeasureGrowth(Bounds3 original, Bounds3 observed) => Enumerable.Range(0, 3)
+        .SelectMany(axis => new[]
+        {
+            EnvelopeNumbers.Growth($"minimum_{axis}", EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.Min, axis)), EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.Min, axis))),
+            EnvelopeNumbers.Growth($"maximum_{axis}", EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.Max, axis)), EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.Max, axis))),
+        }).ToArray();
+
+    /// <summary>Measures mathematical center/half-extent endpoints without invoking the bounds calculator.</summary>
+    public static IReadOnlyList<EnvelopeGrowth> MeasureGrowth(CenterHalfExtentBounds original, CenterHalfExtentBounds observed) => Enumerable.Range(0, 3)
+        .SelectMany(axis => new[]
+        {
+            EnvelopeNumbers.Growth($"minimum_{axis}", EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.Center, axis)) - EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.HalfExtents, axis)),
+                EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.Center, axis)) - EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.HalfExtents, axis))),
+            EnvelopeNumbers.Growth($"maximum_{axis}", EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.Center, axis)) + EnvelopeNumbers.Units(EnvelopeNumbers.Component(original.HalfExtents, axis)),
+                EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.Center, axis)) + EnvelopeNumbers.Units(EnvelopeNumbers.Component(observed.HalfExtents, axis))),
+        }).ToArray();
+
     public static EnvelopeVerification Verify(Bounds3 original, IReadOnlyList<Point3>? points, Bounds3 observed)
     {
         if (points is null || !Valid(original) || !Valid(observed)) return Result(EnvelopeVerificationStatus.InvalidInput);

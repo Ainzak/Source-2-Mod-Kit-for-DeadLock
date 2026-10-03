@@ -28,6 +28,9 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ExperimentalTransformEvidence? ExperimentalTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EllipsoidTransformEvidence? EllipsoidTransform { get; init; }
 }
 
 public sealed record ExperimentalBoxEvidence(

@@ -1,0 +1,1700 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/ellipsoid-contracts/v1",
+  "title": "Ellipsoid visual scale contracts",
+  "definitions": {
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/definitions/vector3"
+        },
+        "max": {
+          "$ref": "#/definitions/vector3"
+        }
+      }
+    },
+    "codecIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "apiProfile",
+        "platform",
+        "binaryHash",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binaryHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "contentHash",
+        "size",
+        "sourceKind",
+        "catalogIdentity",
+        "verificationMode"
+      ],
+      "properties": {
+        "logicalPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceKind": {
+          "enum": [
+            "directory",
+            "vpk",
+            "generated"
+          ]
+        },
+        "catalogIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verificationMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "boundaryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_applicable",
+            "untested",
+            "skipped"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "resourceBlockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "type",
+        "inputHash",
+        "disposition"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "outputHash": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/contentHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "planned_change",
+            "planned_unchanged",
+            "changed",
+            "unchanged"
+          ]
+        }
+      }
+    },
+    "drawCallIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^dc_[0-9a-f]{24}$"
+      }
+    },
+    "resourcePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "runtimeMetadataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "experimentalGrowth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure",
+        "originalValue",
+        "plannedValue",
+        "delta"
+      ],
+      "properties": {
+        "measure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalValue": {
+          "type": "number"
+        },
+        "plannedValue": {
+          "type": "number"
+        },
+        "delta": {
+          "type": "number"
+        }
+      }
+    },
+    "experimentalBoxTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "storage",
+        "coordinateSpace",
+        "coordinateMatrixHash",
+        "coordinateMatrixWords",
+        "contributorSetHash",
+        "contributorCount",
+        "originalWords",
+        "expectedWords",
+        "growth"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "enum": [
+            "min_max",
+            "center_half_extent"
+          ]
+        },
+        "coordinateSpace": {
+          "enum": [
+            "model",
+            "render_inverse_bind"
+          ]
+        },
+        "coordinateMatrixHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "coordinateMatrixWords": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "expectedWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "growth": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalGrowth"
+          }
+        }
+      }
+    },
+    "experimentalPreservationTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "category",
+        "scope",
+        "disposition",
+        "sourcePayloadHash",
+        "originalWords"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "render_sphere",
+            "root_sphere",
+            "occlusion_distance_field",
+            "collision_payload"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "affected",
+            "resource"
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "sourcePayloadHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      }
+    },
+    "experimentalBoxPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "experimentalBoxPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "experimentalPreservationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "type": "null"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "experimentalPreservationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "observedWords": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "materialPath"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "material_exact"
+              ]
+            },
+            "materialPath": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "drawCallIds"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "draw_call_ids"
+              ]
+            },
+            "drawCallIds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^dc_[0-9a-f]{24}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lodExpectations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(0|[1-9][0-9]*)$": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "radii": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "y": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "z": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "coordinateSpace",
+        "center",
+        "outerRadii",
+        "coreFraction"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ellipsoid"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        },
+        "coordinateSpace": {
+          "enum": [
+            "model"
+          ]
+        },
+        "center": {
+          "$ref": "#/definitions/vector3"
+        },
+        "outerRadii": {
+          "$ref": "#/definitions/radii"
+        },
+        "coreFraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        }
+      }
+    },
+    "numericalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ellipsoid_numeric"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "localTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "uniformScale",
+        "numericalPolicy"
+      ],
+      "properties": {
+        "field": {
+          "$ref": "#/definitions/field"
+        },
+        "uniformScale": {
+          "type": "number",
+          "not": {
+            "enum": [
+              1
+            ]
+          },
+          "maximum": 2,
+          "minimum": 0.5
+        },
+        "numericalPolicy": {
+          "$ref": "#/definitions/numericalPolicy"
+        }
+      }
+    },
+    "certificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "version",
+        "subdivisionDepth",
+        "numerator",
+        "denominator",
+        "lowerBound",
+        "upperBound",
+        "minimumSingularValueLowerBound"
+      ],
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "ellipsoid_bernstein_midpoint"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        },
+        "subdivisionDepth": {
+          "enum": [
+            12
+          ]
+        },
+        "numerator": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "denominator": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "lowerBound": {
+          "minimum": 0.125,
+          "type": "number"
+        },
+        "upperBound": {
+          "minimum": 0.125,
+          "type": "number"
+        },
+        "minimumSingularValueLowerBound": {
+          "minimum": 0.015625,
+          "type": "number"
+        }
+      }
+    },
+    "positionLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "offset",
+        "stride"
+      ],
+      "properties": {
+        "format": {
+          "enum": [
+            "R32G32B32_FLOAT"
+          ]
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stride": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "packedFrameLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "offset",
+        "stride",
+        "encodingProfile"
+      ],
+      "properties": {
+        "format": {
+          "enum": [
+            "R32_UINT"
+          ]
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stride": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "encodingProfile": {
+          "enum": [
+            "source2_normal_tangent_v2"
+          ]
+        }
+      }
+    },
+    "buffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "vertexBufferOrdinal",
+        "indexBufferOrdinal",
+        "vertexResourceBlockIndex",
+        "indexResourceBlockIndex",
+        "vertexBlockInputHash",
+        "indexBlockInputHash",
+        "inputDecodedVertexBufferHash",
+        "expectedDecodedVertexBufferHash",
+        "decodedIndexBufferHash",
+        "vertexSetHash",
+        "vertexCount",
+        "ownershipPolicy",
+        "positionLayout",
+        "packedFrameLayout",
+        "codec",
+        "maskHash",
+        "weightHash",
+        "coreVertexCount",
+        "transitionVertexCount",
+        "pinnedVertexCount",
+        "changedFrameCount",
+        "changedPositionCount",
+        "inputPositionHash",
+        "expectedPositionHash",
+        "inputPackedFrameHash",
+        "expectedPackedFrameHash",
+        "beforeBounds",
+        "expectedAfterBounds",
+        "maximumDisplacement"
+      ],
+      "properties": {
+        "lod": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourcePath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "meshOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourceBlockIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertexBufferOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexBufferOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertexResourceBlockIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexResourceBlockIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertexBlockInputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "indexBlockInputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "inputDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "decodedIndexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "vertexCount": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "ownershipPolicy": {
+          "enum": [
+            "exclusive"
+          ]
+        },
+        "positionLayout": {
+          "$ref": "#/definitions/positionLayout"
+        },
+        "packedFrameLayout": {
+          "$ref": "#/definitions/packedFrameLayout"
+        },
+        "codec": {
+          "$ref": "#/definitions/codecIdentity"
+        },
+        "maskHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "coreVertexCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transitionVertexCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pinnedVertexCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changedFrameCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changedPositionCount": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "inputPositionHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "inputPackedFrameHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedPackedFrameHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "beforeBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "expectedAfterBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "sourceBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "type",
+        "inputHash"
+      ],
+      "properties": {
+        "index": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "contentHash",
+        "size"
+      ],
+      "properties": {
+        "logicalPath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "contentHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "selectedDrawCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "drawCallId",
+        "materialPath",
+        "drawCallOrdinal",
+        "indexStart",
+        "indexCount"
+      ],
+      "properties": {
+        "lod": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourcePath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "meshOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourceBlockIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "drawCallId": {
+          "pattern": "^dc_[0-9a-f]{24}$",
+          "type": "string"
+        },
+        "materialPath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "drawCallOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexStart": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexCount": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputHash",
+        "targetFingerprint",
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "boundsPolicyId",
+        "boundsPolicyVersion",
+        "runtimeMetadataPolicy",
+        "selector",
+        "localTransform",
+        "certificate",
+        "maximumDisplacement",
+        "displacementLimit",
+        "buffers",
+        "boxTargets",
+        "preservationTargets",
+        "sourceBlocks"
+      ],
+      "properties": {
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "targetFingerprint": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "structuralProfileId": {
+          "enum": [
+            "root_complete_buffer_ellipsoid_visual"
+          ]
+        },
+        "structuralProfileVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "boundsPolicyId": {
+          "enum": [
+            "retain_expand_boxes_preserve_runtime"
+          ]
+        },
+        "boundsPolicyVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/runtimeMetadataPolicy"
+        },
+        "selector": {
+          "$ref": "#/definitions/selector"
+        },
+        "localTransform": {
+          "$ref": "#/definitions/localTransform"
+        },
+        "certificate": {
+          "$ref": "#/definitions/certificate"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "buffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/buffer"
+          },
+          "minItems": 1
+        },
+        "boxTargets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalBoxTarget"
+          },
+          "minItems": 1
+        },
+        "preservationTargets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalPreservationTarget"
+          },
+          "minItems": 1
+        },
+        "sourceBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sourceBlock"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "granularity",
+        "selector",
+        "lodPolicy",
+        "expectedMatchesByLod",
+        "expectedVerticesByLod",
+        "ownershipPolicy",
+        "runtimeMetadataPolicy",
+        "localTransform",
+        "limits",
+        "extensions"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            7
+          ]
+        },
+        "granularity": {
+          "enum": [
+            "ellipsoid_vertices"
+          ]
+        },
+        "selector": {
+          "$ref": "#/definitions/selector"
+        },
+        "lodPolicy": {
+          "enum": [
+            "all_present"
+          ]
+        },
+        "expectedMatchesByLod": {
+          "$ref": "#/definitions/lodExpectations"
+        },
+        "expectedVerticesByLod": {
+          "$ref": "#/definitions/lodExpectations"
+        },
+        "ownershipPolicy": {
+          "enum": [
+            "exclusive"
+          ]
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/runtimeMetadataPolicy"
+        },
+        "localTransform": {
+          "$ref": "#/definitions/localTransform"
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximumVertexDisplacement"
+          ],
+          "properties": {
+            "maximumVertexDisplacement": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 64
+            }
+          }
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "operations",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            8
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/operation"
+          }
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
+    },
+    "plannedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCalls",
+        "targetBlocks",
+        "geometryTargets",
+        "distanceFieldTargets",
+        "ellipsoidTransformTarget"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            7
+          ]
+        },
+        "selectedDrawCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/selectedDrawCall"
+          },
+          "minItems": 1
+        },
+        "targetBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/sourceBlock"
+          },
+          "minItems": 1
+        },
+        "geometryTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "distanceFieldTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "ellipsoidTransformTarget": {
+          "$ref": "#/definitions/target"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "fingerprint",
+        "operations",
+        "inputs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            4
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "fingerprint": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/plannedOperation"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/input"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "positionHash",
+        "packedFrameHash",
+        "decodedVertexBufferHash",
+        "maskHash",
+        "weightHash",
+        "maximumDisplacement"
+      ],
+      "properties": {
+        "lod": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "meshOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertexBufferOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "positionHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "packedFrameHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "decodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "maskHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "visualPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedBuffers",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "observedBuffers": {
+          "type": "null"
+        },
+        "boxes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalBoxPlanned"
+          },
+          "minItems": 1
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalPreservationPlanned"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "evidenceOperationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "ellipsoidTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            7
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "ellipsoidTransform": {
+          "$ref": "#/definitions/visualPlanned"
+        }
+      }
+    },
+    "visualPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedBuffers",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "observedBuffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/observation"
+          },
+          "minItems": 1
+        },
+        "boxes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalBoxPassed"
+          },
+          "minItems": 1
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/experimentalPreservationPassed"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "evidenceOperationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "ellipsoidTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            7
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "ellipsoidTransform": {
+          "$ref": "#/definitions/visualPassed"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "createdUtc",
+        "proofLevel",
+        "command",
+        "status",
+        "input",
+        "dependencies",
+        "planFingerprint",
+        "operations",
+        "boundaries",
+        "blocks",
+        "toolVersions",
+        "warnings",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            9
+          ]
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "proofLevel": {
+          "enum": [
+            "offline_static"
+          ]
+        },
+        "command": {
+          "enum": [
+            "plan",
+            "build",
+            "verify"
+          ]
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        },
+        "input": {
+          "$ref": "#/definitions/artifactEvidence"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/artifactEvidence"
+          }
+        },
+        "output": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/artifactEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planFingerprint": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/evidenceOperationPlanned"
+              },
+              {
+                "$ref": "#/definitions/evidenceOperationPassed"
+              }
+            ]
+          }
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/boundaryEvidence"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/resourceBlockEvidence"
+          }
+        },
+        "toolVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "operations": {
+                "items": {
+                  "$ref": "#/definitions/evidenceOperationPlanned"
+                }
+              }
+            }
+          },
+          "if": {
+            "required": [
+              "output"
+            ]
+          },
+          "then": {
+            "properties": {
+              "operations": {
+                "items": {
+                  "$ref": "#/definitions/evidenceOperationPassed"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/definitions/recipe"
+    },
+    {
+      "$ref": "#/definitions/plan"
+    },
+    {
+      "$ref": "#/definitions/evidence"
+    }
+  ]
+}

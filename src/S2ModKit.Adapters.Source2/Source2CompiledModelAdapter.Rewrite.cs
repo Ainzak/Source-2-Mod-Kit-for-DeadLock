@@ -18,13 +18,16 @@ public sealed partial class Source2CompiledModelAdapter
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.SchemaVersion == 4 || plan.Operations.Any(o => o.Version == 7 || o.EllipsoidTransformTarget is not null))
+            return !HasIncompleteMdatCoverage(model) && !SelectsSharedLodMesh(model, plan) && CanRewriteEllipsoid(model, plan);
         return !HasIncompleteMdatCoverage(model)
             && !SelectsSharedLodMesh(model, plan)
             && (CanRewriteRemoval(model, plan)
             || CanRewriteTransform(model, plan)
             || CanRewriteCoupledTransform(model, plan)
             || CanRewriteAffineTransform(model, plan)
-            || CanRewriteExperimentalTransform(model, plan));
+            || CanRewriteExperimentalTransform(model, plan)
+            || CanRewriteEllipsoid(model, plan));
     }
 
     // A snapshot whose LOD projection does not represent every distinct MDAT block of its artifact
@@ -104,6 +107,11 @@ public sealed partial class Source2CompiledModelAdapter
         if (!CanRewrite(model, plan))
         {
             throw Errors.Unsupported("REWRITE_CAPABILITY_UNAVAILABLE", "The mutation plan does not match a supported Source 2 rewrite profile.", "Re-inspect the compiled model and create a supported, single-kind mutation plan.");
+        }
+
+        if (IsEllipsoidPlan(plan))
+        {
+            return Task.FromResult(RewriteEllipsoid(input, model, plan, cancellationToken));
         }
 
         if (IsExperimentalTransformPlan(plan))

@@ -184,6 +184,8 @@ public sealed record TransformPlanningResult(
     public PlannedAffineTransformTarget? AffineTransformTarget { get; init; }
 
     public PlannedExperimentalTransformTarget? ExperimentalTransformTarget { get; init; }
+
+    public PlannedEllipsoidTransformTarget? EllipsoidTransformTarget { get; init; }
 }
 
 public sealed record AffineSelectionBoundsEvidence(

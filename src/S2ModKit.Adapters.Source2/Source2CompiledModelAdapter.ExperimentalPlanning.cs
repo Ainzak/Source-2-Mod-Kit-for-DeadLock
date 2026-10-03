@@ -15,7 +15,7 @@ public sealed partial class Source2CompiledModelAdapter
     private TransformPlanningResult PlanExperimentalTransform(TransformPlanningRequest request, ParsedModel parsed)
     {
         var (profiles, presentLods) = ResolveExperimentalPlanningProfiles(request, parsed);
-        var (model, rootSpheres, affectedRoots) = ResolveExperimentalPlanningRoot(parsed, profiles);
+        var (model, rootSpheres, affectedRoots) = ResolveExperimentalRootMetadata(parsed, profiles);
         var pivot = new AffineEvidenceResolver().ResolvePivot(new TypedPivotResolutionRequest(
             request.Operation.Transform.Pivot, presentLods,
             profiles.Select(profile => new AffineSelectionBoundsEvidence(profile.Mesh.Lod, profile.SelectionBounds, profile.VertexSetHash)).ToArray(),
@@ -59,7 +59,7 @@ public sealed partial class Source2CompiledModelAdapter
     {
         RecipeValidator.Validate(new RecipeDocument
         {
-            SchemaVersion = request.Operation.Version == 6 ? 7 : 6,
+            SchemaVersion = request.Operation.Version == 7 ? 8 : request.Operation.Version == 6 ? 7 : 6,
             RecipeId = "experimental",
             InputHash = request.Input.ContentHash,
             Operations = [request.Operation],
@@ -83,7 +83,7 @@ public sealed partial class Source2CompiledModelAdapter
         return (profiles, presentLods);
     }
 
-    private static (Model Model, KVObject Spheres, HashSet<int> AffectedRoots) ResolveExperimentalPlanningRoot(
+    private static (Model Model, KVObject Spheres, HashSet<int> AffectedRoots) ResolveExperimentalRootMetadata(
         ParsedModel parsed, IReadOnlyList<Source2AffineProfile> profiles)
     {
         var model = parsed.Resource.Blocks.OfType<Model>().Single();

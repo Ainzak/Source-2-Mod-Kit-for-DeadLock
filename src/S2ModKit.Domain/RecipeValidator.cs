@@ -11,9 +11,9 @@ public static partial class RecipeValidator
     {
         ArgumentNullException.ThrowIfNull(recipe);
 
-        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7))
+        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8))
         {
-            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 7 are supported.", "Migrate the recipe to a published schema version.");
+            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 8 are supported.", "Migrate the recipe to a published schema version.");
         }
 
         ValidateIdentifier(recipe.RecipeId, "recipeId");
@@ -26,6 +26,10 @@ public static partial class RecipeValidator
         {
             throw Errors.InvalidRecipe("RECIPE_EMPTY", "A recipe must contain at least one operation.", "Add a supported typed operation.");
         }
+
+        if (recipe.SchemaVersion == 8
+            && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 7 }))
+            throw EllipsoidInvalid("Schema 8 requires exactly one transform_component@7 field declaration.");
 
         if (recipe.SchemaVersion == 7
             && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 6 }))
@@ -72,6 +76,8 @@ public static partial class RecipeValidator
             }
 
             ValidateOperation(operation);
+            if (operation is TransformComponentOperation { Version: 7 } && recipe.SchemaVersion != 8)
+                throw EllipsoidInvalid("Ellipsoid transforms require recipe schema 8.");
             if (operation is TransformComponentOperation { Version: 6 } && recipe.SchemaVersion != 7)
                 throw Errors.InvalidRecipe("SCHEMA_OPERATION_MISMATCH", "Region transforms require recipe schema 7.", "Use the explicit region contract.");
             if (!operationIds.Add(operation.OperationId))
@@ -124,6 +130,8 @@ public static partial class RecipeValidator
 
     private static void ValidateTransformComponent(TransformComponentOperation operation)
     {
+        if (operation.Version != 7 && operation.LocalTransform is not null)
+            throw EllipsoidInvalid("Earlier operations cannot contain localTransform.");
         if (operation.Version != 6 && operation.Region is not null)
             throw Errors.InvalidRecipe("REGION_SELECTION_UNSUPPORTED", "Earlier transforms cannot use a region mask.", "Use the separately versioned region contract.");
         var validGranularity = operation.Version switch
@@ -133,6 +141,7 @@ public static partial class RecipeValidator
             4 => operation.Granularity is "draw_call_vertices" or "connected_component_vertices",
             5 => operation.Granularity == "draw_call_vertices",
             6 => operation.Granularity == "axis_ramp_vertices",
+            7 => operation.Granularity == "ellipsoid_vertices",
             _ => false,
         };
         if (!validGranularity)
@@ -153,6 +162,12 @@ public static partial class RecipeValidator
             throw Errors.InvalidRecipe("OWNERSHIP_POLICY_UNSUPPORTED", "transform_component@1 requires exclusive vertex ownership.", "Set ownershipPolicy to exclusive.");
         }
 
+
+        if (operation.Version == 7)
+        {
+            ValidateEllipsoidTransform(operation);
+            return;
+        }
 
         var usesConnectedComponents = operation.Version == 3
             || operation is { Version: 4, Granularity: "connected_component_vertices" };
@@ -456,7 +471,7 @@ public static partial class RecipeValidator
         }
     }
 
-    private static void ValidateSelector(ComponentSelector? selector)
+    public static void ValidateSelector(ComponentSelector? selector)
     {
         if (selector is null)
         {

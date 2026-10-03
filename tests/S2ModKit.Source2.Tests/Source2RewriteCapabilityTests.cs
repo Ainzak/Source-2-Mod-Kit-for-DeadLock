@@ -10,6 +10,16 @@ public sealed class Source2RewriteCapabilityTests
     private static readonly ContentHash BlockHash = ContentHash.Compute("block"u8);
 
     [Fact]
+    public void EllipsoidContractCannotEnterAnyExistingWriter()
+    {
+        var adapter = new Source2CompiledModelAdapter();
+        var original = RemovalPlan();
+        Assert.False(adapter.CanRewrite(Model("MDAT", "MVTX", "MIDX"), original with { SchemaVersion = 4 }));
+        Assert.False(adapter.CanRewrite(Model("MDAT", "MVTX", "MIDX"), original with
+        { Operations = [original.Operations[0] with { Kind = "transform_component", Version = 7 }] }));
+    }
+
+    [Fact]
     public void RemovalRewriteRemainsRootBufferOnlyAfterMbufInspectionIsEnabled()
     {
         var adapter = new Source2CompiledModelAdapter();

@@ -125,7 +125,7 @@ public sealed partial class Source2CompiledModelAdapter
         SelectedDrawCall[] selected,
         bool preserveAuthoredEnvelopes)
     {
-        if (preserveAuthoredEnvelopes && request.Operation.Version is not (5 or 6))
+        if (preserveAuthoredEnvelopes && request.Operation.Version is not (5 or 6 or 7))
         {
             throw Errors.Unsupported("RUNTIME_METADATA_POLICY_UNSUPPORTED", "Authored-envelope preservation is exclusive to the experimental version-5 contract.", "Use the unchanged strict operation policy.");
         }
@@ -210,7 +210,7 @@ public sealed partial class Source2CompiledModelAdapter
 
         int[] selectedVertices;
         string[] componentIds;
-        if (request.Operation.Granularity is "draw_call_vertices" or "axis_ramp_vertices")
+        if (request.Operation.Granularity is "draw_call_vertices" or "axis_ramp_vertices" or "ellipsoid_vertices")
         {
             selectedVertices = geometry.DrawCalls
                 .Where(call => selectedIds.Contains(call.Snapshot.DrawCallId))

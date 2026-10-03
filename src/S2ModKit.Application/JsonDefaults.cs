@@ -26,7 +26,23 @@ public static class JsonDefaults
 
             var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
                 ?? throw Errors.InvalidRecipe("JSON_NULL_DOCUMENT", $"{description} cannot be null.", "Provide a JSON object matching the published schema.");
-            if (result is EvidenceReport evidence) ExperimentalEvidenceValidator.Validate(evidence);
+            if (result is RecipeDocument { SchemaVersion: 8 } recipe)
+            {
+                // Shape dispatch already forbids a serialized legacy transform, including
+                // null. Remove only the old CLR initializer revived by its absence.
+                recipe = recipe with
+                {
+                    Operations = recipe.Operations.Select(operation => operation is TransformComponentOperation transform
+                    ? transform with { Transform = null! } : operation).ToArray()
+                };
+                EllipsoidContractValidator.ValidateRecipe(recipe);
+                result = (T)(object)recipe;
+            }
+            if (result is EvidenceReport evidence)
+            {
+                if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
+                else ExperimentalEvidenceValidator.Validate(evidence);
+            }
             return result;
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
@@ -46,6 +62,7 @@ public static class JsonDefaults
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (EllipsoidContractJson.RecipeShape(root)) return;
         var versions = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();
         var regionRecipe = versions.Any(property => property.Value.ValueKind == JsonValueKind.Number
             && property.Value.TryGetInt32(out var v) && v == 7);

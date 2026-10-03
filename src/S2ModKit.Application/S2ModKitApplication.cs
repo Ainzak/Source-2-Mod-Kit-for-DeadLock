@@ -183,6 +183,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var internalVerification = ModelVerifier.Verify(before, candidate.Snapshot, plan);
         var experimentalVerification = await VerifyExperimentalAsync(input,
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
+        var ellipsoidVerification = await VerifyEllipsoidAsync(input,
+            new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = new List<BoundaryEvidence>
         {
@@ -191,6 +193,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         };
         boundaries.AddRange(internalVerification.Boundaries);
         if (experimentalVerification is not null) boundaries.AddRange(experimentalVerification.Boundaries);
+        if (ellipsoidVerification is not null) boundaries.AddRange(ellipsoidVerification.Boundaries);
         boundaries.Add(externalBoundary);
         boundaries.Add(new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed."));
 
@@ -201,7 +204,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var buildId = $"{plan.Fingerprint.Value[..16]}-{computedOutputHash.Value[..12]}";
-        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification);
+        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification);
         var publication = new BuildPublication(buildId, plan, candidate, reports.RenderJson(evidence), reports.RenderMarkdown(evidence));
         var published = await workspace.PublishBuildAsync(projectRoot, publication, cancellationToken).ConfigureAwait(false);
         var publishedEvidence = JsonDefaults.Deserialize<EvidenceReport>(Encoding.UTF8.GetBytes(published.EvidenceJson), "Published build evidence");
@@ -220,9 +223,11 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var after = await inspector.InspectAsync(candidateContent, cancellationToken).ConfigureAwait(false);
         var internalVerification = ModelVerifier.Verify(before, after, plan);
         var experimentalVerification = await VerifyExperimentalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
+        var ellipsoidVerification = await VerifyEllipsoidAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var candidate = new RewriteCandidate(candidateContent.LogicalPath, candidateContent.Bytes, after);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = internalVerification.Boundaries.Concat(experimentalVerification?.Boundaries ?? [])
+            .Concat(ellipsoidVerification?.Boundaries ?? [])
             .Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
 
         if (!internalVerification.IsValid || externalBoundary.Status == "failed")
@@ -231,7 +236,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var reportId = $"{buildId}-verify";
-        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification);
+        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification);
         await workspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VerifyRunResult(published, evidence);
     }
@@ -271,6 +276,15 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         return await verifier.VerifyExperimentalTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<EllipsoidTransformVerification?> VerifyEllipsoidAsync(
+        ArtifactContent input, ArtifactContent output, MutationPlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.SchemaVersion != 4) return null;
+        if (rewriter is not IEllipsoidTransformVerifier verifier)
+            throw Errors.Unsupported("ELLIPSOID_VERIFIER_REQUIRED", "The configured adapter has no independent ellipsoid resource verifier.", "Do not publish this build.");
+        return await verifier.VerifyEllipsoidTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
+    }
+
     private void RequireInspector(ArtifactContent input)
     {
         if (!inspector.CanInspect(input))
@@ -291,7 +305,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         MutationPlan plan,
         IReadOnlyList<BoundaryEvidence> boundaries,
         IReadOnlyList<string> warnings,
-        ExperimentalTransformVerification? experimentalVerification = null)
+        ExperimentalTransformVerification? experimentalVerification = null,
+        EllipsoidTransformVerification? ellipsoidVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -355,13 +370,26 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                     throw Errors.Verification("EXPERIMENTAL_EVIDENCE_INVALID", "Observed evidence does not cover every frozen target exactly.", "Do not publish this output.");
             }
         }
+        if (plan.SchemaVersion == 4)
+        {
+            operationWarnings.Add("Experimental ellipsoid visual edit: bind-space geometry and boxes are verified offline; sphere containment, occlusion coherence, collision correspondence and runtime remain untested.");
+            if (after is null) boundaries = boundaries.Concat(EllipsoidContractValidator.PlannedBoundaries().Where(b => b.Name != "runtime")).ToArray();
+            else
+            {
+                var target = plan.Operations.Single().EllipsoidTransformTarget!;
+                if (ellipsoidVerification is null
+                    || JsonDefaults.Serialize(ellipsoidVerification.Boxes.Select(b => b.Target).ToArray()) != JsonDefaults.Serialize(target.BoxTargets)
+                    || JsonDefaults.Serialize(ellipsoidVerification.PreservedMetadata.Select(p => p.Target).ToArray()) != JsonDefaults.Serialize(target.PreservationTargets))
+                    throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "Observed evidence does not cover every frozen target exactly.", "Do not publish this output.");
+            }
+        }
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var report = new EvidenceReport
         {
-            SchemaVersion = plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
+            SchemaVersion = plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -374,7 +402,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 .ToArray(),
             Output = output is null ? null : new ArtifactEvidence(output.LogicalPath, output.ContentHash, output.Bytes.Length, "generated", $"build:{output.ContentHash}", "sha256_and_semantic_reopen"),
             PlanFingerprint = plan.Fingerprint,
-            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification)).ToArray(),
+            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification)).ToArray(),
             Boundaries = boundaries,
             Blocks = CreateBlockEvidence(before, after, plan),
             ToolVersions = toolVersions,
@@ -394,7 +422,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             manifest.VerificationMode);
 
     private static OperationEvidence CreateOperationEvidence(PlannedOperation operation, ModelSnapshot? after,
-        ExperimentalTransformVerification? experimentalVerification)
+        ExperimentalTransformVerification? experimentalVerification, EllipsoidTransformVerification? ellipsoidVerification)
     {
         var outputBlocks = after?.Artifact.Blocks.ToDictionary(block => block.Index);
         return new OperationEvidence(
@@ -435,6 +463,10 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 experimentalVerification?.Boxes ?? visual.BoxTargets.Select(box => new ExperimentalBoxEvidence(box, null, "planned")).ToArray(),
                 experimentalVerification?.PreservedMetadata ?? visual.PreservationTargets.Select(field => new ExperimentalPreservationEvidence(field, null, null, "planned")).ToArray())
             { Region = visual.Region } : null,
+            EllipsoidTransform = operation.EllipsoidTransformTarget is { } ellipsoid ? new(ellipsoid,
+                ellipsoidVerification?.Buffers,
+                ellipsoidVerification?.Boxes ?? ellipsoid.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
+                ellipsoidVerification?.PreservedMetadata ?? ellipsoid.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
         };
     }
 

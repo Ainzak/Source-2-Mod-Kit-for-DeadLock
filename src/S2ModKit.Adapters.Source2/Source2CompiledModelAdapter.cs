@@ -12,7 +12,7 @@ using ValveResourceFormat.Utils;
 
 namespace S2ModKit.Adapters.Source2;
 
-public sealed partial class Source2CompiledModelAdapter : IModelInspector, IResourceDependencyReader, IModelRewriter, ITransformOperationPlanner, IExperimentalTransformVerifier
+public sealed partial class Source2CompiledModelAdapter : IModelInspector, IResourceDependencyReader, IModelRewriter, ITransformOperationPlanner, IExperimentalTransformVerifier, IEllipsoidTransformVerifier
 {
     private const int MaximumEmbeddedMeshCount = 4096;
     private const int MaximumDrawCallsPerMesh = 65536;

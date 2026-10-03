@@ -4,7 +4,7 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Application.Tests;
 
-public sealed class SyntheticPipelineTests
+public sealed partial class SyntheticPipelineTests
 {
     [Fact]
     public async Task BuildAndVerifyRemovesOneDrawCallFromEveryLodAndPreservesInput()

@@ -102,6 +102,11 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Selection("TRANSFORM_SELECTION_INVALID", "The transform selection is empty or contains duplicate draw-call identities.", "Regenerate a non-empty canonical selection.");
         }
 
+        if (request.Operation.Version == 7)
+        {
+            return PlanEllipsoidTransform(request, parsed);
+        }
+
         if (request.Operation.Version is 5 or 6)
         {
             return PlanExperimentalTransform(request, parsed);

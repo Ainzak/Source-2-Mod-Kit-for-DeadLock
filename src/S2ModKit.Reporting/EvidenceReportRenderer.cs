@@ -85,6 +85,17 @@ public sealed class EvidenceReportRenderer : IReportRenderer, IVpkPackageReportR
                 text.AppendLine("  - Sphere containment, proxy coherence and collision correspondence remain untested.");
             }
 
+            if (operation.EllipsoidTransform is { } localized)
+            {
+                var target = localized.Target;
+                AppendInvariantLine(text, $"- Ellipsoid field: center {Format(target.LocalTransform.Field.Center)}; radii {Format(target.LocalTransform.Field.OuterRadii)}; core fraction {target.LocalTransform.Field.CoreFraction:R}; scale {target.LocalTransform.UniformScale:R}.");
+                AppendInvariantLine(text, $"  - Jacobian certificate: minimum radial eigenvalue {target.Certificate.LowerBound:R}; minimum singular value {target.Certificate.MinimumSingularValueLowerBound:R}.");
+                foreach (var buffer in target.Buffers)
+                    AppendInvariantLine(text, $"  - LOD {buffer.Lod}: core {buffer.CoreVertexCount}, transition {buffer.TransitionVertexCount}, pinned {buffer.PinnedVertexCount}; changed positions {buffer.ChangedPositionCount}, frames {buffer.ChangedFrameCount}; displacement {buffer.MaximumDisplacement:R}/{target.DisplacementLimit:R}.");
+                AppendInvariantLine(text, $"  - Boxes: {localized.Boxes.Count}; preserved fields/payloads: {localized.PreservedMetadata.Count}; reopened buffers: {localized.ObservedBuffers?.Count ?? 0}.");
+                text.AppendLine("  - Sphere containment, proxy coherence, collision correspondence and runtime remain untested.");
+            }
+
             if (operation.AffineTransform is { } affine)
             {
                 AppendInvariantLine(text, $"- Affine profile: `{Escape(affine.StructuralProfileId)}@{affine.StructuralProfileVersion}`; selection `{Escape(affine.SelectionKind)}`");

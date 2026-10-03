@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/recipe/v8/only",
+  "title": "S2ModKit ellipsoid recipe v8",
+  "$ref": "../ellipsoid-contracts.schema.json#/definitions/recipe"
+}

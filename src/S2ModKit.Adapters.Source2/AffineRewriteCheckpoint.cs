@@ -8,4 +8,6 @@ internal enum AffineRewriteCheckpoint
     VertexBufferEncoded,
     MetadataSerialized,
     EnvelopeRebuilt,
+    OutputReopened,
+    ReopenVerified,
 }

@@ -40,6 +40,9 @@ public sealed record PlannedOperation(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PlannedExperimentalTransformTarget? ExperimentalTransformTarget { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedEllipsoidTransformTarget? EllipsoidTransformTarget { get; init; }
 }
 
 public sealed record GeometryBounds(

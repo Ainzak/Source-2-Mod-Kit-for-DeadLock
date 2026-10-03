@@ -11,6 +11,8 @@ public static class MutationPlanJson
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) throw Invalid("A mutation plan must be an object.");
+        if (EllipsoidContractJson.HasVersion(root, 4)) return EllipsoidContractJson.ReadPlan(root, json);
+        EllipsoidContractJson.RejectOperationProperty(root, "ellipsoidTransformTarget");
         var discriminators = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();
         if (discriminators.Length > 1) throw Invalid("The plan version discriminator is duplicated.");
         var experimental = discriminators.Length == 1;
@@ -76,10 +78,27 @@ public static class MutationPlanJson
     /// <summary>All serialized semantic facts enter a canonical property-ordered digest; the digest itself does not.</summary>
     public static ContentHash ComputeExperimentalFingerprint(MutationPlan plan)
     {
-        if (plan.SchemaVersion is not (2 or 3)) throw Invalid("Only experimental plan versions 2 and 3 use this fingerprint.");
+        if (plan.SchemaVersion is not (2 or 3 or 4)) throw Invalid("Only experimental plan versions 2 through 4 use this fingerprint.");
         var facts = JsonSerializer.SerializeToElement(new { plan.SchemaVersion, plan.RecipeId, plan.InputHash, plan.Inputs, plan.Operations }, JsonDefaults.Options);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, facts);
+        return ContentHash.Compute(stream.ToArray());
+    }
+
+    public static ContentHash ComputeEllipsoidTargetFingerprint(PlannedEllipsoidTransformTarget target)
+    {
+        var facts = JsonSerializer.SerializeToElement(target, JsonDefaults.Options);
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            foreach (var property in facts.EnumerateObject().Where(p => p.Name != "targetFingerprint").OrderBy(p => p.Name, StringComparer.Ordinal))
+            {
+                writer.WritePropertyName(property.Name);
+                WriteCanonical(writer, property.Value);
+            }
+            writer.WriteEndObject();
+        }
         return ContentHash.Compute(stream.ToArray());
     }
 
@@ -142,6 +161,30 @@ public static class MutationPlanJson
         if (regionPlan) ValidateRegion(target);
         else if (target.Region is not null) throw Invalid("Earlier plans cannot use region facts.");
 
+        var expectations = operation.SelectedDrawCalls.GroupBy(call => call.Lod).ToDictionary(group => group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), group => group.Count());
+        var vertices = target.GeometryTargets.GroupBy(item => item.Lod).ToDictionary(group => group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), group => group.Sum(item => item.SelectedVertexCount));
+        RecipeValidator.Validate(new RecipeDocument
+        {
+            SchemaVersion = regionPlan ? 7 : 6,
+            RecipeId = plan.RecipeId,
+            InputHash = plan.InputHash,
+            Operations = [new TransformComponentOperation
+            {
+                OperationId = operation.OperationId, Version = regionPlan ? 6 : 5, Granularity = regionPlan ? "axis_ramp_vertices" : "draw_call_vertices", Selector = target.Selector,
+                Region = target.Region?.Selection,
+                ExpectedMatchesByLod = expectations, ExpectedVerticesByLod = vertices, RuntimeMetadataPolicy = target.RuntimeMetadataPolicy,
+                Transform = new ComponentTransform { Pivot = target.PivotIntent, UniformScale = target.UniformScale },
+                Limits = new TransformLimits { MaximumVertexDisplacement = target.DisplacementLimit },
+            }],
+        });
+        ValidateStorageFacts(plan, operation, target.GeometryTargets, target.BoxTargets, target.PreservationTargets, target.SourceBlocks);
+    }
+
+    internal static void ValidateStorageFacts(MutationPlan plan, PlannedOperation operation,
+        IReadOnlyList<PlannedGeometryTarget> geometryTargets, IReadOnlyList<PlannedExperimentalBoxTarget> boxTargets,
+        IReadOnlyList<PlannedExperimentalPreservationTarget> preservationTargets, IReadOnlyList<PlannedTargetBlock> sourceBlocks)
+    {
+        var target = new { GeometryTargets = geometryTargets, BoxTargets = boxTargets, PreservationTargets = preservationTargets, SourceBlocks = sourceBlocks };
         if (target.SourceBlocks.Select(block => block.Index).Distinct().Count() != target.SourceBlocks.Count
             || target.SourceBlocks.Any(block => block.Index < 0 || string.IsNullOrWhiteSpace(block.Type) || !ValidHash(block.InputHash))
             || operation.TargetBlocks.Select(block => block.Index).Distinct().Count() != operation.TargetBlocks.Count
@@ -166,22 +209,13 @@ public static class MutationPlanJson
             throw Invalid("A geometry or mutation target does not match the complete source-block inventory.");
         }
 
-        var expectations = operation.SelectedDrawCalls.GroupBy(call => call.Lod).ToDictionary(group => group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), group => group.Count());
-        var vertices = target.GeometryTargets.GroupBy(item => item.Lod).ToDictionary(group => group.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), group => group.Sum(item => item.SelectedVertexCount));
-        RecipeValidator.Validate(new RecipeDocument
-        {
-            SchemaVersion = regionPlan ? 7 : 6,
-            RecipeId = plan.RecipeId,
-            InputHash = plan.InputHash,
-            Operations = [new TransformComponentOperation
-            {
-                OperationId = operation.OperationId, Version = regionPlan ? 6 : 5, Granularity = regionPlan ? "axis_ramp_vertices" : "draw_call_vertices", Selector = target.Selector,
-                Region = target.Region?.Selection,
-                ExpectedMatchesByLod = expectations, ExpectedVerticesByLod = vertices, RuntimeMetadataPolicy = target.RuntimeMetadataPolicy,
-                Transform = new ComponentTransform { Pivot = target.PivotIntent, UniformScale = target.UniformScale },
-                Limits = new TransformLimits { MaximumVertexDisplacement = target.DisplacementLimit },
-            }],
-        });
+        ValidateMetadataFacts(target.BoxTargets, target.PreservationTargets, sources);
+    }
+
+    internal static void ValidateMetadataFacts(IReadOnlyList<PlannedExperimentalBoxTarget> boxTargets,
+        IReadOnlyList<PlannedExperimentalPreservationTarget> preservationTargets, IReadOnlyDictionary<int, PlannedTargetBlock> sources)
+    {
+        var target = new { BoxTargets = boxTargets, PreservationTargets = preservationTargets };
         if (target.BoxTargets.Any(box => box.ResourceBlockIndex < 0 || string.IsNullOrWhiteSpace(box.FieldPath)
                 || box.Storage is not ("min_max" or "center_half_extent") || string.IsNullOrWhiteSpace(box.CoordinateSpace)
                 || box.CoordinateMatrixWords is not { Count: 12 } || box.ContributorCount < 1

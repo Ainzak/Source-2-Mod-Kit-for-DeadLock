@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/mutation-plan/v4",
+  "title": "S2ModKit ellipsoid mutation plan v4",
+  "$ref": "ellipsoid-contracts.schema.json#/definitions/plan"
+}

@@ -64,7 +64,7 @@ public sealed partial class Source2CompiledModelAdapter
             token.ThrowIfCancellationRequested();
             VerifyExperimentalGeometry(source, observed: outputProfiles[source.Mesh.MeshOrdinal], target);
             var observed = outputProfiles[source.Mesh.MeshOrdinal];
-            var (affected, sourceBoxes, evidence) = VerifyExperimentalBoxes(input, source, observed, target);
+            var (affected, sourceBoxes, evidence) = VerifyExperimentalBoxes(input, source, observed, target.BoxTargets);
             boxEvidence.AddRange(evidence);
             foreach (var box in sourceBoxes) expectedBoxKeys.Add((box.ResourceBlockIndex, box.FieldPath));
             // Undo only the reviewed float fields in an independent output tree. The complete
@@ -100,14 +100,18 @@ public sealed partial class Source2CompiledModelAdapter
     }
     private static HashSet<int> VerifyExperimentalEnvelope(ParsedModel before,
         Source2ResourceEnvelope outputEnvelope, ArtifactContent output, PlannedOperation operation)
+        => VerifyExperimentalEnvelope(before, outputEnvelope, output, operation.ExperimentalTransformTarget!.SourceBlocks, operation.TargetBlocks);
+
+    private static HashSet<int> VerifyExperimentalEnvelope(ParsedModel before,
+        Source2ResourceEnvelope outputEnvelope, ArtifactContent output, IReadOnlyList<PlannedTargetBlock> frozenSources,
+        IReadOnlyList<PlannedTargetBlock> mutationBlocks)
     {
-        var target = operation.ExperimentalTransformTarget!;
         var sourceBlocks = before.Envelope.Blocks.Select(block => new PlannedTargetBlock(block.Index, block.Type, ContentHash.Compute(block.Payload.Span))).ToArray();
-        if (!sourceBlocks.SequenceEqual(target.SourceBlocks) || before.Envelope.Blocks.Count != outputEnvelope.Blocks.Count
+        if (!sourceBlocks.SequenceEqual(frozenSources) || before.Envelope.Blocks.Count != outputEnvelope.Blocks.Count
             || before.Envelope.HeaderVersion != outputEnvelope.HeaderVersion || before.Envelope.ResourceVersion != outputEnvelope.ResourceVersion
             || before.Envelope.TableStart != outputEnvelope.TableStart)
             throw ExperimentalAuditFailure("The complete original resource inventory differs from the frozen source.");
-        var mutable = operation.TargetBlocks.Select(block => block.Index).ToHashSet();
+        var mutable = mutationBlocks.Select(block => block.Index).ToHashSet();
         foreach (var block in before.Envelope.Blocks)
         {
             var observed = outputEnvelope.Blocks[block.Index];
@@ -161,12 +165,12 @@ public sealed partial class Source2CompiledModelAdapter
 
     private static (Source2BoneBoundsAnalysis[] Affected, PlannedExperimentalBoxTarget[] Boxes, List<ExperimentalBoxEvidence> Evidence)
         VerifyExperimentalBoxes(ArtifactContent input, Source2AffineProfile source,
-            Source2AffineProfile observed, PlannedExperimentalTransformTarget target)
+            Source2AffineProfile observed, IReadOnlyList<PlannedExperimentalBoxTarget> targets)
     {
         var boxEvidence = new List<ExperimentalBoxEvidence>();
         var affected = source.Metadata.BoneBounds.Where(bone => bone.InfluencedVertices.Any(vertex =>
             vertex >= source.BufferBaseOffset && vertex < source.BufferBaseOffset + source.Vertices.Snapshot.VertexCount)).ToArray();
-        var sourceBoxes = target.BoxTargets.Where(box => box.ResourceBlockIndex == source.Mesh.BlockIndex).ToArray();
+        var sourceBoxes = targets.Where(box => box.ResourceBlockIndex == source.Mesh.BlockIndex).ToArray();
         var requiredFields = affected.Select(bone => $"m_skeleton.m_bones[{bone.BoneIndex}].m_bbox.m_vecCenter+m_vecSize")
             .Prepend("m_sceneObjects[0].m_vMinBounds+m_vMaxBounds").ToHashSet(StringComparer.Ordinal);
         if (!requiredFields.SetEquals(sourceBoxes.Select(box => box.FieldPath)) || sourceBoxes.Length != requiredFields.Count)

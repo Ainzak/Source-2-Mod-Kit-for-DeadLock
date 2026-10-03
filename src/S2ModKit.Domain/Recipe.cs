@@ -70,6 +70,9 @@ public sealed record TransformComponentOperation : RecipeOperation
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RegionScaleSelection? Region { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EllipsoidVisualTransform? LocalTransform { get; init; }
+
     public ComponentTransform Transform { get; init; } = new();
 
     public TransformLimits Limits { get; init; } = new();
