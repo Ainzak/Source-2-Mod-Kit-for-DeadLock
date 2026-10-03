@@ -109,6 +109,9 @@ public sealed record ComponentDiscoveryResultV2(
     IReadOnlyList<ComponentCandidateV2> Candidates,
     IReadOnlyList<ComponentLineageDiagnostic> LineageDiagnostics)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RuntimeMetadataPolicy? ExperimentalPolicy { get; init; }
+
     public IReadOnlyDictionary<string, JsonElement> Extensions { get; init; } =
         new Dictionary<string, JsonElement>();
 }

@@ -9,9 +9,10 @@ internal static class ComponentCandidateIdentity
     internal static string ComputeMaterialCandidateId(
         ComponentModelIdentity model,
         string materialPath,
-        ComponentCandidateLod[] lods)
+        ComponentCandidateLod[] lods,
+        int schemaVersion = 2)
     {
-        var builder = CandidateIdentityBuilder(model, ComponentDiscoveryV2Contract.MaterialGroupKind)
+        var builder = CandidateIdentityBuilder(model, ComponentDiscoveryV2Contract.MaterialGroupKind, schemaVersion)
             .Add(materialPath)
             .Add(lods.Length);
         foreach (var lod in lods)
@@ -30,9 +31,10 @@ internal static class ComponentCandidateIdentity
         ComponentModelIdentity model,
         string lineageKey,
         string sourceLabel,
-        MeshLineageCandidateLod[] lods)
+        MeshLineageCandidateLod[] lods,
+        int schemaVersion = 2)
     {
-        var builder = CandidateIdentityBuilder(model, ComponentDiscoveryV2Contract.MeshLineageKind)
+        var builder = CandidateIdentityBuilder(model, ComponentDiscoveryV2Contract.MeshLineageKind, schemaVersion)
             .Add(lineageKey)
             .Add(sourceLabel)
             .Add(lods.Length);
@@ -61,10 +63,10 @@ internal static class ComponentCandidateIdentity
         return $"cmp_{builder.ComputeHash().Value[..24]}";
     }
 
-    private static CanonicalTextBuilder CandidateIdentityBuilder(ComponentModelIdentity model, string kind) =>
+    private static CanonicalTextBuilder CandidateIdentityBuilder(ComponentModelIdentity model, string kind, int schemaVersion) =>
         new CanonicalTextBuilder()
             .Add("component_candidate")
-            .Add(ComponentDiscoveryV2Contract.SchemaVersion)
+            .Add(schemaVersion)
             .Add(model.LogicalPath)
             .Add(model.ContentHash.ToString())
             .Add(kind);
@@ -73,11 +75,12 @@ internal static class ComponentCandidateIdentity
         ComponentModelIdentity model,
         ComponentCapabilityAnalyzerIdentity analyzer,
         ComponentCandidateV2[] candidates,
-        IReadOnlyList<ComponentLineageDiagnostic> diagnostics)
+        IReadOnlyList<ComponentLineageDiagnostic> diagnostics,
+        int schemaVersion = 2)
     {
         var builder = new CanonicalTextBuilder()
             .Add("component_discovery")
-            .Add(ComponentDiscoveryV2Contract.SchemaVersion)
+            .Add(schemaVersion)
             .Add(model.LogicalPath)
             .Add(model.ContentHash.ToString())
             .Add(model.Size)

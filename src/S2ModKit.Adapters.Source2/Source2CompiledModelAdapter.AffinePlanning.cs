@@ -117,8 +117,19 @@ public sealed partial class Source2CompiledModelAdapter
     private static Source2AffineProfile CreateAffineProfile(
         TransformPlanningRequest request,
         ParsedModel parsed,
-        SelectedDrawCall[] selected)
+        SelectedDrawCall[] selected) => CreateRootBufferProfile(request, parsed, selected, preserveAuthoredEnvelopes: false);
+
+    private static Source2AffineProfile CreateRootBufferProfile(
+        TransformPlanningRequest request,
+        ParsedModel parsed,
+        SelectedDrawCall[] selected,
+        bool preserveAuthoredEnvelopes)
     {
+        if (preserveAuthoredEnvelopes && request.Operation.Version is not (5 or 6))
+        {
+            throw Errors.Unsupported("RUNTIME_METADATA_POLICY_UNSUPPORTED", "Authored-envelope preservation is exclusive to the experimental version-5 contract.", "Use the unchanged strict operation policy.");
+        }
+
         var first = selected[0];
         if (!parsed.MeshesByOrdinal.TryGetValue(first.MeshOrdinal, out var mesh)
             || mesh.Lod != first.Lod
@@ -180,11 +191,15 @@ public sealed partial class Source2CompiledModelAdapter
         }
 
         var isMultiBuffer = geometry.VertexBuffers.Count > 1;
-        var metadata = isMultiBuffer
+        var metadata = preserveAuthoredEnvelopes
+            ? Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry,
+                $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}")
+            : isMultiBuffer
             ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data, geometry,
                 $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}")
             : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data, geometry,
-                $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}", boneSizeIsHalfExtent: true);
+                $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}", boneSizeIsHalfExtent: true,
+                allowWideBlendIndices: true, requireCommonSkinningRoot: false, requireAllBoneSpheres: false);
         if (selected.Any(item => !mesh.DrawCalls.Any(location => Matches(location.Snapshot, item))))
         {
             throw Errors.Verification(
@@ -195,7 +210,7 @@ public sealed partial class Source2CompiledModelAdapter
 
         int[] selectedVertices;
         string[] componentIds;
-        if (request.Operation.Granularity == "draw_call_vertices")
+        if (request.Operation.Granularity is "draw_call_vertices" or "axis_ramp_vertices")
         {
             selectedVertices = geometry.DrawCalls
                 .Where(call => selectedIds.Contains(call.Snapshot.DrawCallId))
@@ -280,7 +295,9 @@ public sealed partial class Source2CompiledModelAdapter
             .SelectMany(buffer => Enumerable.Range(0, buffer.Snapshot.VertexCount)
                 .Select(vertex => Source2GeometryAnalyzer.ReadPosition(buffer, vertex)))
             .ToArray();
-        // Every affine profile must reproduce affected bounds from all participating vertices.
+        // Strict affine profiles retain their original exact-reproduction gate. Experimental
+        // admission checks raw positive extents and applies its distinct retain-and-expand policy.
+        if (!preserveAuthoredEnvelopes)
         {
             var affected = selectedVertices.Select(vertex => vertex + bufferBaseOffset).ToHashSet();
             foreach (var bone in metadata.BoneBounds.Where(bone => bone.InfluencedVertices.Any(affected.Contains)))
@@ -301,7 +318,8 @@ public sealed partial class Source2CompiledModelAdapter
                 if (!NearlySameAffineBounds(exactBounds, bone.LocalBounds))
                 {
                     throw Errors.Unsupported("AFFINE_BOUNDS_UNSUPPORTED",
-                        $"LOD {mesh.Lod} affected bone '{bone.BoneName}' stored box does not match geometry-derived local bounds.",
+                        $"LOD {mesh.Lod} affected bone '{bone.BoneName}' stored box does not match geometry-derived local bounds " +
+                        $"({DescribeLargestBoundsDifference(exactBounds, bone.LocalBounds)}).",
                         "Select geometry with independently reproducible affected bone bounds.");
                 }
             }
@@ -622,6 +640,22 @@ public sealed partial class Source2CompiledModelAdapter
         return Near(left.Min.X, right.Min.X) && Near(left.Min.Y, right.Min.Y)
             && Near(left.Min.Z, right.Min.Z) && Near(left.Max.X, right.Max.X)
             && Near(left.Max.Y, right.Max.Y) && Near(left.Max.Z, right.Max.Z);
+    }
+
+    private static string DescribeLargestBoundsDifference(GeometryBounds computed, GeometryBounds stored)
+    {
+        var coordinates = new (string Axis, float Computed, float Stored)[]
+        {
+            ("min_x", computed.Min.X, stored.Min.X),
+            ("min_y", computed.Min.Y, stored.Min.Y),
+            ("min_z", computed.Min.Z, stored.Min.Z),
+            ("max_x", computed.Max.X, stored.Max.X),
+            ("max_y", computed.Max.Y, stored.Max.Y),
+            ("max_z", computed.Max.Z, stored.Max.Z),
+        };
+        var largest = coordinates.OrderByDescending(item => MathF.Abs(item.Computed - item.Stored)).First();
+        return $"{largest.Axis}: computed {largest.Computed.ToString("R", CultureInfo.InvariantCulture)}, " +
+            $"stored {largest.Stored.ToString("R", CultureInfo.InvariantCulture)}";
     }
 
     private sealed record Source2AffineProfile(

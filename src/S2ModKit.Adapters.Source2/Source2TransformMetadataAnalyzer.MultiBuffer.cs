@@ -13,7 +13,23 @@ internal static partial class Source2TransformMetadataAnalyzer
         KVObject embeddedMeshDescriptor,
         KVObject meshData,
         Source2GeometryAnalysis geometry,
-        string context)
+        string context) => AnalyzeRootBufferInventory(embeddedMeshDescriptor, meshData, geometry, context, preserveAuthoredEnvelopes: false);
+
+    // Read the same characterized formats, but do not mistake authored padding or an unresolved
+    // sphere producer formula for an error in this explicitly different visual-only contract.
+    // This entry point supplies raw facts; it neither qualifies bounds nor authorizes writing.
+    public static Source2WholeMeshTransformAnalysis AnalyzeVisualPreservationBuffers(
+        KVObject embeddedMeshDescriptor,
+        KVObject meshData,
+        Source2GeometryAnalysis geometry,
+        string context) => AnalyzeRootBufferInventory(embeddedMeshDescriptor, meshData, geometry, context, preserveAuthoredEnvelopes: true);
+
+    private static Source2WholeMeshTransformAnalysis AnalyzeRootBufferInventory(
+        KVObject embeddedMeshDescriptor,
+        KVObject meshData,
+        Source2GeometryAnalysis geometry,
+        string context,
+        bool preserveAuthoredEnvelopes)
     {
         ArgumentNullException.ThrowIfNull(embeddedMeshDescriptor);
         ArgumentNullException.ThrowIfNull(meshData);
@@ -21,7 +37,7 @@ internal static partial class Source2TransformMetadataAnalyzer
         ArgumentException.ThrowIfNullOrWhiteSpace(context);
         var buffers = geometry.VertexBuffers;
         var descriptors = RequireArray(embeddedMeshDescriptor, "m_vertexBuffers", context);
-        if (buffers.Count < 2 || buffers.Count != geometry.IndexBuffers.Count
+        if (buffers.Count < (preserveAuthoredEnvelopes ? 1 : 2) || buffers.Count != geometry.IndexBuffers.Count
             || buffers.Count != descriptors.Count || geometry.DrawCalls.Count == 0)
         {
             throw new InvalidDataException($"{context} has an incomplete multi-buffer geometry inventory.");
@@ -113,8 +129,8 @@ internal static partial class Source2TransformMetadataAnalyzer
                 .Distinct()
                 .Order()
                 .ToArray();
-            if (covered.Length != buffer.Snapshot.VertexCount
-                || covered.Where((vertex, index) => vertex != index).Any())
+            if (!preserveAuthoredEnvelopes && (covered.Length != buffer.Snapshot.VertexCount
+                || covered.Where((vertex, index) => vertex != index).Any()))
             {
                 throw new InvalidDataException($"{context} buffer {bufferOrdinal} has incomplete draw-call coverage.");
             }
@@ -166,14 +182,14 @@ internal static partial class Source2TransformMetadataAnalyzer
         }
 
         if (allPositions.Count == 0 || influencedIndices.Count == 0
-            || sceneBounds != ToDomainBounds(Bounds3.FromPoints(allPositions)))
+            || (!preserveAuthoredEnvelopes && sceneBounds != ToDomainBounds(Bounds3.FromPoints(allPositions))))
         {
             throw new InvalidDataException($"{context} multi-buffer scene bounds or skinning cannot be reproduced.");
         }
 
         var boneBounds = influencedIndices.Order()
             .Select(index => AnalyzeMultiBufferBoneBounds(
-                bones[index], verticesByBone[index], allPositions, context))
+                bones[index], verticesByBone[index], allPositions, context, calculateLegacyRadius: !preserveAuthoredEnvelopes))
             .ToImmutableArray();
         return new Source2WholeMeshTransformAnalysis(
             0,
@@ -190,19 +206,21 @@ internal static partial class Source2TransformMetadataAnalyzer
         Bone bone,
         HashSet<int> influencedVertices,
         List<Point3> allPositions,
-        string context)
+        string context,
+        bool calculateLegacyRadius)
     {
         var indices = influencedVertices.Order().ToArray();
-        var localPoints = indices
-            .Select(vertex => TransformPoint(allPositions[vertex], bone.InverseBindPose))
-            .ToArray();
-        var radius = localPoints.Max(point => MathF.Sqrt(
-            (point.X * point.X) + (point.Y * point.Y) + (point.Z * point.Z)));
-        if (!float.IsFinite(radius))
+        if (calculateLegacyRadius)
         {
-            throw new InvalidDataException(
-                $"{context} bone '{bone.Name}' multi-buffer culling sphere differs from its influenced vertices " +
-                $"(computed {radius.ToString("R", CultureInfo.InvariantCulture)}, stored {bone.SphereRadius.ToString("R", CultureInfo.InvariantCulture)}).");
+            var localPoints = indices.Select(vertex => TransformPoint(allPositions[vertex], bone.InverseBindPose)).ToArray();
+            var radius = localPoints.Max(point => MathF.Sqrt(
+                (point.X * point.X) + (point.Y * point.Y) + (point.Z * point.Z)));
+            if (!float.IsFinite(radius))
+            {
+                throw new InvalidDataException(
+                    $"{context} bone '{bone.Name}' multi-buffer culling sphere differs from its influenced vertices " +
+                    $"(computed {radius.ToString("R", CultureInfo.InvariantCulture)}, stored {bone.SphereRadius.ToString("R", CultureInfo.InvariantCulture)}).");
+            }
         }
 
         return new Source2BoneBoundsAnalysis(

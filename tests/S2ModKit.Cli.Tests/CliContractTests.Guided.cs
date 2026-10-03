@@ -153,6 +153,87 @@ public sealed partial class CliContractTests
         }
     }
 
+    [Theory]
+    [InlineData("1", 1)]
+    [InlineData("2", 2)]
+    public async Task InteractiveZeroFromHeroReturnsToSourceWithoutReopeningUnchangedInventory(string nextSource, int expectedOpens)
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        try
+        {
+            var inventoryFactory = new FakeCatalogueInventoryFactory(directoryHash);
+            var cli = new S2ModKitCli(
+                new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false, catalogueInventoryFactory: inventoryFactory);
+            using var input = new StringReader($"1\n0\n{nextSource}\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = await cli.RunAsync(
+                ["interactive", "--catalogue", cataloguePath, "--session", sessionPath,
+                    "--base-vpk", "first_dir.vpk", "--base-vpk", "second_dir.vpk"],
+                input, output, error, TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken),
+                "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(GuidedWorkflowContract.HeroSelectionStep, session.Step);
+            Assert.Equal($"source-{nextSource}", session.SelectedSourceId);
+            Assert.Null(session.SelectedHeroId);
+            Assert.Null(session.ProjectRoot);
+            Assert.Equal(expectedOpens, inventoryFactory.OpenCount);
+            Assert.Equal(2, Regex.Count(output.ToString(), "Choose a source:", RegexOptions.CultureInvariant));
+            Assert.Contains("0. Back to source selection", output.ToString(), StringComparison.Ordinal);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
+    public async Task InteractiveCancellationAfterHeroBackPausesAtSourceSelection()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        try
+        {
+            var cli = new S2ModKitCli(
+                new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
+            using var input = new StringReader("1\n0\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = await cli.RunAsync(
+                ["interactive", "--catalogue", cataloguePath, "--session", sessionPath,
+                    "--base-vpk", "pak01_dir.vpk"],
+                input, output, error, TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken),
+                "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(GuidedWorkflowContract.SourceSelectionStep, session.Step);
+            Assert.Equal(GuidedWorkflowContract.PausedStatus, session.Status);
+            Assert.Null(session.SelectedSourceId);
+            Assert.Null(session.ProjectRoot);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
     [Fact]
     public async Task InteractiveZeroReturnsFromComponentThroughResourceToHeroInSameSession()
     {
@@ -235,6 +316,113 @@ public sealed partial class CliContractTests
             Assert.Contains("Session JSON path", output.ToString(), StringComparison.Ordinal);
             Assert.DoesNotContain("Hero catalogue JSON path", output.ToString(), StringComparison.Ordinal);
             Assert.Contains("Choose a source type", output.ToString(), StringComparison.Ordinal);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
+    public async Task InteractiveSetupRepromptsForMissingVpkBeforeCreatingSession()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        var badPath = Path.Combine(Path.GetTempPath(), "missing-pak01_dir.vpk");
+        var goodPath = Path.Combine(Path.GetTempPath(), "pak01_dir.vpk");
+        try
+        {
+            var cli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash, badPath));
+            using var input = new StringReader($"{sessionPath}\n1\n{badPath}\n{goodPath}\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = await cli.RunAsync(["interactive", "--catalogue", cataloguePath], input, output, error,
+                TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken), "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(Path.GetFullPath(goodPath), session.Sources[0].Path);
+            Assert.Equal(2, Regex.Count(output.ToString(), "Source path:", RegexOptions.CultureInvariant));
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
+    public async Task InteractiveSetupCancelAfterMissingVpkLeavesNoSession()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        var badPath = Path.Combine(Path.GetTempPath(), "missing-pak01_dir.vpk");
+        try
+        {
+            var cli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash, badPath));
+            using var input = new StringReader($"{sessionPath}\n1\n{badPath}\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            Assert.Equal(0, await cli.RunAsync(["interactive", "--catalogue", cataloguePath], input, output, error,
+                TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(sessionPath));
+            Assert.Contains("Canceled; no session was created", output.ToString(), StringComparison.Ordinal);
+            Assert.Empty(error.ToString());
+        }
+        finally
+        {
+            File.Delete(cataloguePath);
+            File.Delete(sessionPath);
+        }
+    }
+
+    [Fact]
+    public async Task InteractiveResumeRepairsMissingSourceInSameSession()
+    {
+        var directoryHash = ContentHash.Compute("catalogue-directory"u8);
+        var cataloguePath = await WriteCatalogueAsync(directoryHash);
+        var sessionPath = Path.Combine(Path.GetTempPath(), $"s2modkit-guided-{Guid.NewGuid():N}.json");
+        var badPath = Path.Combine(Path.GetTempPath(), "missing-pak01_dir.vpk");
+        var goodPath = Path.Combine(Path.GetTempPath(), "pak01_dir.vpk");
+        try
+        {
+            var initialCli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
+            using (var initialInput = new StringReader("1\ncancel\n"))
+            {
+                Assert.Equal(0, await initialCli.RunAsync(
+                    ["interactive", "--catalogue", cataloguePath, "--session", sessionPath, "--base-vpk", badPath],
+                    initialInput, new StringWriter(), new StringWriter(), TestContext.Current.CancellationToken));
+            }
+
+            var repairedCli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1",
+                externalVerifierAvailable: false,
+                catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash, badPath));
+            using var input = new StringReader($"{sessionPath}\n{goodPath}\ncancel\n");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+            var exitCode = await repairedCli.RunAsync(["interactive"], input, output, error,
+                TestContext.Current.CancellationToken);
+            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(
+                await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken), "Guided session");
+
+            Assert.Equal(0, exitCode);
+            Assert.Equal(Path.GetFullPath(goodPath), session.Sources[0].Path);
+            Assert.Equal(GuidedWorkflowContract.HeroSelectionStep, session.Step);
+            Assert.Contains("Enter a different source path", output.ToString(), StringComparison.Ordinal);
             Assert.Empty(error.ToString());
         }
         finally
@@ -389,7 +577,7 @@ public sealed partial class CliContractTests
             var application = new FakeApplication(affineAvailable: true);
             var cli = new S2ModKitCli(application, "test-adapter", "1", externalVerifierAvailable: false,
                 catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
-            using var input = new StringReader("1\n1\n1\n1\n5\nwrong\n1.5\n\n0.8\nwrong\n45\nwrong\nz\n1\n1\n\n");
+            using var input = new StringReader("1\n1\n1\n1\n4\nwrong\n1.5\n\n0.8\nwrong\n45\nwrong\nz\n1\n1\n\n");
             using var output = new StringWriter();
             using var error = new StringWriter();
 
@@ -783,7 +971,7 @@ public sealed partial class CliContractTests
                 "1",
                 externalVerifierAvailable: false,
                 catalogueInventoryFactory: new FakeCatalogueInventoryFactory(directoryHash));
-            using var input = new StringReader("x\n1\n0\n1\n9\n1\n9\n1\n9\n1\n9\n1\n");
+            using var input = new StringReader("x\n1\n9\n1\n9\n1\n9\n1\n9\n1\n9\n1\n");
             using var output = new NarrowTextWriter(40);
             using var error = new StringWriter();
 

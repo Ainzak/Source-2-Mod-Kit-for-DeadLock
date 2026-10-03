@@ -271,6 +271,7 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreateInteractiveCommand(input, output, error));
         root.Subcommands.Add(CreateCatalogueCommand(output, error));
         root.Subcommands.Add(CreateCompatibilityCommand(output, error));
+        root.Subcommands.Add(CreateBoundsCommand(output, error));
         root.Subcommands.Add(CreateProjectCommand(output, error));
         root.Subcommands.Add(CreateInspectCommand(output, error));
         root.Subcommands.Add(CreateComponentsCommand(output, error));
@@ -322,6 +323,8 @@ public sealed partial class S2ModKitCli
         command.Options.Add(compiledModel);
         command.Options.Add(resume);
         command.Options.Add(expert);
+        var experimental = new Option<bool>("--experimental") { Description = "Opt in to visual-only editing with unverified culling, proxy, collision and visual-quality risks; saved in a new session." };
+        command.Options.Add(experimental);
         command.SetAction((parseResult, cancellationToken) => ExecuteAsync(
             "interactive",
             json: false,
@@ -335,6 +338,7 @@ public sealed partial class S2ModKitCli
                 parseResult.GetValue(compiledModel) ?? [],
                 parseResult.GetValue(resume),
                 parseResult.GetValue(expert),
+                parseResult.GetValue(experimental),
                 input,
                 output,
                 cancellationToken),
@@ -434,16 +438,18 @@ public sealed partial class S2ModKitCli
         var list = new Command("list", "List component candidates and existing-operation capabilities.");
         var project = RequiredStringOption("--project", "S2ModKit project root.");
         var format = CreateFormatOption();
+        var experimental = new Option<bool>("--experimental") { Description = "Explicitly probe experimental visual-only profiles; default discovery stays strict." };
         list.Options.Add(project);
         list.Options.Add(format);
+        list.Options.Add(experimental);
         list.SetAction((parseResult, cancellationToken) => ExecuteAsync(
             "components.list",
             IsJson(parseResult.GetRequiredValue(format)),
             output,
             error,
-            () => application.DiscoverComponentsAsync(
-                parseResult.GetRequiredValue(project),
-                cancellationToken),
+            () => parseResult.GetValue(experimental)
+                ? application.DiscoverExperimentalComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)
+                : application.DiscoverComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken),
             RenderComponents,
             cancellationToken));
         command.Subcommands.Add(list);
@@ -462,14 +468,15 @@ public sealed partial class S2ModKitCli
         };
         var intent = new Option<string>("--intent")
         {
-            Description = "Operation intent: remove, uniform-scale, translate, or affine.",
+            Description = "Operation intent: remove, uniform-scale, translate, affine, or explicitly experimental region-scale.",
             Required = true,
         };
         intent.AcceptOnlyFromAmong(
             RecipeScaffoldContract.RemoveIntent,
             RecipeScaffoldContract.UniformScaleIntent,
             RecipeScaffoldContract.TranslateIntent,
-            RecipeScaffoldContract.AffineIntent);
+            RecipeScaffoldContract.AffineIntent,
+            RecipeScaffoldContract.RegionScaleIntent);
         var outputPath = RequiredStringOption("--output", "New recipe JSON path; existing files are never overwritten.");
         var scale = new Option<string?>("--scale")
         {
@@ -510,6 +517,10 @@ public sealed partial class S2ModKitCli
         var pivotBone = new Option<string?>("--pivot-bone") { Description = "Exact influencing bone name for a bone-origin anchor." };
         var frame = new Option<string?>("--frame") { Description = "Affine axes: model or bone-bind." };
         var frameBone = new Option<string?>("--frame-bone") { Description = "Exact influencing bone name for bone-bind axes." };
+        var experimental = new Option<bool>("--experimental") { Description = "Acknowledge experimental sphere/proxy/collision preservation; never an automatic strict fallback." };
+        var regionAxis = new Option<string?>("--region-axis") { Description = "Region model-space axis: x, y or z; requires region-scale and experimental opt-in." };
+        var pinnedThrough = new Option<string?>("--pinned-through") { Description = "Keep coordinates at/below this threshold unchanged." };
+        var fullFrom = new Option<string?>("--full-from") { Description = "Apply full scale at/above this threshold, with smooth transition from pinned-through." };
         foreach (var option in new Option[]
                  {
                      project,
@@ -534,6 +545,7 @@ public sealed partial class S2ModKitCli
                      pivotBone,
                      frame,
                      frameBone,
+                     experimental, regionAxis, pinnedThrough, fullFrom,
                  })
         {
             scaffold.Options.Add(option);
@@ -570,7 +582,11 @@ public sealed partial class S2ModKitCli
                             parseResult.GetValue(pivotFace),
                             parseResult.GetValue(pivotBone),
                             parseResult.GetValue(frame),
-                            parseResult.GetValue(frameBone)))),
+                            parseResult.GetValue(frameBone)), parseResult.GetValue(experimental)),
+                    ParseExperimentalScaffoldOptions(parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent),
+                        parseResult.GetValue(pivotPoint), ParseOptionalNonNegativeInt32(parseResult.GetValue(referenceLod), "--reference-lod"),
+                        parseResult.GetValue(regionAxis), parseResult.GetValue(pinnedThrough), parseResult.GetValue(fullFrom)),
+                    ExperimentalDiscovery: parseResult.GetValue(experimental)),
                 cancellationToken),
             renderText: null,
             cancellationToken));
@@ -904,10 +920,13 @@ public sealed partial class S2ModKitCli
             json: true,
             output,
             error,
-            async () => await application.BuildAsync(
-                parseResult.GetRequiredValue(project),
-                await ReadRecipeAsync(parseResult.GetRequiredValue(recipe), cancellationToken).ConfigureAwait(false),
-                cancellationToken).ConfigureAwait(false),
+            async () =>
+            {
+                var document = await ReadRecipeAsync(parseResult.GetRequiredValue(recipe), cancellationToken).ConfigureAwait(false);
+                if (document.SchemaVersion is 6 or 7)
+                    error.WriteLine("WARNING: Experimental visual-only edit. Sphere containment, occlusion and collision correspondence are unverified; player testing is required.");
+                return await application.BuildAsync(parseResult.GetRequiredValue(project), document, cancellationToken).ConfigureAwait(false);
+            },
             renderText: null,
             cancellationToken));
         return command;

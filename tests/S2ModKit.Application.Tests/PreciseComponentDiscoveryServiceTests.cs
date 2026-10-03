@@ -4,7 +4,7 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Application.Tests;
 
-public sealed class PreciseComponentDiscoveryServiceTests
+public sealed partial class PreciseComponentDiscoveryServiceTests
 {
     private const string ResourcePath = "models/heroes/haze/haze.vmdl_c";
     private const string SharedMaterial = "materials/heroes/haze/haze_v2_gun.vmat_c";
@@ -74,6 +74,29 @@ public sealed class PreciseComponentDiscoveryServiceTests
             Assert.Equal(ComponentDiscoveryContract.Available, transform.Availability);
             Assert.Equal([0, 1, 2], transform.GeometryByLod.Select(facts => facts.Lod));
         });
+    }
+
+    [Fact]
+    public async Task SharedCompiledMeshAcrossLodsIsDiscoverableButNotMutable()
+    {
+        var bytes = Encoding.UTF8.GetBytes("shared-lod-mesh");
+        var hash = ContentHash.Compute(bytes);
+        var first = Mesh(0, 0, 100, "shared", (SharedMaterial, 0));
+        var second = Mesh(1, 0, 100, "shared", (SharedMaterial, 0)) with
+        {
+            ImmutableSemanticHash = first.ImmutableSemanticHash,
+        };
+        var fixture = Fixture(bytes, hash, [new LodSnapshot(0, [first]), new LodSnapshot(1, [second])]);
+
+        var result = await new PreciseComponentDiscoveryService(new RecordingAnalyzer()).DiscoverAsync(
+            fixture.Input, fixture.Model, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(result.Candidates);
+        Assert.All(result.Candidates, candidate => Assert.All(candidate.Capabilities, capability =>
+        {
+            Assert.Equal(ComponentDiscoveryContract.Unsupported, capability.Availability);
+            Assert.Equal("SHARED_LOD_MESH_READ_ONLY", Assert.Single(capability.Reasons).Code);
+        }));
     }
 
     [Fact]

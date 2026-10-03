@@ -90,6 +90,81 @@ public sealed class VpkPackagingApplicationTests
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(fixture.ProjectRoot, "temp")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IdenticalArchiveBytesFromDifferentBuildsKeepSeparateProvenance(bool minimal)
+    {
+        using var directory = new TestDirectory();
+        var token = TestContext.Current.CancellationToken;
+        var fixture = await CreateFixtureAsync(directory, token);
+        var application = CreateApplication(fixture.Workspace);
+        var (_, content) = await fixture.Workspace.LoadBuildAsync(fixture.ProjectRoot, fixture.BuildId, token);
+        var project = await fixture.Workspace.LoadProjectAsync(fixture.ProjectRoot, token);
+        const string otherBuildId = "other-verified-build";
+        var plan = new MutationPlan("other-recipe", project.Input.ContentHash, ContentHash.Compute("other-plan"u8), []);
+        var candidate = new RewriteCandidate(content.LogicalPath, content.Bytes,
+            new ModelSnapshot(new ArtifactSnapshot(content.LogicalPath, content.ContentHash, content.Bytes.Length, []), []));
+        await fixture.Workspace.PublishBuildAsync(fixture.ProjectRoot,
+            new BuildPublication(otherBuildId, plan, candidate, "{}", "# other evidence"), token);
+
+        Task<VpkPackageRunResult> Create(string id) => minimal
+            ? application.CreateMinimalAsync(fixture.ProjectRoot, id, false, token)
+            : application.CreateAsync(fixture.ProjectRoot, id, fixture.SourceVpkPath, fixture.SourceVpkHash, false, token);
+        var first = await Create(fixture.BuildId);
+        var originalEvidence = await File.ReadAllBytesAsync(
+            Path.Combine(fixture.ProjectRoot, "packages", first.Package.PackageId, "evidence.json"), token);
+        var second = await Create(otherBuildId);
+        var repeat = await Create(otherBuildId);
+
+        Assert.Equal(first.Package.ContentHash, second.Package.ContentHash);
+        Assert.NotEqual(first.Package.PackageId, second.Package.PackageId);
+        Assert.Equal(fixture.BuildId, first.Evidence.BuildId);
+        Assert.Equal(otherBuildId, second.Evidence.BuildId);
+        Assert.Equal(second.Package.PackageId, repeat.Package.PackageId);
+        Assert.Equal(originalEvidence, await File.ReadAllBytesAsync(
+            Path.Combine(fixture.ProjectRoot, "packages", first.Package.PackageId, "evidence.json"), token));
+        await application.VerifyAsync(fixture.ProjectRoot, first.Package.PackageId, false, token);
+        await application.VerifyAsync(fixture.ProjectRoot, second.Package.PackageId, false, token);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(fixture.ProjectRoot, "temp")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyContentOnlyPackageIdsRemainVerifiableAndCollisionGuardStaysStrict(bool minimal)
+    {
+        using var directory = new TestDirectory();
+        var token = TestContext.Current.CancellationToken;
+        var fixture = await CreateFixtureAsync(directory, token);
+        var application = CreateApplication(fixture.Workspace);
+        var created = minimal
+            ? await application.CreateMinimalAsync(fixture.ProjectRoot, fixture.BuildId, false, token)
+            : await application.CreateAsync(fixture.ProjectRoot, fixture.BuildId, fixture.SourceVpkPath, fixture.SourceVpkHash, false, token);
+        var package = created.Package;
+        var legacyId = $"vpk-{package.ContentHash.Value[..20]}";
+        var temporaryPath = Path.Combine(fixture.ProjectRoot, "temp", "legacy-candidate.vpk");
+        File.Copy(Path.Combine(fixture.ProjectRoot, package.PackageRelativePath), temporaryPath);
+        var evidence = created.Evidence with { PackageId = legacyId, ReportId = legacyId };
+        var renderer = new EvidenceReportRenderer();
+        var publication = new VpkPackagePublication(legacyId, package.BuildId, package.Mode,
+            package.SourceVpkPath, package.SourceVpkHash, package.EntryLogicalPath,
+            package.SourceEntryHash, package.ReplacementEntryHash, temporaryPath,
+            package.ContentHash, package.Size, renderer.RenderJson(evidence), renderer.RenderMarkdown(evidence));
+        await fixture.Workspace.PublishPackageAsync(fixture.ProjectRoot, publication, token);
+        var verified = await application.VerifyAsync(fixture.ProjectRoot, legacyId, false, token);
+
+        Assert.Equal(package.ContentHash, verified.Package.ContentHash);
+        Assert.Equal(legacyId, verified.Evidence.PackageId);
+        var collision = await Assert.ThrowsAsync<S2ModKitException>(() =>
+            fixture.Workspace.PublishPackageAsync(fixture.ProjectRoot,
+                publication with { BuildId = "another-build" }, token));
+        Assert.Equal("VPK_PACKAGE_ID_COLLISION", collision.Error.Code);
+        var unchanged = await fixture.Workspace.LoadPackageAsync(fixture.ProjectRoot, legacyId, token);
+        Assert.Equal(package.BuildId, unchanged.Package.BuildId);
+        Assert.Equal(package.ContentHash, unchanged.Package.ContentHash);
+    }
+
     [Fact]
     public async Task ExportPublishesNewVerifiedCopyWithoutReplacingExistingFile()
     {

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using S2ModKit.Domain;
 
 namespace S2ModKit.Application;
@@ -58,6 +59,12 @@ public sealed record GuidedSourceOption(
 public sealed record GuidedWorkflowSession
 {
     public int SchemaVersion { get; init; } = GuidedWorkflowContract.SchemaVersion;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RuntimeMetadataPolicy? ExperimentalPolicy { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExperimentalScaffoldOptions? ExperimentalParameters { get; init; }
 
     public string SessionId { get; init; } = string.Empty;
 
@@ -191,7 +198,9 @@ public sealed record GuidedComponentChoice(
     string DisplayLabel,
     string Kind,
     IReadOnlyList<int> Lods,
-    IReadOnlyList<GuidedActionChoice> Actions);
+    IReadOnlyList<GuidedActionChoice> Actions,
+    int DrawCallCount = 0,
+    ComponentCapabilityReason? UnavailableTransformReason = null);
 
 public sealed record GuidedDryRunReview(
     ContentHash PlanFingerprint,

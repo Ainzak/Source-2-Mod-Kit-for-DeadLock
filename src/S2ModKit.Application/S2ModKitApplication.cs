@@ -83,6 +83,15 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             .ConfigureAwait(false);
     }
 
+    public async Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default)
+    {
+        var (_, input, _) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
+        RequireInspector(input);
+        var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
+        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner)
+            .DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<RecipeScaffoldResult> ScaffoldRecipeAsync(
         string projectRoot,
         RecipeScaffoldRequest request,
@@ -92,16 +101,16 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var (_, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
-        var discovery = await new PreciseComponentDiscoveryService(componentCapabilityAnalyzer)
-            .DiscoverAsync(input, model, cancellationToken)
-            .ConfigureAwait(false);
+        var discovery = request.Experimental is not null || request.ExperimentalDiscovery
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
+            : await new PreciseComponentDiscoveryService(componentCapabilityAnalyzer).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
         var recipe = await new ComponentRecipeScaffolder(componentCapabilityAnalyzer)
             .CreateAsync(input, model, discovery, request, cancellationToken)
             .ConfigureAwait(false);
         var canonicalJson = JsonDefaults.SerializeToUtf8(recipe);
         var reparsed = JsonDefaults.Deserialize<RecipeDocument>(canonicalJson, "Scaffolded recipe");
         RecipeValidator.Validate(reparsed);
-        if (request.Intent == RecipeScaffoldContract.AffineIntent)
+        if (request.Intent == RecipeScaffoldContract.AffineIntent || request.Experimental is not null)
         {
             _ = CreatePlan(input, model, reparsed, dependencies);
         }
@@ -172,6 +181,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var internalVerification = ModelVerifier.Verify(before, candidate.Snapshot, plan);
+        var experimentalVerification = await VerifyExperimentalAsync(input,
+            new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = new List<BoundaryEvidence>
         {
@@ -179,6 +190,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             new("rewrite", "passed", $"Candidate {computedOutputHash} was produced without overwriting the input."),
         };
         boundaries.AddRange(internalVerification.Boundaries);
+        if (experimentalVerification is not null) boundaries.AddRange(experimentalVerification.Boundaries);
         boundaries.Add(externalBoundary);
         boundaries.Add(new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed."));
 
@@ -189,7 +201,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var buildId = $"{plan.Fingerprint.Value[..16]}-{computedOutputHash.Value[..12]}";
-        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings);
+        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification);
         var publication = new BuildPublication(buildId, plan, candidate, reports.RenderJson(evidence), reports.RenderMarkdown(evidence));
         var published = await workspace.PublishBuildAsync(projectRoot, publication, cancellationToken).ConfigureAwait(false);
         var publishedEvidence = JsonDefaults.Deserialize<EvidenceReport>(Encoding.UTF8.GetBytes(published.EvidenceJson), "Published build evidence");
@@ -207,9 +219,11 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var before = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
         var after = await inspector.InspectAsync(candidateContent, cancellationToken).ConfigureAwait(false);
         var internalVerification = ModelVerifier.Verify(before, after, plan);
+        var experimentalVerification = await VerifyExperimentalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var candidate = new RewriteCandidate(candidateContent.LogicalPath, candidateContent.Bytes, after);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
-        var boundaries = internalVerification.Boundaries.Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
+        var boundaries = internalVerification.Boundaries.Concat(experimentalVerification?.Boundaries ?? [])
+            .Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
 
         if (!internalVerification.IsValid || externalBoundary.Status == "failed")
         {
@@ -217,7 +231,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var reportId = $"{buildId}-verify";
-        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings);
+        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification);
         await workspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VerifyRunResult(published, evidence);
     }
@@ -241,10 +255,21 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         ArtifactContent input,
         ModelSnapshot model,
         RecipeDocument recipe,
-        IReadOnlyList<ArtifactContent> dependencies) =>
-        transformPlanner is null
+        IReadOnlyList<ArtifactContent> dependencies)
+    {
+        return transformPlanner is null
             ? MutationPlanner.CreatePlan(model, recipe, dependencies)
             : MutationPlanner.CreatePlan(model, recipe, input, transformPlanner, dependencies);
+    }
+
+    private async Task<ExperimentalTransformVerification?> VerifyExperimentalAsync(
+        ArtifactContent input, ArtifactContent output, MutationPlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.SchemaVersion is not (2 or 3)) return null;
+        if (rewriter is not IExperimentalTransformVerifier verifier)
+            throw Errors.Unsupported("EXPERIMENTAL_VERIFIER_REQUIRED", "The configured adapter has no independent experimental resource verifier.", "Do not publish this experimental build.");
+        return await verifier.VerifyExperimentalTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
+    }
 
     private void RequireInspector(ArtifactContent input)
     {
@@ -265,7 +290,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         ModelSnapshot? after,
         MutationPlan plan,
         IReadOnlyList<BoundaryEvidence> boundaries,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        ExperimentalTransformVerification? experimentalVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -315,12 +341,27 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 : "transform_component@4 routes a typed-pivot uniform transform through the proven position path and reproduces required bounds; offline checks do not prove live runtime behavior.");
         }
 
+        if (plan.SchemaVersion is 2 or 3)
+        {
+            operationWarnings.Add("Experimental visual-only edit: boxes are conservatively updated; spheres, occlusion proxies and collision are preserved but unverified. Player testing is required.");
+            if (after is null)
+                boundaries = boundaries.Concat(ExperimentalEvidenceValidator.PlannedBoundaries()).ToArray();
+            else
+            {
+                var target = plan.Operations.Single().ExperimentalTransformTarget!;
+                if (experimentalVerification is null
+                    || JsonDefaults.Serialize(experimentalVerification.Boxes.Select(box => box.Target).ToArray()) != JsonDefaults.Serialize(target.BoxTargets)
+                    || JsonDefaults.Serialize(experimentalVerification.PreservedMetadata.Select(field => field.Target).ToArray()) != JsonDefaults.Serialize(target.PreservationTargets))
+                    throw Errors.Verification("EXPERIMENTAL_EVIDENCE_INVALID", "Observed evidence does not cover every frozen target exactly.", "Do not publish this output.");
+            }
+        }
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        return new EvidenceReport
+        var report = new EvidenceReport
         {
+            SchemaVersion = plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -333,12 +374,14 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 .ToArray(),
             Output = output is null ? null : new ArtifactEvidence(output.LogicalPath, output.ContentHash, output.Bytes.Length, "generated", $"build:{output.ContentHash}", "sha256_and_semantic_reopen"),
             PlanFingerprint = plan.Fingerprint,
-            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after)).ToArray(),
+            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification)).ToArray(),
             Boundaries = boundaries,
             Blocks = CreateBlockEvidence(before, after, plan),
             ToolVersions = toolVersions,
             Warnings = evidenceWarnings,
         };
+        ExperimentalEvidenceValidator.Validate(report);
+        return report;
     }
 
     private static ArtifactEvidence CreateArtifactEvidence(ArtifactContent content, ProjectArtifactManifest manifest) =>
@@ -350,7 +393,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             string.IsNullOrWhiteSpace(manifest.CatalogIdentity) ? manifest.SourcePath : manifest.CatalogIdentity,
             manifest.VerificationMode);
 
-    private static OperationEvidence CreateOperationEvidence(PlannedOperation operation, ModelSnapshot? after)
+    private static OperationEvidence CreateOperationEvidence(PlannedOperation operation, ModelSnapshot? after,
+        ExperimentalTransformVerification? experimentalVerification)
     {
         var outputBlocks = after?.Artifact.Blocks.ToDictionary(block => block.Index);
         return new OperationEvidence(
@@ -360,7 +404,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             operation.SelectedDrawCalls.Select(item => item.DrawCallId).ToArray(),
             operation.SelectedDrawCalls.Select(item => item.ResourcePath).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())
         {
-            GeometryChanges = operation.GeometryTargets.Select(target => new GeometryChangeEvidence(
+            GeometryChanges = (operation.ExperimentalTransformTarget?.GeometryTargets ?? operation.GeometryTargets).Select(target => new GeometryChangeEvidence(
                 target.Lod,
                 target.ResourcePath,
                 target.MeshOrdinal,
@@ -385,6 +429,12 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             }).ToArray(),
             CoupledTransform = CreateCoupledTransformEvidence(operation.CoupledTransformTarget),
             AffineTransform = CreateAffineTransformEvidence(operation.AffineTransformTarget, outputBlocks),
+            ExperimentalTransform = operation.ExperimentalTransformTarget is { } visual ? new(
+                visual.StructuralProfileId, visual.StructuralProfileVersion, visual.BoundsPolicyId, visual.BoundsPolicyVersion,
+                visual.RuntimeMetadataPolicy, visual.Pivot, visual.UniformScale, visual.DisplacementLimit,
+                experimentalVerification?.Boxes ?? visual.BoxTargets.Select(box => new ExperimentalBoxEvidence(box, null, "planned")).ToArray(),
+                experimentalVerification?.PreservedMetadata ?? visual.PreservationTargets.Select(field => new ExperimentalPreservationEvidence(field, null, null, "planned")).ToArray())
+            { Region = visual.Region } : null,
         };
     }
 

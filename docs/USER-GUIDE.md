@@ -61,9 +61,10 @@ on resume. Resume with the command printed by the CLI, or with
 to show IDs, paths, and unavailable-locator details. Existing non-interactive commands below remain
 the authoritative automation surface.
 
-At resource and component menus, choose the printed `0` entry to go back. `back` and `previous`
-remain accepted keyboard aliases. Returning from components lets you select another resource and
-then another hero without starting a new guided session. Imported resources use separate immutable
+At hero, resource, and component menus, choose the printed `0` entry to go back. From hero selection,
+it returns to source selection. `back` and `previous` remain accepted keyboard aliases. Returning
+from components lets you select another resource and then another hero without starting a new guided
+session. Imported resources use separate immutable
 internal workspaces and are reused if selected again. Navigation itself reuses the in-memory
 catalogue selection. Opening components for a resource not yet visited imports only that model and
 its dependencies; it does not scan every numbered VPK payload.
@@ -277,6 +278,24 @@ triangle-island IDs. Recipe schema version 4 can apply `transform_component@3` w
 per-LOD vertex totals. The implementation resolves and hashes those islands again during planning
 and rewriting; it does not use hero names or coordinates. Arbitrary island-group scaffolding is not
 yet interactive, so treat this as an expert recipe path and never copy IDs between input revisions.
+
+### Experimental whole-part and region editing
+
+These are separately opted-in visual edits, not a fallback when a strict operation rejects.
+They preserve unresolved sphere, distance-field and collision metadata without proving that it
+still matches the edited shape. Rendering, clothing fit and gameplay need a separate player test.
+
+Use `& $s2mod interactive --experimental` for the guided workflow, or
+`& $s2mod components list --project $project --experimental --format json` for agent discovery.
+Candidate IDs from strict discovery cannot be reused in experimental discovery.
+
+Scaffolding with `--experimental --intent uniform-scale` creates a whole-part recipe. With
+`--experimental --intent region-scale`, also supply `--region-axis`, `--pinned-through`,
+`--full-from`, `--pivot point` and `--pivot-point`. Both require a scale and displacement cap
+(at most 64 model units). Region thresholds are model-space coordinates, not anatomical labels.
+The lower half-space stays unchanged; the transition blends to full scale above the upper threshold.
+Run the ordinary plan/build/verify/package workflow. Actual parameters may reject even when
+discovery's small eligibility probe passed. Procedural hair and cloth are not enabled by opt-in.
 
 ### Translate a component
 

@@ -182,6 +182,8 @@ public sealed record TransformPlanningResult(
     public PlannedCoupledTransformTarget? CoupledTransformTarget { get; init; }
 
     public PlannedAffineTransformTarget? AffineTransformTarget { get; init; }
+
+    public PlannedExperimentalTransformTarget? ExperimentalTransformTarget { get; init; }
 }
 
 public sealed record AffineSelectionBoundsEvidence(
@@ -262,6 +264,9 @@ public interface IS2ModKitApplication
     Task<ComponentDiscoveryResultV2> DiscoverComponentsAsync(
         string projectRoot,
         CancellationToken cancellationToken = default);
+
+    Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
+        throw Errors.Unsupported("EXPERIMENTAL_DISCOVERY_UNAVAILABLE", "This application cannot discover experimental components.", "Use a configured experimental planner.");
 
     Task<RecipeScaffoldResult> ScaffoldRecipeAsync(
         string projectRoot,

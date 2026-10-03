@@ -4,7 +4,7 @@
   "serialNumber": "urn:uuid:6c783f01-4e51-4a48-a8d3-6b9c5e6c0a01",
   "version": 1,
   "metadata": {
-    "component": { "type": "application", "name": "S2ModKit", "version": "0.1.0" },
+    "component": { "type": "application", "name": "S2ModKit", "version": "0.2.0" },
     "properties": [
       { "name": "targetFramework", "value": "net10.0" },
       { "name": "targetRuntime", "value": "win-x64" },

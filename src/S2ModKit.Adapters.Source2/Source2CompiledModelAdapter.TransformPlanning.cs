@@ -102,6 +102,11 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Selection("TRANSFORM_SELECTION_INVALID", "The transform selection is empty or contains duplicate draw-call identities.", "Regenerate a non-empty canonical selection.");
         }
 
+        if (request.Operation.Version is 5 or 6)
+        {
+            return PlanExperimentalTransform(request, parsed);
+        }
+
         if (request.Operation.Version == 4)
         {
             return PlanAffineTransform(request, parsed);
@@ -109,41 +114,7 @@ public sealed partial class Source2CompiledModelAdapter
 
         if (request.Operation.Version == 2)
         {
-            var mesh = parsed.MeshesByOrdinal.Values.SingleOrDefault();
-            if (mesh?.RawMbufAnalysis is null
-                || mesh.PhysicsAnalysis is null
-                || mesh.WholeMeshTransformAnalysis is null
-                || request.SelectedDrawCalls.Count != 1
-                || request.SelectedDrawCalls[0].DrawCallId != mesh.RawMbufAnalysis.DrawCall.Id
-                || request.Operation.ExpectedVerticesByLod.Count != 1
-                || !request.Operation.ExpectedVerticesByLod.TryGetValue(mesh.Lod.ToString(CultureInfo.InvariantCulture), out var expectedVertices)
-                || expectedVertices != mesh.WholeMeshTransformAnalysis.VertexCount
-                || request.Operation.Transform.Pivot.ReferenceLod != mesh.Lod
-                || request.Operation.Limits.MaximumCollisionDisplacement is not { } collisionLimit)
-            {
-                throw Errors.Unsupported(
-                    "COUPLED_TRANSFORM_INCOMPLETE",
-                    "The selected component does not expose the complete raw-MBUF/convex-PHYS profile required by transform_component@2.",
-                    "Select the sole complete coupled component reported as available by current discovery.");
-            }
-
-            var coupledPivot = Center(mesh.WholeMeshTransformAnalysis.SceneBounds);
-            var mbufIndex = mesh.RawMbufAnalysis.Geometry.VertexBuffers[0].Snapshot.ResourceBlockIndex;
-            var coupled = Source2CoupledTransformPlanner.Plan(
-                mesh.BlockIndex,
-                ContentHash.Compute(parsed.Envelope.Blocks[mesh.BlockIndex].Payload.Span),
-                parsed.Envelope.Blocks[mbufIndex],
-                mesh.RawMbufAnalysis,
-                mesh.WholeMeshTransformAnalysis,
-                mesh.PhysicsAnalysis,
-                ToPoint(coupledPivot),
-                request.Operation.Transform.UniformScale,
-                request.Operation.Limits.MaximumVertexDisplacement,
-                collisionLimit);
-            return new TransformPlanningResult([], [], coupled.TargetBlocks)
-            {
-                CoupledTransformTarget = coupled,
-            };
+            return PlanCoupledTransform(request, parsed);
         }
 
         if (request.Operation.Version == 3)
@@ -151,6 +122,72 @@ public sealed partial class Source2CompiledModelAdapter
             return PlanConnectedComponentTransform(request, parsed);
         }
 
+        var profiles = ResolveUniformTransformProfiles(request, parsed);
+
+        var roots = profiles.Select(profile => profile.Metadata.LocalSkinningRootBone).Distinct(StringComparer.Ordinal).ToArray();
+        if (roots.Length != 1)
+        {
+            throw Errors.Unsupported("TRANSFORM_SKINNING_ROOT_DRIFT", $"Selected LOD meshes use different local skinning roots: {string.Join(", ", roots)}.", "Use a component whose mesh-local skeleton ancestry is stable across LODs.");
+        }
+
+        var reference = profiles.Single(profile => profile.Mesh.Lod == request.Operation.Transform.Pivot.ReferenceLod);
+        var pivot = Center(reference.Metadata.SceneBounds);
+        var transform = new UniformTransform(
+            ToPoint(pivot),
+            request.Operation.Transform.UniformScale,
+            ToPoint(request.Operation.Transform.Translation));
+        var (targets, targetBlocks) = PlanUniformGeometryTargets(request, parsed, profiles, pivot, transform);
+
+        var distanceTargets = PlanUniformDistanceFields(request, parsed, profiles, roots, transform, targetBlocks);
+
+        return new TransformPlanningResult(
+            targets,
+            distanceTargets,
+            targetBlocks.Values.OrderBy(block => block.Index).ThenBy(block => block.Type, StringComparer.Ordinal).ToArray());
+    }
+
+    private static TransformPlanningResult PlanCoupledTransform(TransformPlanningRequest request, ParsedModel parsed)
+    {
+        var mesh = parsed.MeshesByOrdinal.Values.SingleOrDefault();
+        if (mesh?.RawMbufAnalysis is null
+            || mesh.PhysicsAnalysis is null
+            || mesh.WholeMeshTransformAnalysis is null
+            || request.SelectedDrawCalls.Count != 1
+            || request.SelectedDrawCalls[0].DrawCallId != mesh.RawMbufAnalysis.DrawCall.Id
+            || request.Operation.ExpectedVerticesByLod.Count != 1
+            || !request.Operation.ExpectedVerticesByLod.TryGetValue(mesh.Lod.ToString(CultureInfo.InvariantCulture), out var expectedVertices)
+            || expectedVertices != mesh.WholeMeshTransformAnalysis.VertexCount
+            || request.Operation.Transform.Pivot.ReferenceLod != mesh.Lod
+            || request.Operation.Limits.MaximumCollisionDisplacement is not { } collisionLimit)
+        {
+            throw Errors.Unsupported(
+                "COUPLED_TRANSFORM_INCOMPLETE",
+                "The selected component does not expose the complete raw-MBUF/convex-PHYS profile required by transform_component@2.",
+                "Select the sole complete coupled component reported as available by current discovery.");
+        }
+
+        var coupledPivot = Center(mesh.WholeMeshTransformAnalysis.SceneBounds);
+        var mbufIndex = mesh.RawMbufAnalysis.Geometry.VertexBuffers[0].Snapshot.ResourceBlockIndex;
+        var coupled = Source2CoupledTransformPlanner.Plan(
+            mesh.BlockIndex,
+            ContentHash.Compute(parsed.Envelope.Blocks[mesh.BlockIndex].Payload.Span),
+            parsed.Envelope.Blocks[mbufIndex],
+            mesh.RawMbufAnalysis,
+            mesh.WholeMeshTransformAnalysis,
+            mesh.PhysicsAnalysis,
+            ToPoint(coupledPivot),
+            request.Operation.Transform.UniformScale,
+            request.Operation.Limits.MaximumVertexDisplacement,
+            collisionLimit);
+        return new TransformPlanningResult([], [], coupled.TargetBlocks)
+        {
+            CoupledTransformTarget = coupled,
+        };
+
+    }
+
+    private static List<TransformMeshProfile> ResolveUniformTransformProfiles(TransformPlanningRequest request, ParsedModel parsed)
+    {
         var profiles = new List<TransformMeshProfile>();
         foreach (var group in request.SelectedDrawCalls.GroupBy(item => item.MeshOrdinal).OrderBy(group => group.Key))
         {
@@ -193,19 +230,13 @@ public sealed partial class Source2CompiledModelAdapter
         {
             throw Errors.Selection("TRANSFORM_GEOMETRY_LOD_COVERAGE_INCOMPLETE", "The selected Source 2 meshes do not map to exactly one complete vertex buffer per declared LOD.", "Select one semantically equivalent complete component mesh in every present LOD.");
         }
+        return profiles;
+    }
 
-        var roots = profiles.Select(profile => profile.Metadata.LocalSkinningRootBone).Distinct(StringComparer.Ordinal).ToArray();
-        if (roots.Length != 1)
-        {
-            throw Errors.Unsupported("TRANSFORM_SKINNING_ROOT_DRIFT", $"Selected LOD meshes use different local skinning roots: {string.Join(", ", roots)}.", "Use a component whose mesh-local skeleton ancestry is stable across LODs.");
-        }
-
-        var reference = profiles.Single(profile => profile.Mesh.Lod == request.Operation.Transform.Pivot.ReferenceLod);
-        var pivot = Center(reference.Metadata.SceneBounds);
-        var transform = new UniformTransform(
-            ToPoint(pivot),
-            request.Operation.Transform.UniformScale,
-            ToPoint(request.Operation.Transform.Translation));
+    private static (List<PlannedGeometryTarget> Targets, Dictionary<(string Type, int Index), PlannedTargetBlock> Blocks)
+        PlanUniformGeometryTargets(TransformPlanningRequest request, ParsedModel parsed,
+            IReadOnlyList<TransformMeshProfile> profiles, TransformVector3 pivot, UniformTransform transform)
+    {
         var targets = new List<PlannedGeometryTarget>(profiles.Count);
         var targetBlocks = new Dictionary<(string Type, int Index), PlannedTargetBlock>();
         foreach (var profile in profiles.OrderBy(profile => profile.Mesh.Lod))
@@ -276,7 +307,13 @@ public sealed partial class Source2CompiledModelAdapter
             AddTargetBlock(targetBlocks, parsed, profile.Mesh.BlockIndex);
             AddTargetBlock(targetBlocks, parsed, vertices.Snapshot.ResourceBlockIndex);
         }
+        return (targets, targetBlocks);
+    }
 
+    private static List<PlannedDistanceFieldTarget> PlanUniformDistanceFields(
+        TransformPlanningRequest request, ParsedModel parsed, IReadOnlyList<TransformMeshProfile> profiles,
+        string[] roots, UniformTransform transform, Dictionary<(string Type, int Index), PlannedTargetBlock> targetBlocks)
+    {
         var affectedBoneHashes = profiles.SelectMany(profile => profile.Metadata.LocalInfluencingBones)
             .Append(roots[0])
             .Distinct(StringComparer.Ordinal)
@@ -335,11 +372,7 @@ public sealed partial class Source2CompiledModelAdapter
                 AddTargetBlock(targetBlocks, parsed, blockIndex);
             }
         }
-
-        return new TransformPlanningResult(
-            targets,
-            distanceTargets,
-            targetBlocks.Values.OrderBy(block => block.Index).ThenBy(block => block.Type, StringComparer.Ordinal).ToArray());
+        return distanceTargets;
     }
 
     private static TransformPlanningResult PlanConnectedComponentTransform(

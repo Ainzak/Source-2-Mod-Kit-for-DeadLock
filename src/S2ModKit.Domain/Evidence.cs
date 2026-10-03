@@ -25,6 +25,36 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public AffineTransformEvidence? AffineTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExperimentalTransformEvidence? ExperimentalTransform { get; init; }
+}
+
+public sealed record ExperimentalBoxEvidence(
+    PlannedExperimentalBoxTarget Target,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<uint>? ObservedWords,
+    string Status);
+
+public sealed record ExperimentalPreservationEvidence(
+    PlannedExperimentalPreservationTarget Target,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] ContentHash? ObservedPayloadHash,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] IReadOnlyList<uint>? ObservedWords,
+    string Status);
+
+public sealed record ExperimentalTransformEvidence(
+    string StructuralProfileId,
+    int StructuralProfileVersion,
+    string BoundsPolicyId,
+    int BoundsPolicyVersion,
+    RuntimeMetadataPolicy RuntimeMetadataPolicy,
+    ResolvedTransformPivot Pivot,
+    float UniformScale,
+    float DisplacementLimit,
+    IReadOnlyList<ExperimentalBoxEvidence> Boxes,
+    IReadOnlyList<ExperimentalPreservationEvidence> PreservedMetadata)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedRegionScale? Region { get; init; }
 }
 
 public sealed record AffineTransformEvidence(

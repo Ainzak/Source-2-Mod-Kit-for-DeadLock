@@ -18,10 +18,37 @@ public sealed partial class Source2CompiledModelAdapter
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(plan);
-        return CanRewriteRemoval(model, plan)
+        return !HasIncompleteMdatCoverage(model)
+            && !SelectsSharedLodMesh(model, plan)
+            && (CanRewriteRemoval(model, plan)
             || CanRewriteTransform(model, plan)
             || CanRewriteCoupledTransform(model, plan)
-            || CanRewriteAffineTransform(model, plan);
+            || CanRewriteAffineTransform(model, plan)
+            || CanRewriteExperimentalTransform(model, plan));
+    }
+
+    // A snapshot whose LOD projection does not represent every distinct MDAT block of its artifact
+    // describes an incomplete model (for example a LOD-excluded mesh omitted by inspection-only
+    // parsing). The whole resource stays read-only; the omission is never a per-block exemption.
+    // Distinct block identities are compared because shared meshes repeat across LODs.
+    private static bool HasIncompleteMdatCoverage(ModelSnapshot model) =>
+        model.Artifact.Blocks
+            .Where(block => string.Equals(block.Type, "MDAT", StringComparison.Ordinal))
+            .Select(block => block.Index)
+            .Except(model.Lods.SelectMany(lod => lod.Meshes.Select(mesh => mesh.ResourceBlockIndex).Distinct()))
+            .Any();
+
+    private static bool SelectsSharedLodMesh(ModelSnapshot model, MutationPlan plan)
+    {
+        var sharedBlocks = model.Lods
+            .SelectMany(lod => lod.Meshes.Select(mesh => (lod.Level, mesh.ResourceBlockIndex)))
+            .GroupBy(item => item.ResourceBlockIndex)
+            .Where(group => group.Select(item => item.Level).Distinct().Skip(1).Any())
+            .Select(group => group.Key)
+            .ToHashSet();
+        return plan.Operations
+            .SelectMany(operation => operation.SelectedDrawCalls)
+            .Any(call => sharedBlocks.Contains(call.ResourceBlockIndex));
     }
 
     private static bool CanRewriteRemoval(ModelSnapshot model, MutationPlan plan)
@@ -58,9 +85,30 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Input("INPUT_HASH_DRIFT", "The compiled-model bytes, inspected snapshot, and mutation plan do not share one input hash.", "Re-import the immutable input and regenerate the plan.");
         }
 
+        if (HasIncompleteMdatCoverage(model))
+        {
+            throw Errors.Unsupported(
+                "MDAT_COVERAGE_INCOMPLETE",
+                "The model snapshot does not represent every MDAT block of its artifact inventory.",
+                "The layout includes meshes excluded from every LOD; the whole resource remains read-only.");
+        }
+
+        if (SelectsSharedLodMesh(model, plan))
+        {
+            throw Errors.Unsupported(
+                "SHARED_LOD_MESH_READ_ONLY",
+                "The plan selects a compiled mesh reused by multiple LODs.",
+                "Inspect this model read-only; shared-LOD binary mutation has no verified writer.");
+        }
+
         if (!CanRewrite(model, plan))
         {
             throw Errors.Unsupported("REWRITE_CAPABILITY_UNAVAILABLE", "The mutation plan does not match a supported Source 2 rewrite profile.", "Re-inspect the compiled model and create a supported, single-kind mutation plan.");
+        }
+
+        if (IsExperimentalTransformPlan(plan))
+        {
+            return Task.FromResult(RewriteExperimentalTransform(input, model, plan, cancellationToken));
         }
 
         if (IsCoupledTransformPlan(plan))

@@ -13,6 +13,267 @@ public sealed partial class Source2TransformMetadataAnalyzerTests
     private static readonly ContentHash EmptyHash = ContentHash.Compute(ReadOnlySpan<byte>.Empty);
 
     [Fact]
+    public void AffineWholeMeshAcceptsWideSignedBlendIndicesWithoutChangingLegacyProfile()
+    {
+        var descriptor = WideBlendIndexVertexDescriptor();
+        var meshData = MeshDataWithBoneBounds(
+            Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+            ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f));
+        var geometry = WideBlendIndexGeometry(0);
+
+        var result = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            descriptor, meshData, geometry, "wide affine mesh", boneSizeIsHalfExtent: true,
+            allowWideBlendIndices: true);
+
+        Assert.Equal(3, result.VertexCount);
+        Assert.Equal(["root"], result.LocalInfluencingBones);
+        Assert.Throws<InvalidDataException>(() => Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            descriptor, meshData, geometry, "legacy mesh"));
+    }
+
+    [Fact]
+    public void BoundsDiagnosticReportsRemappedRawInfluenceAndExactFailingExtremalVertex()
+    {
+        var descriptor = WideBlendIndexVertexDescriptor();
+        var meshData = MeshDataWithBoneBounds(
+            Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+            ("root", "", (0f, 0f, 0f), (1f, 0f, 0f), 1f),
+            ("weapon", "root", (0f, 0f, 0f), (1f, 0f, 0f), 1f));
+        var modelData = Object(("m_modelSkeleton", Object(("m_boneName", Array(
+            "model-root", "model-weapon")))));
+
+        var diagnostic = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0,
+            7,
+            12,
+            1,
+            descriptor,
+            meshData,
+            modelData,
+            WideBlendIndexGeometry(0),
+            [1, 0, 1],
+            "synthetic remap table",
+            "synthetic remapped bounds");
+
+        Assert.Equal("analyzed", diagnostic.Status);
+        Assert.Equal("synthetic remap table", diagnostic.BoneRemapSource);
+        Assert.Equal("verified", diagnostic.BoneRemapStatus);
+        Assert.Equal("verified", diagnostic.ModelBoneNamesStatus);
+        Assert.Equal([1, 0, 1], diagnostic.BoneRemap);
+        Assert.NotNull(diagnostic.BoneRemapIdentity);
+        var bone = Assert.Single(diagnostic.Bones);
+        Assert.Equal("root", bone.BoneName);
+        Assert.Equal(1, bone.ResolvedModelBoneIndex);
+        Assert.Equal("model-weapon", bone.ResolvedModelBoneName);
+        Assert.Equal(2f, bone.CalculatedRequiredSphereRadius);
+        Assert.Equal(1f, bone.SphereDelta);
+        Assert.False(bone.SphereMatchesExistingAffineTolerance);
+        var maxX = Assert.Single(bone.Extrema.Where(item => item.Axis == "x" && item.Side == "max"));
+        Assert.Equal(2f, maxX.CalculatedValue);
+        Assert.Equal(1f, maxX.StoredValue);
+        Assert.False(maxX.StoredContainsExtremum);
+        Assert.Equal(2, maxX.Vertex.VertexOrdinal);
+        Assert.Equal(0, maxX.Vertex.VertexBufferOrdinal);
+        Assert.Equal(14u, maxX.Vertex.BlendIndexFormat);
+        Assert.Equal([0, 0, 0, 0], maxX.Vertex.RawBlendIndices);
+        Assert.Equal([255, 0, 0, 0], maxX.Vertex.RawBlendWeights);
+        Assert.Equal(1, maxX.Vertex.ResolvedBoneIndex);
+        Assert.Equal("model-weapon", maxX.Vertex.BoneName);
+        Assert.Equal(0, maxX.Vertex.MeshBoneIndex);
+        Assert.Equal("root", maxX.Vertex.MeshBoneName);
+        Assert.Equal(2f, maxX.Vertex.OriginalPosition.X);
+        Assert.Equal(2f, maxX.Vertex.CalculatedBoneLocalPosition.X);
+        Assert.Equal(3, Assert.Single(bone.ContributorBuffers).ContributorCount);
+        Assert.NotEqual(EmptyHash, bone.ContributorSetIdentity);
+        Assert.Equal(1, Assert.Single(diagnostic.Buffers).InfluenceCounts[0].ActiveInfluenceCount);
+    }
+
+    [Fact]
+    public void BoundsDiagnosticRejectsMalformedBoneRemapsAndMissingActiveIndices()
+    {
+        var descriptor = WideBlendIndexVertexDescriptor();
+        var meshData = MeshDataWithBoneBounds(
+            Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+            ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f));
+        var modelData = Object(("m_modelSkeleton", Object(("m_boneName", Array("model-root")))));
+
+        var negativeTarget = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0, 0, 3, 1, descriptor, meshData, modelData, WideBlendIndexGeometry(0),
+            [-1], "malformed remap", "negative remap value");
+        var missingActiveIndex = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0, 0, 3, 1, descriptor, meshData, modelData, WideBlendIndexGeometry(0),
+            [], "truncated remap", "missing active remap index");
+
+        Assert.Equal("unsupported", negativeTarget.Status);
+        Assert.Contains("malformed mesh-to-model bone remap", negativeTarget.Failure, StringComparison.Ordinal);
+        Assert.Equal("unsupported", missingActiveIndex.Status);
+        Assert.Equal("unsupported", missingActiveIndex.BoneRemapStatus);
+    }
+
+    [Fact]
+    public void BoundsDiagnosticDoesNotInventModelNamesWhenSkeletonNamesAreMissing()
+    {
+        var diagnostic = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0, 0, 3, 1, WideBlendIndexVertexDescriptor(),
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            Object(), WideBlendIndexGeometry(0), [0], "synthetic remap", "missing model names");
+
+        Assert.Equal("analyzed", diagnostic.Status);
+        Assert.Equal("absent", diagnostic.ModelBoneNamesStatus);
+        var bone = Assert.Single(diagnostic.Bones);
+        Assert.Equal("root", bone.BoneName);
+        Assert.Equal(0, bone.ResolvedModelBoneIndex);
+        Assert.Null(bone.ResolvedModelBoneName);
+        Assert.Null(bone.SphereExtremalVertex!.BoneName);
+    }
+
+    [Fact]
+    public void BoundsDiagnosticDoesNotInventIdentityWhenBoneRemapIsAbsent()
+    {
+        var diagnostic = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0, 0, 3, 1, WideBlendIndexVertexDescriptor(),
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("render-only-name", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            Object(("m_modelSkeleton", Object(("m_boneName", Array("model-root"))))),
+            WideBlendIndexGeometry(0), null, "null remap table", "absent remap");
+
+        Assert.Equal("analyzed", diagnostic.Status);
+        Assert.Equal("absent", diagnostic.BoneRemapStatus);
+        Assert.Null(diagnostic.BoneRemapIdentity);
+        var bone = Assert.Single(diagnostic.Bones);
+        Assert.Null(bone.ResolvedModelBoneIndex);
+        Assert.Null(bone.ResolvedModelBoneName);
+        Assert.Null(bone.SphereExtremalVertex!.ResolvedBoneIndex);
+    }
+
+    [Fact]
+    public void BoundsDiagnosticRejectsMalformedModelSkeletonNamesInsteadOfUsingRenderNames()
+    {
+        var diagnostic = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0, 0, 3, 1, WideBlendIndexVertexDescriptor(),
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("render-only-name", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            Object(("m_modelSkeleton", Object(("m_boneName", "malformed-not-an-array")))),
+            WideBlendIndexGeometry(0), [0], "synthetic remap table", "malformed model names");
+
+        Assert.Equal("unsupported", diagnostic.Status);
+        Assert.Equal("unsupported", diagnostic.ModelBoneNamesStatus);
+        Assert.Contains("m_modelSkeleton.m_boneName", diagnostic.Failure, StringComparison.Ordinal);
+        Assert.Empty(diagnostic.Bones);
+    }
+
+    [Fact]
+    public void BoundsDiagnosticReadsAllEightUnsignedShortBlendIndices()
+    {
+        const int stride = 44;
+        var descriptor = Object(("m_vertexBuffers", Array(Object(
+            ("m_inputLayoutFields", Array(
+                Layout("POSITION", 6u, 0),
+                Layout("BLENDINDICES", 4u, 20),
+                Layout("BLENDWEIGHT", 11u, 36)))))));
+        var meshData = WithWeightCount(
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f),
+                ("weapon", "root", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            8);
+        var bytes = new byte[stride * 3];
+        for (var vertex = 0; vertex < 3; vertex++)
+        {
+            var offset = vertex * stride;
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset), BitConverter.SingleToInt32Bits(vertex));
+            for (var slot = 0; slot < 8; slot++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(offset + 20 + (slot * sizeof(ushort))),
+                    slot == 7 ? (ushort)1 : (ushort)0);
+            }
+
+            bytes[offset + 36] = 254;
+            bytes[offset + 43] = 1;
+        }
+
+        var modelData = Object(("m_modelSkeleton", Object(("m_boneName", Array(
+            "model-root", "model-weapon")))));
+        var diagnostic = Source2TransformMetadataAnalyzer.DiagnoseBounds(
+            0,
+            0,
+            3,
+            1,
+            descriptor,
+            meshData,
+            modelData,
+            GeometrySource(bytes, stride, [[0, 1, 2]]),
+            [0, 1],
+            "synthetic eight-slot layout",
+            "synthetic eight-slot bounds");
+
+        Assert.Equal("analyzed", diagnostic.Status);
+        var buffer = Assert.Single(diagnostic.Buffers);
+        Assert.Equal(4u, buffer.BlendIndexFormat);
+        Assert.Equal(2, buffer.InfluenceCounts.Single().ActiveInfluenceCount);
+        Assert.Equal(3, buffer.InfluenceCounts.Single().VertexCount);
+        var weapon = Assert.Single(diagnostic.Bones.Where(bone => bone.BoneName == "weapon"));
+        Assert.Equal(3, weapon.InfluencedVertexCount);
+        var witness = Assert.Single(weapon.Extrema.Where(item => item.Axis == "x" && item.Side == "max")).Vertex;
+        Assert.Equal([0, 0, 0, 0, 0, 0, 0, 1], witness.RawBlendIndices);
+        Assert.Equal([254, 0, 0, 0, 0, 0, 0, 1], witness.RawBlendWeights);
+        Assert.Equal(2, witness.ActiveInfluenceCount);
+    }
+
+    [Fact]
+    public void AffineWholeMeshRejectsNegativeActiveWideBlendIndex()
+    {
+        var error = Assert.Throws<InvalidDataException>(() => Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            WideBlendIndexVertexDescriptor(),
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            WideBlendIndexGeometry(-1), "bad wide mesh", boneSizeIsHalfExtent: true,
+            allowWideBlendIndices: true));
+
+        Assert.Contains("out-of-range bone -1", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AffineWholeMeshRejectsOverlappingWideBlendIndexAndWeightFields()
+    {
+        var error = Assert.Throws<InvalidDataException>(() => Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            WideBlendIndexVertexDescriptor(indexOffset: 24),
+            MeshDataWithBoneBounds(
+                Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+                ("root", "", (1f, 0f, 0f), (1f, 0f, 0f), 2f)),
+            WideBlendIndexGeometry(0), "overlap mesh", boneSizeIsHalfExtent: true,
+            allowWideBlendIndices: true));
+
+        Assert.Contains("overlap", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AffineWholeMeshAcceptsSeveralSkeletonRootsWithIndependentBoneBounds()
+    {
+        var meshData = MeshDataWithBoneBounds(
+            Bounds((0f, 0f, 0f), (2f, 0f, 0f)),
+            ("first", "", (0.5f, 0f, 0f), (0.5f, 0f, 0f), 1f),
+            ("second", "", (2f, 0f, 0f), (0f, 0f, 0f), 2f));
+        var geometry = WideBlendIndexGeometry(0, 1);
+
+        var result = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            WideBlendIndexVertexDescriptor(), meshData, geometry, "two-root affine mesh",
+            boneSizeIsHalfExtent: true, allowWideBlendIndices: true, requireCommonSkinningRoot: false);
+
+        Assert.Equal(string.Empty, result.LocalSkinningRootBone);
+        Assert.Equal(["first", "second"], result.LocalInfluencingBones);
+        Assert.Equal(2, result.BoneBounds.Length);
+        Assert.Throws<InvalidDataException>(() => Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            WideBlendIndexVertexDescriptor(), meshData, geometry, "old root requirement",
+            boneSizeIsHalfExtent: true, allowWideBlendIndices: true));
+    }
+
+    [Fact]
     public void AnalyzeWholeMeshAcceptsRigidSingleInfluenceMesh()
     {
         var analysis = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
@@ -220,19 +481,23 @@ public sealed partial class Source2TransformMetadataAnalyzerTests
     [Fact]
     public void AnalyzeWholeMeshRejectsBoneSphereThatDoesNotMatchInfluencedVertices()
     {
+        var descriptor = VertexDescriptor();
+        var meshData = MeshDataWithBoneBounds(
+            Bounds((0f, 0f, 0f), (1f, 0f, 0f)),
+            ("weapon", "", (0.5f, 0f, 0f), (1f, 0f, 0f), 2f));
+        var geometry = Geometry(
+            SkinnedVertices(
+                ((0f, 0f, 0f), [0, 0, 0, 0], [255, 0, 0, 0]),
+                ((1f, 0f, 0f), [0, 0, 0, 0], [255, 0, 0, 0])),
+            [0, 1]);
         var exception = Assert.Throws<InvalidDataException>(() => Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
-            VertexDescriptor(),
-            MeshDataWithBoneBounds(
-                Bounds((0f, 0f, 0f), (1f, 0f, 0f)),
-                ("weapon", "", (0.5f, 0f, 0f), (1f, 0f, 0f), 2f)),
-            Geometry(
-                SkinnedVertices(
-                    ((0f, 0f, 0f), [0, 0, 0, 0], [255, 0, 0, 0]),
-                    ((1f, 0f, 0f), [0, 0, 0, 0], [255, 0, 0, 0])),
-                [0, 1]),
-            "bad sphere"));
+            descriptor, meshData, geometry, "bad sphere"));
 
         Assert.Contains("culling sphere cannot be reproduced", exception.Message, StringComparison.Ordinal);
+        var readOnly = Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(
+            descriptor, meshData, geometry, "unaffected sphere", boneSizeIsHalfExtent: true,
+            requireAllBoneSpheres: false);
+        Assert.Equal(2f, Assert.Single(readOnly.BoneBounds).SphereRadius);
     }
 
     [Fact]
@@ -312,6 +577,30 @@ public sealed partial class Source2TransformMetadataAnalyzerTests
                 Layout("POSITION", 6u, 0),
                 Layout("BLENDINDICES", 30u, 20),
                 Layout("BLENDWEIGHT", 28u, 24)))))));
+
+    private static KVObject WideBlendIndexVertexDescriptor(int indexOffset = 20) => Object(
+        ("m_vertexBuffers", Array(Object(
+            ("m_inputLayoutFields", Array(
+                Layout("POSITION", 6u, 0),
+                Layout("BLENDINDICES", 14u, indexOffset),
+                Layout("BLENDWEIGHT", 28u, 28)))))));
+
+    private static Source2GeometryAnalysis WideBlendIndexGeometry(short activeBoneIndex, short? lastBoneIndex = null)
+    {
+        const int stride = 32;
+        var bytes = new byte[stride * 3];
+        for (var vertex = 0; vertex < 3; vertex++)
+        {
+            var offset = vertex * stride;
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(offset), BitConverter.SingleToInt32Bits(vertex));
+            BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(offset + 20),
+                vertex == 2 && lastBoneIndex.HasValue ? lastBoneIndex.Value : activeBoneIndex);
+            bytes[offset + 28] = byte.MaxValue;
+        }
+
+        int[][] vertexSets = [[0, 1, 2]];
+        return GeometrySource(bytes, stride, vertexSets);
+    }
 
     private static KVObject RigidVertexDescriptor() => Object(
         ("m_vertexBuffers", Array(Object(

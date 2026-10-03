@@ -3,7 +3,7 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Application.Tests;
 
-public sealed class GuidedWorkflowTests
+public sealed partial class GuidedWorkflowTests
 {
     [Fact]
     public async Task BaseVpkRejectsStaleSourceBeforeOfferingResources()
@@ -115,8 +115,39 @@ public sealed class GuidedWorkflowTests
         var choice = Assert.Single(GuidedWorkflow.CreateComponentChoices(discovery));
 
         Assert.Equal("Ready component", choice.DisplayLabel);
+        Assert.Equal(1, choice.DrawCallCount);
+        Assert.Equal("CODEC_MISSING", choice.UnavailableTransformReason?.Code);
         var action = Assert.Single(choice.Actions);
         Assert.Equal(RecipeScaffoldContract.RemoveIntent, action.Intent);
+    }
+
+    [Fact]
+    public void ComponentChoicesDoNotRepeatUniformScaleAcrossTransformVersions()
+    {
+        var model = new ComponentModelIdentity("models/test.vmdl_c", ContentHash.Compute("model"u8), 10);
+        var available = new ComponentCapabilityReason("AVAILABLE", "Ready.");
+        var discovery = new ComponentDiscoveryResultV2(
+            ComponentDiscoveryV2Contract.SchemaVersion,
+            model,
+            ContentHash.Compute("discovery"u8),
+            new ComponentCapabilityAnalyzerIdentity("test", "1", new Dictionary<string, string>()),
+            [new MaterialGroupComponentCandidateV2(
+                "cmp_0123456789abcdef01234567",
+                model,
+                "materials/ready.vmat",
+                "Ready component",
+                [new ComponentCandidateLod(0, ["dc_0123456789abcdef01234567"], 1)],
+                [
+                    new ComponentCapability("transform_component", 1, ComponentDiscoveryContract.Available, [available], []),
+                    new ComponentCapability("transform_component", 4, ComponentDiscoveryContract.Available, [available], []),
+                ])],
+            []);
+
+        var actions = Assert.Single(GuidedWorkflow.CreateComponentChoices(discovery)).Actions;
+
+        Assert.Single(actions, action => action.DisplayName == "Scale uniformly");
+        Assert.Contains(actions, action => action.DisplayName == "Scale uniformly" && action.OperationVersion == 1);
+        Assert.Contains(actions, action => action.DisplayName == "Scale axes / rotate" && action.OperationVersion == 4);
     }
 
     [Fact]

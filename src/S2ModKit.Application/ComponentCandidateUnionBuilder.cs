@@ -7,10 +7,12 @@ public static class ComponentCandidateUnionBuilder
 {
     public static ComponentCandidateUnion Create(
         ModelSnapshot model,
-        IReadOnlyList<ComponentCandidateV2> candidates)
+        IReadOnlyList<ComponentCandidateV2> candidates,
+        int schemaVersion = 2)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(candidates);
+        if (schemaVersion is not (2 or 3)) throw new ArgumentException("Unknown candidate identity version.", nameof(schemaVersion));
         if (candidates.Count == 0 || candidates.Any(candidate => candidate is null))
         {
             throw UnionError(
@@ -47,12 +49,12 @@ public static class ComponentCandidateUnionBuilder
                 MaterialGroupComponentCandidateV2 material => ComponentCandidateIdentity.ComputeMaterialCandidateId(
                     material.Model,
                     material.MaterialPath,
-                    material.Lods.ToArray()),
+                    material.Lods.ToArray(), schemaVersion),
                 MeshLineageComponentCandidateV2 lineage => ComponentCandidateIdentity.ComputeLineageCandidateId(
                     lineage.Model,
                     lineage.LineageKey,
                     lineage.SourceLabel,
-                    lineage.Lods.ToArray()),
+                    lineage.Lods.ToArray(), schemaVersion),
                 _ => string.Empty,
             };
             if (!string.Equals(expectedCandidateId, candidate.CandidateId, StringComparison.Ordinal))

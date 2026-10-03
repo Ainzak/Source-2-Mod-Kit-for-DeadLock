@@ -11,9 +11,9 @@ public static partial class RecipeValidator
     {
         ArgumentNullException.ThrowIfNull(recipe);
 
-        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5))
+        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7))
         {
-            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 5 are supported.", "Migrate the recipe to a published schema version.");
+            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 7 are supported.", "Migrate the recipe to a published schema version.");
         }
 
         ValidateIdentifier(recipe.RecipeId, "recipeId");
@@ -25,6 +25,16 @@ public static partial class RecipeValidator
         if (recipe.Operations is null || recipe.Operations.Count == 0)
         {
             throw Errors.InvalidRecipe("RECIPE_EMPTY", "A recipe must contain at least one operation.", "Add a supported typed operation.");
+        }
+
+        if (recipe.SchemaVersion == 7
+            && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 6 }))
+            throw Errors.InvalidRecipe("REGION_RECIPE_SCOPE_INVALID", "Schema 7 requires one region transform_component@6.", "Keep region edits separate from other operations.");
+
+        if (recipe.SchemaVersion == 6
+            && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 5 }))
+        {
+            throw Errors.InvalidRecipe("EXPERIMENTAL_RECIPE_SCOPE_INVALID", "Recipe schemaVersion 6 requires exactly one transform_component@5 operation.", "Keep the experimental visual edit separate from other operations.");
         }
 
         var operationIds = new HashSet<string>(StringComparer.Ordinal);
@@ -56,7 +66,14 @@ public static partial class RecipeValidator
                 throw Errors.InvalidRecipe("SCHEMA_OPERATION_MISMATCH", "transform_component@4 requires recipe schemaVersion 5.", "Use schemaVersion 5 for an affine component transform.");
             }
 
+            if (recipe.SchemaVersion < 6 && operation is TransformComponentOperation { Version: 5 })
+            {
+                throw Errors.InvalidRecipe("SCHEMA_OPERATION_MISMATCH", "transform_component@5 requires recipe schemaVersion 6.", "Use the explicit experimental recipe contract with runtimeMetadataPolicy.");
+            }
+
             ValidateOperation(operation);
+            if (operation is TransformComponentOperation { Version: 6 } && recipe.SchemaVersion != 7)
+                throw Errors.InvalidRecipe("SCHEMA_OPERATION_MISMATCH", "Region transforms require recipe schema 7.", "Use the explicit region contract.");
             if (!operationIds.Add(operation.OperationId))
             {
                 throw Errors.InvalidRecipe("OPERATION_ID_DUPLICATE", $"Operation id '{operation.OperationId}' is duplicated.", "Use a unique operationId for every operation.");
@@ -107,11 +124,15 @@ public static partial class RecipeValidator
 
     private static void ValidateTransformComponent(TransformComponentOperation operation)
     {
+        if (operation.Version != 6 && operation.Region is not null)
+            throw Errors.InvalidRecipe("REGION_SELECTION_UNSUPPORTED", "Earlier transforms cannot use a region mask.", "Use the separately versioned region contract.");
         var validGranularity = operation.Version switch
         {
             1 or 2 => operation.Granularity == "draw_call_owned_vertices",
             3 => operation.Granularity == "connected_component_vertices",
             4 => operation.Granularity is "draw_call_vertices" or "connected_component_vertices",
+            5 => operation.Granularity == "draw_call_vertices",
+            6 => operation.Granularity == "axis_ramp_vertices",
             _ => false,
         };
         if (!validGranularity)
@@ -159,7 +180,7 @@ public static partial class RecipeValidator
             throw Errors.InvalidRecipe("TRANSFORM_INVALID", "Transform, pivot, translation, and limits are required.", "Provide every field required by the selected transform version.");
         }
 
-        if (operation.Version is 1 or 3 or 4 && (operation.PhysicsPolicy is not null || operation.Limits.MaximumCollisionDisplacement is not null))
+        if (operation.Version is 1 or 3 or 4 or 5 or 6 && (operation.PhysicsPolicy is not null || operation.Limits.MaximumCollisionDisplacement is not null))
         {
             throw Errors.InvalidRecipe("PHYSICS_POLICY_UNSUPPORTED", "transform_component@1 is PHYS-immutable and cannot declare collision-transform fields.", "Remove physicsPolicy and maximumCollisionDisplacement, or use transform_component@2.");
         }
@@ -175,12 +196,69 @@ public static partial class RecipeValidator
         {
             ValidateAffineTransform(operation);
         }
+        else if (operation.Version is 5 or 6)
+        {
+            ValidateExperimentalTransform(operation);
+        }
         else
         {
             ValidateLegacyTransform(operation);
         }
 
         ValidateDisplacementLimits(operation);
+
+        if (operation.Version is not (5 or 6) && operation.RuntimeMetadataPolicy is not null)
+        {
+            throw Errors.InvalidRecipe("RUNTIME_METADATA_POLICY_UNSUPPORTED", "Existing transform versions cannot acknowledge experimental metadata preservation.", "Remove runtimeMetadataPolicy; strict operations never fall back to the experimental profile.");
+        }
+    }
+
+    private static void ValidateExperimentalTransform(TransformComponentOperation operation)
+    {
+        if (operation.Version == 6)
+        {
+            if (operation.Region is not { Kind: "axis_ramp", Version: 1, Axis: "x" or "y" or "z" } region
+                || !float.IsFinite(region.PinnedThrough) || !float.IsFinite(region.FullFrom) || region.PinnedThrough >= region.FullFrom)
+                throw Errors.InvalidRecipe("REGION_SELECTION_INVALID", "An ordered finite model-space axis ramp is required.", "Provide axis, pinnedThrough and fullFrom explicitly.");
+        }
+        else if (operation.Region is not null)
+            throw Errors.InvalidRecipe("REGION_SELECTION_UNSUPPORTED", "Version 5 cannot contain region selection.", "Keep its complete-buffer meaning unchanged.");
+        if (operation.RuntimeMetadataPolicy is not { Kind: "preserve_unverified", Version: 1 })
+        {
+            throw Errors.InvalidRecipe("RUNTIME_METADATA_POLICY_REQUIRED", $"transform_component@{operation.Version} requires explicit preserve_unverified version 1 acknowledgement.", "Acknowledge that spheres, authored proxies and collision are preserved without proving runtime coherence.");
+        }
+
+        var transform = operation.Transform;
+        ValidatePivot(operation, transform.Pivot);
+        if (transform.Scale is not null || transform.Rotation is not null || transform.Frame is not null)
+        {
+            throw Errors.InvalidRecipe("EXPERIMENTAL_TRANSFORM_UNSUPPORTED", "The experimental profile supports uniformScale only, without affine fields.", "Remove scale, rotation and frame.");
+        }
+
+        RequireFinite(transform.UniformScale, "uniformScale");
+        if (transform.UniformScale < 0.5f || transform.UniformScale > 2f)
+        {
+            throw Errors.InvalidRecipe("TRANSFORM_SCALE_OUT_OF_RANGE", "Experimental uniformScale must be within [0.5, 2.0].", "Choose a bounded positive uniform scale.");
+        }
+
+        RequireFinite(transform.Translation.X, "translation.x");
+        RequireFinite(transform.Translation.Y, "translation.y");
+        RequireFinite(transform.Translation.Z, "translation.z");
+        if (transform.Translation.X != 0f || transform.Translation.Y != 0f || transform.Translation.Z != 0f)
+        {
+            throw Errors.InvalidRecipe("EXPERIMENTAL_TRANSFORM_UNSUPPORTED", "The first experimental profile requires zero translation.", "Set all translation axes to zero.");
+        }
+
+        if (transform.UniformScale == 1f)
+        {
+            throw Errors.InvalidRecipe("TRANSFORM_IDENTITY", "The experimental transform must change scale.", "Choose a scale other than one.");
+        }
+
+        RequireFinite(operation.Limits.MaximumVertexDisplacement, "maximumVertexDisplacement");
+        if (operation.Limits.MaximumVertexDisplacement <= 0f || operation.Limits.MaximumVertexDisplacement > 64f)
+        {
+            throw Errors.InvalidRecipe("TRANSFORM_LIMIT_OUT_OF_RANGE", "Experimental maximumVertexDisplacement must be within (0, 64].", "Choose a positive displacement cap no greater than 64 model units.");
+        }
     }
 
     private static void ValidateLegacyTransform(TransformComponentOperation operation)

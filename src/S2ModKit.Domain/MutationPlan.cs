@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace S2ModKit.Domain;
 
 public sealed record SelectedDrawCall(
@@ -35,6 +37,9 @@ public sealed record PlannedOperation(
     public PlannedCoupledTransformTarget? CoupledTransformTarget { get; init; }
 
     public PlannedAffineTransformTarget? AffineTransformTarget { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedExperimentalTransformTarget? ExperimentalTransformTarget { get; init; }
 }
 
 public sealed record GeometryBounds(
@@ -286,6 +291,9 @@ public sealed record MutationPlan(
     ContentHash Fingerprint,
     IReadOnlyList<PlannedOperation> Operations)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? SchemaVersion { get; init; }
+
     public IReadOnlyList<PlannedInput> Inputs { get; init; } = [];
 }
 

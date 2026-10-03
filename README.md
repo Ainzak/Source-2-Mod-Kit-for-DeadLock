@@ -14,6 +14,7 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
 - Apply bounded per-axis scale or rotation around a typed pivot on characterized vertex buffers.
 - Transform the supported embedded visual/convex-physics accessory profile atomically.
 - Transform explicitly selected disconnected triangle islands inside a broader draw call.
+- Opt into experimental complete-buffer scaling or axis-ramp region scaling on eligible parts.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
 
@@ -21,6 +22,12 @@ Support is structural, not hero-name based. Unknown layouts, incomplete LOD cove
 selectors, shared ownership, input drift, and unexplained resource changes fail closed. Affine
 transforms require a reported version-4 capability and independently verified bounds; they do not
 enable topology edits, morph edits, or arbitrary vertex selection.
+
+Experimental editing requires `--experimental` discovery and an explicitly acknowledged recipe.
+It verifies prescribed geometry, conservative box expansion and unchanged data, but does not qualify
+sphere containment, occlusion proxies or collision correspondence. It is not anatomical sculpting:
+hair, clothing and animation may not follow an enlarged part. See the compatibility matrix before
+using an experimental edit.
 
 ## Quick start
 

@@ -256,7 +256,8 @@ public sealed partial class Source2CompiledModelAdapter
             ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data,
                 geometry, $"embedded mesh {mesh.MeshOrdinal}")
             : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data,
-                geometry, $"embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true);
+                geometry, $"embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true,
+                allowWideBlendIndices: true, requireCommonSkinningRoot: false, requireAllBoneSpheres: false);
         if (vertices.Snapshot.ResourceBlockIndex != target.VertexResourceBlockIndex
             || indices.Snapshot.ResourceBlockIndex != target.IndexResourceBlockIndex
             || vertices.Snapshot.EncodedHash != target.VertexBlockInputHash
@@ -499,7 +500,8 @@ public sealed partial class Source2CompiledModelAdapter
                 ? Source2TransformMetadataAnalyzer.AnalyzeMultiBufferMesh(mesh.Descriptor, mesh.Block.Data,
                     mesh.GeometryAnalysis, $"reopened embedded mesh {mesh.MeshOrdinal}")
                 : Source2TransformMetadataAnalyzer.AnalyzeWholeMesh(mesh.Descriptor, mesh.Block.Data,
-                    mesh.GeometryAnalysis, $"reopened embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true);
+                    mesh.GeometryAnalysis, $"reopened embedded mesh {mesh.MeshOrdinal}", boneSizeIsHalfExtent: true,
+                    allowWideBlendIndices: true, requireCommonSkinningRoot: false, requireAllBoneSpheres: false);
             if (metadata.SceneBounds != target.MeshExpectedAfterBounds)
             {
                 throw Errors.Verification("AFFINE_RESULT_DRIFT", $"LOD {target.Lod} scene bounds differ after reopen.", "Reject the candidate.");

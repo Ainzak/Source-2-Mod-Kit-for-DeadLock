@@ -78,6 +78,12 @@ public sealed class EvidenceReportRenderer : IReportRenderer, IVpkPackageReportR
                 AppendInvariantLine(text, $"  - Visual: {coupled.Visual.VertexCount} vertices; displacement {coupled.Visual.MaximumDisplacement:R}/{coupled.Visual.DisplacementLimit:R}");
                 AppendInvariantLine(text, $"  - Collision: {coupled.Collision.VertexCount} vertices; displacement {coupled.Collision.MaximumDisplacement:R}/{coupled.Collision.DisplacementLimit:R}");
             }
+            if (operation.ExperimentalTransform is { } experimental)
+            {
+                text.AppendLine("- Experimental visual-only policy: conservative boxes with unverified runtime-metadata preservation.");
+                AppendInvariantLine(text, $"  - Boxes: {experimental.Boxes.Count}; preserved metadata targets: {experimental.PreservedMetadata.Count}.");
+                text.AppendLine("  - Sphere containment, proxy coherence and collision correspondence remain untested.");
+            }
 
             if (operation.AffineTransform is { } affine)
             {

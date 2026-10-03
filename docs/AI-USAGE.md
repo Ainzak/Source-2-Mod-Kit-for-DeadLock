@@ -4,6 +4,12 @@ S2ModKit is designed so an AI agent can inspect and plan a change without guessi
 identities. The non-interactive commands are the automation contract; `interactive` is a convenient
 human-guided front end.
 
+Experimental editing is explicit: use `components list --experimental`, then scaffold with the
+same discovery context and acknowledged `--experimental` policy. Never silently switch from a
+strict rejection. Whole-part and axis-ramp region scaling preserve unresolved runtime metadata;
+offline passes do not qualify culling, collision, clothing fit or hair. Installation is still a
+separate authorized action. See [the experimental workflow](USER-GUIDE.md#experimental-whole-part-and-region-editing).
+
 ## Agent rules
 
 1. Run `doctor` first and record its reported adapter and codec status.

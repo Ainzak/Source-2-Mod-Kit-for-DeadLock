@@ -21,6 +21,12 @@ a particular operation is available.
 The reviewed current-roster data is `catalogues/deadlock-current.json`. It contains only portable
 logical resource paths and source metadata; the configured local VPK path remains a runtime input.
 
+Heroes announced but not yet playable are listed as `experimental`. Their models are
+`read_only_qualified`: inspection works, but gameplay animation and sound dependencies are not yet
+shipped in the current base archive, so full project import does not complete for them yet.
+Rat King is now active and has complete direct dependencies in the checked archive. The other
+five announced heroes remain experimental; catalogue presence never guarantees editability.
+
 Catalogue documents contain no machine paths, selectors, draw-call IDs, mesh ordinals, bone
 indices, coordinates, or copied game data. Unknown properties are rejected except under explicit
 `extensions` objects.

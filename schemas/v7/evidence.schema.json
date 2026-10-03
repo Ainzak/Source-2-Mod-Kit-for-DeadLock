@@ -1,0 +1,1613 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/evidence/v7",
+  "title": "S2ModKit evidence schema 7",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportId",
+    "createdUtc",
+    "proofLevel",
+    "command",
+    "status",
+    "input",
+    "dependencies",
+    "planFingerprint",
+    "operations",
+    "boundaries",
+    "blocks",
+    "toolVersions",
+    "warnings",
+    "extensions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        6,
+        7
+      ]
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "proofLevel": {
+      "enum": [
+        "offline_static"
+      ]
+    },
+    "command": {
+      "enum": [
+        "plan",
+        "build",
+        "verify"
+      ]
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "input": {
+      "$ref": "#/definitions/artifactEvidence"
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/artifactEvidence"
+      }
+    },
+    "output": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/artifactEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "planFingerprint": {
+      "$ref": "#/definitions/contentHash"
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/removeOperationEvidence"
+          },
+          {
+            "$ref": "#/definitions/transformOperationEvidence"
+          },
+          {
+            "$ref": "#/definitions/coupledTransformOperationEvidence"
+          },
+          {
+            "$ref": "#/definitions/affineTransformOperationEvidence"
+          },
+          {
+            "$ref": "#/definitions/experimentalOperationPlanned"
+          },
+          {
+            "$ref": "#/definitions/experimentalOperationPassed"
+          }
+        ]
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/boundaryEvidence"
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/resourceBlockEvidence"
+      }
+    },
+    "toolVersions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "removeOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "remove_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "not": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "transformOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            1,
+            3
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/geometryChange"
+          }
+        }
+      }
+    },
+    "coupledTransformOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "coupledTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            2
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "coupledTransform": {
+          "$ref": "#/definitions/coupledTransform"
+        }
+      }
+    },
+    "affineTransformOperationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "affineTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            4
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "affineTransform": {
+          "$ref": "#/definitions/affineTransform"
+        }
+      }
+    },
+    "affineTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionKind",
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "pivot",
+        "frame",
+        "scale",
+        "rotation",
+        "translation",
+        "linearMap",
+        "maximumDisplacement",
+        "displacementLimit",
+        "geometryChanges"
+      ],
+      "properties": {
+        "selectionKind": {
+          "enum": [
+            "draw_call_vertices",
+            "connected_component_vertices"
+          ]
+        },
+        "structuralProfileId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "structuralProfileVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pivot": {
+          "$ref": "#/definitions/resolvedPivot"
+        },
+        "frame": {
+          "$ref": "#/definitions/resolvedFrame"
+        },
+        "scale": {
+          "$ref": "#/definitions/vector3"
+        },
+        "rotation": {
+          "$ref": "#/definitions/rotation"
+        },
+        "translation": {
+          "$ref": "#/definitions/vector3"
+        },
+        "linearMap": {
+          "$ref": "#/definitions/matrix3"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "geometryChanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/affineGeometryChange"
+          }
+        }
+      }
+    },
+    "resolvedPivot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "point",
+        "coordinateSpace",
+        "sourceIdentity",
+        "sourceHash"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "selection_bounds_center",
+            "explicit_point",
+            "bounds_face",
+            "bone_origin"
+          ]
+        },
+        "point": {
+          "$ref": "#/definitions/vector3"
+        },
+        "coordinateSpace": {
+          "const": "model"
+        },
+        "sourceIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "referenceLod": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "resolvedFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "toModel",
+        "toFrame",
+        "sourceIdentity",
+        "sourceHash"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "model",
+            "bone_bind"
+          ]
+        },
+        "boneName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toModel": {
+          "$ref": "#/definitions/matrix3"
+        },
+        "toFrame": {
+          "$ref": "#/definitions/matrix3"
+        },
+        "sourceIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceHash": {
+          "$ref": "#/definitions/contentHash"
+        }
+      }
+    },
+    "rotation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "axis",
+            "degrees"
+          ],
+          "properties": {
+            "kind": {
+              "const": "axis_angle"
+            },
+            "axis": {
+              "$ref": "#/definitions/vector3"
+            },
+            "degrees": {
+              "type": "number",
+              "exclusiveMinimum": -180,
+              "maximum": 180
+            }
+          }
+        }
+      ]
+    },
+    "matrix3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "m11",
+        "m12",
+        "m13",
+        "m21",
+        "m22",
+        "m23",
+        "m31",
+        "m32",
+        "m33"
+      ],
+      "properties": {
+        "m11": {
+          "type": "number"
+        },
+        "m12": {
+          "type": "number"
+        },
+        "m13": {
+          "type": "number"
+        },
+        "m21": {
+          "type": "number"
+        },
+        "m22": {
+          "type": "number"
+        },
+        "m23": {
+          "type": "number"
+        },
+        "m31": {
+          "type": "number"
+        },
+        "m32": {
+          "type": "number"
+        },
+        "m33": {
+          "type": "number"
+        }
+      }
+    },
+    "affineGeometryChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "vertexSetHash",
+        "vertexCount",
+        "selectionBeforeBounds",
+        "selectionAfterBounds",
+        "meshBeforeBounds",
+        "meshAfterBounds",
+        "inputVertexBlockHash",
+        "outputVertexBlockHash",
+        "inputDecodedVertexBufferHash",
+        "expectedDecodedVertexBufferHash",
+        "inputPackedFrameHash",
+        "expectedPackedFrameHash",
+        "maximumDisplacement",
+        "changedAttributes",
+        "codec"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selectionBeforeBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "selectionAfterBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "meshBeforeBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "meshAfterBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "inputVertexBlockHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "outputVertexBlockHash": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/contentHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "inputPackedFrameHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedPackedFrameHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "changedAttributes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "normal_tangent",
+              "position"
+            ]
+          }
+        },
+        "codec": {
+          "$ref": "#/definitions/codecIdentity"
+        }
+      }
+    },
+    "coupledTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicsPolicy",
+        "pivot",
+        "uniformScale",
+        "visual",
+        "collision",
+        "changedByteClasses"
+      ],
+      "properties": {
+        "physicsPolicy": {
+          "const": "transform_coupled_convex"
+        },
+        "pivot": {
+          "$ref": "#/definitions/vector3"
+        },
+        "uniformScale": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4,
+          "not": {
+            "enum": [
+              1
+            ]
+          }
+        },
+        "visual": {
+          "$ref": "#/definitions/coupledTransformHalf"
+        },
+        "collision": {
+          "$ref": "#/definitions/coupledTransformHalf"
+        },
+        "changedByteClasses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "coupledTransformHalf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "vertexCount",
+        "inputPositionHash",
+        "expectedPositionHash",
+        "beforeBounds",
+        "afterBounds",
+        "maximumDisplacement",
+        "displacementLimit"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inputPositionHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "beforeBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "afterBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 256
+        }
+      }
+    },
+    "drawCallIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^dc_[0-9a-f]{24}$"
+      }
+    },
+    "resourcePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "geometryChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "vertexSetHash",
+        "vertexCount",
+        "beforeBounds",
+        "afterBounds",
+        "pivot",
+        "uniformScale",
+        "translation",
+        "maximumDisplacement",
+        "changedAttributes",
+        "inputVertexBlockHash",
+        "outputVertexBlockHash",
+        "codec"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "beforeBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "afterBounds": {
+          "$ref": "#/definitions/bounds"
+        },
+        "pivot": {
+          "$ref": "#/definitions/vector3"
+        },
+        "uniformScale": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4
+        },
+        "translation": {
+          "$ref": "#/definitions/vector3"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "changedAttributes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "position"
+            ]
+          }
+        },
+        "inputVertexBlockHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "outputVertexBlockHash": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/contentHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "expectedDecodedVertexBufferHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "codec": {
+          "$ref": "#/definitions/codecIdentity"
+        }
+      }
+    },
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/definitions/vector3"
+        },
+        "max": {
+          "$ref": "#/definitions/vector3"
+        }
+      }
+    },
+    "codecIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "apiProfile",
+        "platform",
+        "binaryHash",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binaryHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "contentHash",
+        "size",
+        "sourceKind",
+        "catalogIdentity",
+        "verificationMode"
+      ],
+      "properties": {
+        "logicalPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceKind": {
+          "enum": [
+            "directory",
+            "vpk",
+            "generated"
+          ]
+        },
+        "catalogIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verificationMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "boundaryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_applicable",
+            "untested",
+            "skipped"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "resourceBlockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "type",
+        "inputHash",
+        "disposition"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "outputHash": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/contentHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "planned_change",
+            "planned_unchanged",
+            "changed",
+            "unchanged"
+          ]
+        }
+      }
+    },
+    "runtimeMetadataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "experimentalGrowth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure",
+        "originalValue",
+        "plannedValue",
+        "delta"
+      ],
+      "properties": {
+        "measure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalValue": {
+          "type": "number"
+        },
+        "plannedValue": {
+          "type": "number"
+        },
+        "delta": {
+          "type": "number"
+        }
+      }
+    },
+    "experimentalBoxTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "storage",
+        "coordinateSpace",
+        "coordinateMatrixHash",
+        "coordinateMatrixWords",
+        "contributorSetHash",
+        "contributorCount",
+        "originalWords",
+        "expectedWords",
+        "growth"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "enum": [
+            "min_max",
+            "center_half_extent"
+          ]
+        },
+        "coordinateSpace": {
+          "enum": [
+            "model",
+            "render_inverse_bind"
+          ]
+        },
+        "coordinateMatrixHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "coordinateMatrixWords": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "expectedWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "growth": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalGrowth"
+          }
+        }
+      }
+    },
+    "experimentalPreservationTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "category",
+        "scope",
+        "disposition",
+        "sourcePayloadHash",
+        "originalWords"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "render_sphere",
+            "root_sphere",
+            "occlusion_distance_field",
+            "collision_payload"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "affected",
+            "resource"
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "sourcePayloadHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      }
+    },
+    "experimentalBoxPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "experimentalPreservationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "type": "null"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "experimentalTransformPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "boundsPolicyId",
+        "boundsPolicyVersion",
+        "runtimeMetadataPolicy",
+        "pivot",
+        "uniformScale",
+        "displacementLimit",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "structuralProfileId": {
+          "enum": [
+            "root_complete_buffer_visual_uniform"
+          ]
+        },
+        "structuralProfileVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "boundsPolicyId": {
+          "enum": [
+            "retain_expand_boxes_preserve_runtime"
+          ]
+        },
+        "boundsPolicyVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/runtimeMetadataPolicy"
+        },
+        "pivot": {
+          "$ref": "#/definitions/resolvedPivot"
+        },
+        "uniformScale": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "boxes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalBoxPlanned"
+          }
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalPreservationPlanned"
+          }
+        }
+      }
+    },
+    "experimentalOperationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "experimentalTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            5
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/geometryChange"
+          }
+        },
+        "experimentalTransform": {
+          "$ref": "#/definitions/experimentalTransformPlanned"
+        }
+      }
+    },
+    "experimentalBoxPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "experimentalPreservationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "observedWords": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "experimentalTransformPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "boundsPolicyId",
+        "boundsPolicyVersion",
+        "runtimeMetadataPolicy",
+        "pivot",
+        "uniformScale",
+        "displacementLimit",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "structuralProfileId": {
+          "enum": [
+            "root_complete_buffer_visual_uniform"
+          ]
+        },
+        "structuralProfileVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "boundsPolicyId": {
+          "enum": [
+            "retain_expand_boxes_preserve_runtime"
+          ]
+        },
+        "boundsPolicyVersion": {
+          "enum": [
+            1
+          ]
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/runtimeMetadataPolicy"
+        },
+        "pivot": {
+          "$ref": "#/definitions/resolvedPivot"
+        },
+        "uniformScale": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "boxes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalBoxPassed"
+          }
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalPreservationPassed"
+          }
+        }
+      }
+    },
+    "experimentalOperationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "experimentalTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ]
+        },
+        "version": {
+          "enum": [
+            5
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/resourcePaths"
+        },
+        "geometryChanges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/geometryChange"
+          }
+        },
+        "experimentalTransform": {
+          "$ref": "#/definitions/experimentalTransformPassed"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            6
+          ]
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/removeOperationEvidence"
+              },
+              {
+                "$ref": "#/definitions/transformOperationEvidence"
+              },
+              {
+                "$ref": "#/definitions/coupledTransformOperationEvidence"
+              },
+              {
+                "$ref": "#/definitions/affineTransformOperationEvidence"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            7
+          ]
+        },
+        "output": {
+          "type": "null"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalOperationPlanned"
+          }
+        }
+      }
+    },
+    {
+      "required": [
+        "output"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "enum": [
+            7
+          ]
+        },
+        "output": {
+          "$ref": "#/definitions/artifactEvidence"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/definitions/experimentalOperationPassed"
+          }
+        }
+      }
+    }
+  ]
+}

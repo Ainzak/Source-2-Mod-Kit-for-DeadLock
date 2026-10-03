@@ -109,7 +109,11 @@ public sealed class MutationPlanner
             }
 
             var result = transformPlanner.PlanTransform(new TransformPlanningRequest(input, model, transform, selected));
-            if (transform.Version == 4)
+            if (transform.Version is 5 or 6)
+            {
+                ExperimentalTransformPlanValidator.Validate(result, selected, blocksByIndex, transform);
+            }
+            else if (transform.Version == 4)
             {
                 AffineTransformPlanValidator.Validate(result, selected, blocksByIndex, transform);
             }
@@ -132,7 +136,19 @@ public sealed class MutationPlanner
                 DistanceFieldTargets = result.DistanceFieldTargets.OrderBy(target => target.ResourceBlockIndex).ThenBy(target => target.FieldIndex).ToArray(),
                 CoupledTransformTarget = result.CoupledTransformTarget,
                 AffineTransformTarget = result.AffineTransformTarget,
+                ExperimentalTransformTarget = result.ExperimentalTransformTarget,
             });
+        }
+
+        if (recipe.SchemaVersion is 6 or 7)
+        {
+            var provisional = new MutationPlan(recipe.RecipeId, recipe.InputHash, recipe.InputHash, plannedOperations)
+            {
+                SchemaVersion = recipe.SchemaVersion == 7 ? 3 : 2,
+                Inputs = inputs,
+            };
+            var experimental = provisional with { Fingerprint = MutationPlanJson.ComputeExperimentalFingerprint(provisional) };
+            return JsonDefaults.Deserialize<MutationPlan>(JsonDefaults.SerializeToUtf8(experimental), "Experimental mutation plan");
         }
 
         var fingerprint = ComputeFingerprint(recipe, inputs, plannedOperations);

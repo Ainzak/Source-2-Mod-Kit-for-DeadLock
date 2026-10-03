@@ -12,8 +12,22 @@ public static class JsonDefaults
     {
         try
         {
-            return JsonSerializer.Deserialize<T>(utf8Json, Options)
+            if (typeof(T) == typeof(MutationPlan))
+            {
+                return (T)(object)MutationPlanJson.Read(utf8Json);
+            }
+
+            if (typeof(T) == typeof(RecipeDocument))
+            {
+                ValidateExperimentalRecipeShape(utf8Json);
+            }
+            if (typeof(T) == typeof(EvidenceReport)) ExperimentalEvidenceValidator.ValidateShape(utf8Json);
+            if (typeof(T) == typeof(GuidedWorkflowSession)) GuidedWorkflow.ValidateSessionShape(utf8Json);
+
+            var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
                 ?? throw Errors.InvalidRecipe("JSON_NULL_DOCUMENT", $"{description} cannot be null.", "Provide a JSON object matching the published schema.");
+            if (result is EvidenceReport evidence) ExperimentalEvidenceValidator.Validate(evidence);
+            return result;
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
@@ -26,6 +40,51 @@ public static class JsonDefaults
     public static byte[] SerializeToUtf8<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, Options);
 
     public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+
+    private static void ValidateExperimentalRecipeShape(ReadOnlySpan<byte> json)
+    {
+        using var document = JsonDocument.Parse(json.ToArray());
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+        var versions = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();
+        var regionRecipe = versions.Any(property => property.Value.ValueKind == JsonValueKind.Number
+            && property.Value.TryGetInt32(out var v) && v == 7);
+        if (!regionRecipe && root.TryGetProperty("operations", out var oldRegionOperations)
+            && oldRegionOperations.ValueKind == JsonValueKind.Array
+            && oldRegionOperations.EnumerateArray().Any(operation => operation.ValueKind == JsonValueKind.Object && operation.TryGetProperty("region", out _)))
+            throw Errors.InvalidRecipe("REGION_SELECTION_UNSUPPORTED", "Earlier recipes cannot contain region fields, including null.", "Use the separately versioned region contract.");
+        // Do not reinterpret old readers. A duplicated discriminator involving version 6 cannot
+        // smuggle the new fields through last-property-wins legacy deserialization.
+        if (!versions.Any(property => property.Value.ValueKind == JsonValueKind.Number
+            && property.Value.TryGetInt32(out var version) && version is 6 or 7))
+        {
+            if (root.TryGetProperty("operations", out var legacyOperations) && legacyOperations.ValueKind == JsonValueKind.Array
+                && legacyOperations.EnumerateArray().Any(operation => operation.ValueKind == JsonValueKind.Object
+                    && operation.TryGetProperty("runtimeMetadataPolicy", out _)))
+            {
+                throw Errors.InvalidRecipe("RUNTIME_METADATA_POLICY_UNSUPPORTED", "Legacy recipes cannot contain runtimeMetadataPolicy, including null.", "Use the unchanged strict recipe contract or explicitly choose schemaVersion 6.");
+            }
+
+            return;
+        }
+        MutationPlanJson.RequireUniqueProperties(root);
+        MutationPlanJson.RequireProperties(root, "schemaVersion", "recipeId", "inputHash", "operations", "extensions");
+        var operations = root.GetProperty("operations");
+        if (operations.ValueKind != JsonValueKind.Array) throw Errors.InvalidRecipe("EXPERIMENTAL_RECIPE_SCOPE_INVALID", "Experimental operations must be an array.", "Use one explicit version-5 operation.");
+        foreach (var operation in operations.EnumerateArray())
+        {
+            MutationPlanJson.RequireProperties(operation, "operationId", "kind", "version", "granularity", "selector", "lodPolicy",
+                "expectedMatchesByLod", "expectedVerticesByLod", "ownershipPolicy", "runtimeMetadataPolicy", "transform", "limits", "extensions");
+            MutationPlanJson.RequireProperties(operation.GetProperty("transform"), "pivot", "uniformScale", "translation");
+            MutationPlanJson.RequireProperties(operation.GetProperty("transform").GetProperty("translation"), "x", "y", "z");
+            MutationPlanJson.RequireProperties(operation.GetProperty("limits"), "maximumVertexDisplacement");
+            if (regionRecipe)
+            {
+                MutationPlanJson.RequireProperties(operation, "region");
+                MutationPlanJson.RequireProperties(operation.GetProperty("region"), "kind", "version", "axis", "pinnedThrough", "fullFrom");
+            }
+        }
+    }
 
     private static JsonSerializerOptions CreateOptions() => new(JsonSerializerDefaults.Web)
     {

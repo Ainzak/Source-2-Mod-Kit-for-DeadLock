@@ -13,7 +13,12 @@ public static class RecipeScaffoldContract
     public const string TranslateIntent = "translate";
 
     public const string AffineIntent = "affine";
+
+    public const string RegionScaleIntent = "region-scale";
 }
+
+public sealed record ExperimentalScaffoldOptions(RuntimeMetadataPolicy Policy, TransformPivot Pivot,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] RegionScaleSelection? Region = null);
 
 public sealed record AffineScaffoldOptions(
     TransformVector3 Scale,
@@ -32,7 +37,9 @@ public sealed record RecipeScaffoldRequest(
     int? ReferenceLod = null,
     float? MaximumVertexDisplacement = null,
     float? MaximumCollisionDisplacement = null,
-    AffineScaffoldOptions? Affine = null);
+    AffineScaffoldOptions? Affine = null,
+    ExperimentalScaffoldOptions? Experimental = null,
+    bool ExperimentalDiscovery = false);
 
 public sealed record RecipeScaffoldResult(
     string OutputPath,
@@ -60,9 +67,24 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
 
         ValidateModelIdentity(input, model, discovery);
         var candidates = SelectCandidates(discovery, request.ComponentIds);
-        var union = ComponentCandidateUnionBuilder.Create(model, candidates);
+        var union = ComponentCandidateUnionBuilder.Create(model, candidates, discovery.SchemaVersion);
         var selectedDrawCalls = union.SelectedDrawCalls;
         var matchesByLod = CreateLodCounts(model, selectedDrawCalls);
+        if (request.Experimental is not null)
+        {
+            if (discovery.SchemaVersion != 3 || discovery.ExperimentalPolicy != request.Experimental.Policy
+                || request.Intent is not (RecipeScaffoldContract.UniformScaleIntent or RecipeScaffoldContract.RegionScaleIntent)
+                || request.Affine is not null || request.MaximumCollisionDisplacement is not null
+                || request.TranslationX is not null || request.TranslationY is not null || request.TranslationZ is not null
+                || (request.ReferenceLod is not null && request.Experimental.Pivot.Kind == "explicit_point")
+                || request.UniformScale is null || request.MaximumVertexDisplacement is null
+                || (request.Intent == RecipeScaffoldContract.RegionScaleIntent) != (request.Experimental.Region is not null))
+                throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPTIONS_INVALID", "Experimental scaffolding requires explicit uniform/region intent, policy, scale and displacement cap without unrelated options.", "Use acknowledged experimental discovery and matching scaffold options.");
+            return ExperimentalComponentDiscoveryService.CreateRecipe(input, model, union,
+                request.Experimental, request.UniformScale.Value, request.MaximumVertexDisplacement.Value);
+        }
+        if ((discovery.SchemaVersion == 3 && !request.ExperimentalDiscovery) || request.Intent == RecipeScaffoldContract.RegionScaleIntent)
+            throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPT_IN_REQUIRED", "Experimental candidates and region intent require explicit policy acknowledgement.", "Use experimental discovery/scaffolding or keep the strict workflow.");
         if (request.Intent == RecipeScaffoldContract.AffineIntent)
         {
             return await CreateAffineRecipeAsync(
@@ -197,7 +219,7 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         }
 
         var computedHash = ContentHash.Compute(input.Bytes.Span);
-        if (discovery.SchemaVersion != ComponentDiscoveryV2Contract.SchemaVersion
+        if (discovery.SchemaVersion is not (2 or 3)
             || computedHash != input.ContentHash
             || input.ContentHash != model.Artifact.ContentHash
             || input.ContentHash != discovery.Model.ContentHash

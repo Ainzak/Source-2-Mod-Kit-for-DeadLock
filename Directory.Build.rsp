@@ -1,0 +1,3 @@
+# Bound CLI build fan-out on high-core hosts, and let worker processes exit at command completion.
+-maxcpucount:4
+-nodeReuse:false

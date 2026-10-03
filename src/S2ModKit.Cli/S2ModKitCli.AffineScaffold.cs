@@ -5,8 +5,15 @@ namespace S2ModKit.Cli;
 
 public sealed partial class S2ModKitCli
 {
-    private static AffineScaffoldOptions? ParseAffineScaffoldOptions(string intent, AffineScaffoldCliOptions raw)
+    private static AffineScaffoldOptions? ParseAffineScaffoldOptions(string intent, AffineScaffoldCliOptions raw, bool experimental = false)
     {
+        if (experimental && intent is RecipeScaffoldContract.UniformScaleIntent or RecipeScaffoldContract.RegionScaleIntent)
+        {
+            if (new[] { raw.ScaleX, raw.ScaleY, raw.ScaleZ, raw.RotateAxis, raw.RotateDegrees, raw.PivotFace, raw.PivotBone, raw.Frame, raw.FrameBone }.Any(value => value is not null)
+                || raw.Pivot is not (null or "point") || (raw.Pivot == "point" && raw.PivotPoint is null))
+                throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPTIONS_INVALID", "Experimental scaffolding accepts only a point or default selection-center pivot, without affine options.", "Remove rotation, axis scales, frames and other pivots.");
+            return null;
+        }
         var supplied = new[]
         {
             raw.ScaleX, raw.ScaleY, raw.ScaleZ, raw.RotateAxis, raw.RotateDegrees,

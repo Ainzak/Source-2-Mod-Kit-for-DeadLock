@@ -64,10 +64,26 @@ public sealed record TransformComponentOperation : RecipeOperation
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PhysicsPolicy { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RuntimeMetadataPolicy? RuntimeMetadataPolicy { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RegionScaleSelection? Region { get; init; }
+
     public ComponentTransform Transform { get; init; } = new();
 
     public TransformLimits Limits { get; init; } = new();
 }
+
+/// <summary>An explicit experimental acknowledgement, not evidence of runtime coherence.</summary>
+public sealed record RuntimeMetadataPolicy([property: JsonRequired] string Kind, [property: JsonRequired] int Version);
+
+public sealed record RegionScaleSelection(
+    [property: JsonRequired] string Kind,
+    [property: JsonRequired] int Version,
+    [property: JsonRequired] string Axis,
+    [property: JsonRequired] float PinnedThrough,
+    [property: JsonRequired] float FullFrom);
 
 public sealed record ComponentTransform
 {

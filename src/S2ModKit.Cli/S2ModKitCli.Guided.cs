@@ -21,6 +21,7 @@ public sealed partial class S2ModKitCli
         string[] compiledModelPaths,
         bool resume,
         bool expert,
+        bool experimental,
         TextReader input,
         TextWriter output,
         CancellationToken cancellationToken)
@@ -80,11 +81,25 @@ public sealed partial class S2ModKitCli
                 return null;
             }
 
-            var sourcePath = await ReadGuidedTextAsync(input, output, "Source path: ", cancellationToken).ConfigureAwait(false);
-            if (sourcePath is null)
+            string? sourcePath;
+            while (true)
             {
-                output.WriteLine("Canceled; no session was created.");
-                return null;
+                sourcePath = await ReadGuidedTextAsync(input, output, "Source path: ", cancellationToken).ConfigureAwait(false);
+                if (sourcePath is null)
+                {
+                    output.WriteLine("Canceled; no session was created.");
+                    return null;
+                }
+
+                try
+                {
+                    ValidateGuidedSourcePath(sourcePath, sourceType.Value);
+                    break;
+                }
+                catch (S2ModKitException exception) when (IsGuidedSourcePathError(exception))
+                {
+                    output.WriteLine($"{exception.Error.Summary} Enter a different source path, or 'cancel'.");
+                }
             }
 
             switch (sourceType.Value)
@@ -109,6 +124,7 @@ public sealed partial class S2ModKitCli
             compiledModelPaths,
             resume,
             expert,
+            experimental,
             input,
             output,
             cancellationToken).ConfigureAwait(false);
@@ -122,6 +138,7 @@ public sealed partial class S2ModKitCli
         string[] compiledModelPaths,
         bool resume,
         bool expert,
+        bool experimental,
         TextReader input,
         TextWriter output,
         CancellationToken cancellationToken)
@@ -140,6 +157,8 @@ public sealed partial class S2ModKitCli
             }
 
             session = await ReadGuidedSessionAsync(fullSessionPath, cancellationToken).ConfigureAwait(false);
+            if (experimental && session.ExperimentalPolicy is null)
+                throw Errors.Input("GUIDED_EXPERIMENTAL_RESUME_MISMATCH", "A strict saved session cannot be upgraded by --experimental.", "Start a new explicitly experimental session.");
             if (!string.Equals(session.CataloguePath, fullCataloguePath, StringComparison.OrdinalIgnoreCase))
             {
                 throw Errors.Input(
@@ -173,25 +192,62 @@ public sealed partial class S2ModKitCli
             }
 
             var sources = CreateGuidedSources(baseVpkPaths, modVpkPaths, compiledModelPaths);
-            session = GuidedWorkflow.CreateSession(fullCataloguePath, sources, expert);
+            session = GuidedWorkflow.CreateSession(fullCataloguePath, sources, expert, experimental);
             await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: false, cancellationToken).ConfigureAwait(false);
             output.WriteLine("S2ModKit guided workflow");
             output.WriteLine("Enter a number, or 'cancel' to save and stop.");
         }
 
         var catalogue = await ReadCatalogueAsync(fullCataloguePath, cancellationToken).ConfigureAwait(false);
-        if (session.Step == GuidedWorkflowContract.SourceSelectionStep)
+        if (session.ExperimentalPolicy is not null) output.WriteLine(ExperimentalWarning);
+        var selectionCache = new Dictionary<string, GuidedCatalogueSelection>(StringComparer.Ordinal);
+        async Task<GuidedCatalogueSelection> LoadSelectionAsync(GuidedSourceOption source)
         {
-            output.WriteLine("Choose a source:");
-            for (var index = 0; index < session.Sources.Count; index++)
+            if (!selectionCache.TryGetValue(source.SourceId, out var cached))
             {
-                var source = session.Sources[index];
-                output.WriteLine(session.Expert
-                    ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {source.DisplayName} [{source.Kind}; {source.SourceId}] {source.Path}")
-                    : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {source.DisplayName} ({FormatSourceKind(source.Kind)})"));
+                cached = await CreateGuidedSelectionAsync(catalogue, source, cancellationToken).ConfigureAwait(false);
+                selectionCache.Add(source.SourceId, cached);
+                ReportUnavailableGuidedResources(cached, session.Expert, output);
             }
 
-            var selectedIndex = await ReadGuidedChoiceAsync(input, output, session.Sources.Count, cancellationToken).ConfigureAwait(false);
+            return cached;
+        }
+
+        async Task<(GuidedSourceOption Source, GuidedCatalogueSelection Selection)?> LoadSelectionWithRepairAsync(GuidedSourceOption source)
+        {
+            while (true)
+            {
+                try
+                {
+                    var loaded = await LoadSelectionAsync(source).ConfigureAwait(false);
+                    return (source, loaded);
+                }
+                catch (S2ModKitException exception) when (IsGuidedSourcePathError(exception))
+                {
+                    output.WriteLine($"{exception.Error.Summary} Enter a different source path, or 'cancel'.");
+                    var replacement = await ReadGuidedTextAsync(input, output, "Source path: ", cancellationToken).ConfigureAwait(false);
+                    if (replacement is null)
+                    {
+                        return null;
+                    }
+
+                    try
+                    {
+                        var fullPath = NormalizeGuidedPath(replacement, "GUIDED_SOURCE_PATH_INVALID");
+                        source = source with { Path = fullPath, DisplayName = Path.GetFileName(fullPath) };
+                    }
+                    catch (S2ModKitException pathException) when (IsGuidedSourcePathError(pathException))
+                    {
+                        output.WriteLine(pathException.Error.Summary);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if (session.Step == GuidedWorkflowContract.SourceSelectionStep)
+        {
+            var selectedIndex = await ReadGuidedSourceChoiceAsync(session, input, output, cancellationToken).ConfigureAwait(false);
             if (selectedIndex is null)
             {
                 return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
@@ -207,8 +263,20 @@ public sealed partial class S2ModKitCli
 
         var selectedSource = session.Sources.Single(source =>
             string.Equals(source.SourceId, session.SelectedSourceId, StringComparison.Ordinal));
-        var selection = await CreateGuidedSelectionAsync(catalogue, selectedSource, cancellationToken).ConfigureAwait(false);
-        ReportUnavailableGuidedResources(selection, session.Expert, output);
+        var initialSelection = await LoadSelectionWithRepairAsync(selectedSource).ConfigureAwait(false);
+        if (initialSelection is null)
+        {
+            return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (initialSelection.Value.Source != selectedSource)
+        {
+            selectedSource = initialSelection.Value.Source;
+            session = session with { Sources = session.Sources.Select(source => source.SourceId == selectedSource.SourceId ? selectedSource : source).ToArray() };
+            await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+        }
+
+        var selection = initialSelection.Value.Selection;
         ValidateGuidedSelectionCheckpoint(session, selection);
 
         IReadOnlyList<GuidedComponentChoice>? components = null;
@@ -231,10 +299,46 @@ public sealed partial class S2ModKitCli
                                 : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {heroes[index].DisplayName}"));
                         }
 
-                        var selectedHeroIndex = await ReadGuidedChoiceAsync(input, output, heroes.Length, cancellationToken).ConfigureAwait(false);
+                        output.WriteLine("  0. Back to source selection");
+                        var selectedHeroIndex = await ReadGuidedChoiceAsync(input, output, heroes.Length, cancellationToken, allowBack: true).ConfigureAwait(false);
                         if (selectedHeroIndex is null)
                         {
                             return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        if (selectedHeroIndex.Value == GuidedBackChoice)
+                        {
+                            session = ResetGuidedSourceSelection(session);
+                            await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                            var sourceIndex = await ReadGuidedSourceChoiceAsync(session, input, output, cancellationToken).ConfigureAwait(false);
+                            if (sourceIndex is null)
+                            {
+                                return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            session = session with
+                            {
+                                SelectedSourceId = session.Sources[sourceIndex.Value].SourceId,
+                                Step = GuidedWorkflowContract.HeroSelectionStep,
+                            };
+                            await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                            selectedSource = session.Sources[sourceIndex.Value];
+                            var switchedSelection = await LoadSelectionWithRepairAsync(selectedSource).ConfigureAwait(false);
+                            if (switchedSelection is null)
+                            {
+                                return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            if (switchedSelection.Value.Source != selectedSource)
+                            {
+                                selectedSource = switchedSelection.Value.Source;
+                                session = session with { Sources = session.Sources.Select(source => source.SourceId == selectedSource.SourceId ? selectedSource : source).ToArray() };
+                                await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                            }
+
+                            selection = switchedSelection.Value.Selection;
+                            ValidateGuidedSelectionCheckpoint(session, selection);
+                            continue;
                         }
 
                         session = session with
@@ -293,9 +397,7 @@ public sealed partial class S2ModKitCli
                     selectedSource,
                     catalogue,
                     cancellationToken).ConfigureAwait(false);
-                var discovery = await application
-                    .DiscoverComponentsAsync(session.ProjectRoot!, cancellationToken)
-                    .ConfigureAwait(false);
+                var discovery = await DiscoverGuidedComponentsAsync(session, cancellationToken).ConfigureAwait(false);
                 components = GuidedWorkflow.CreateComponentChoices(discovery);
                 var hiddenComponentCount = discovery.Candidates.Count - components.Count;
                 if (hiddenComponentCount > 0)
@@ -333,6 +435,16 @@ public sealed partial class S2ModKitCli
                 }
 
                 var chosenComponent = components[selectedIndex.Value];
+                output.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Selection: {chosenComponent.Kind}, {chosenComponent.DrawCallCount} draw call(s) across {chosenComponent.Lods.Count} LOD(s)."));
+                if (chosenComponent.UnavailableTransformReason is { } transformReason)
+                {
+                    output.WriteLine(session.Expert
+                        ? $"Transform unavailable [{transformReason.Code}]: {transformReason.Summary}"
+                        : $"Transform unavailable: {transformReason.Summary}");
+                }
+
                 session = session with
                 {
                     SelectedComponentId = chosenComponent.CandidateId,
@@ -353,9 +465,7 @@ public sealed partial class S2ModKitCli
                     cancellationToken).ConfigureAwait(false);
                 if (components is null)
                 {
-                    var discovery = await application
-                        .DiscoverComponentsAsync(session.ProjectRoot!, cancellationToken)
-                        .ConfigureAwait(false);
+                    var discovery = await DiscoverGuidedComponentsAsync(session, cancellationToken).ConfigureAwait(false);
                     components = GuidedWorkflow.CreateComponentChoices(discovery);
                 }
 
@@ -430,6 +540,7 @@ public sealed partial class S2ModKitCli
                         TranslationZ = parameters.TranslationZ,
                         MaximumVertexDisplacement = parameters.MaximumVertexDisplacement,
                         MaximumCollisionDisplacement = parameters.MaximumCollisionDisplacement,
+                        ExperimentalParameters = parameters.Experimental,
                         RecipePath = recipePath,
                     };
                     await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
@@ -446,7 +557,7 @@ public sealed partial class S2ModKitCli
                             ReferenceLod: null,
                             parameters.MaximumVertexDisplacement,
                             parameters.MaximumCollisionDisplacement,
-                            parameters.Affine),
+                            parameters.Affine, parameters.Experimental, ExperimentalDiscovery: session.ExperimentalPolicy is not null),
                         cancellationToken).ConfigureAwait(false);
                     session = session with
                     {
@@ -464,6 +575,8 @@ public sealed partial class S2ModKitCli
                         ?? await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
                     var plan = await application.PlanAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
                     var review = GuidedWorkflow.CreateDryRunReview(plan);
+                    foreach (var buffer in plan.Plan.Operations.SelectMany(op => op.ExperimentalTransformTarget?.Region?.Buffers ?? []))
+                        output.WriteLine($"Region LOD {buffer.Lod}: {buffer.PinnedVertexCount} pinned, {buffer.TransitionVertexCount} transition, {buffer.FullVertexCount} full; {buffer.ChangedVertexCount} changed. This is a spatial mask, not an anatomical label.");
                     session = session with
                     {
                         PlanFingerprint = review.PlanFingerprint,
@@ -519,6 +632,7 @@ public sealed partial class S2ModKitCli
                 var recipe = await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
                 if (session.BuildId is null)
                 {
+                    if (recipe.SchemaVersion is 6 or 7) output.WriteLine(ExperimentalWarning);
                     var built = await application.BuildAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
                     session = session with
                     {
@@ -779,6 +893,8 @@ public sealed partial class S2ModKitCli
         TextWriter output,
         CancellationToken cancellationToken)
     {
+        if (action.OperationVersion is 5 or 6)
+            return await ReadGuidedExperimentalParametersAsync(action.OperationVersion, input, output, cancellationToken).ConfigureAwait(false);
         if (action.RequiresAffine)
         {
             return await ReadGuidedAffineParametersAsync(input, output, cancellationToken).ConfigureAwait(false);
@@ -975,6 +1091,9 @@ public sealed partial class S2ModKitCli
 
         var recipe = JsonDefaults.Deserialize<RecipeDocument>(bytes, "Guided recipe");
         RecipeValidator.Validate(recipe);
+        if (recipe.SchemaVersion is 6 or 7 && (session.ExperimentalPolicy is null || recipe.Operations is not [TransformComponentOperation operation]
+            || operation.RuntimeMetadataPolicy != session.ExperimentalPolicy || operation.Version != session.SelectedOperationVersion))
+            throw Errors.InvalidRecipe("GUIDED_EXPERIMENTAL_RECIPE_MISMATCH", "The saved recipe does not match this session's explicit experimental acknowledgement.", "Restore the matching session/recipe or start a new session.");
         return recipe;
     }
 
@@ -1058,6 +1177,7 @@ public sealed partial class S2ModKitCli
         RecipeScaffoldContract.RemoveIntent => "Remove",
         RecipeScaffoldContract.UniformScaleIntent => "Scale uniformly",
         RecipeScaffoldContract.AffineIntent => "Scale axes / rotate",
+        RecipeScaffoldContract.RegionScaleIntent => "Experimental region scale",
         _ => "Move",
     };
 
@@ -1091,6 +1211,27 @@ public sealed partial class S2ModKitCli
         }
     }
 
+    private void ValidateGuidedSourcePath(string path, int sourceType)
+    {
+        var fullPath = NormalizeGuidedPath(path, "GUIDED_SOURCE_PATH_INVALID");
+        if (sourceType == 2)
+        {
+            if (!File.Exists(fullPath))
+            {
+                throw Errors.Input("GUIDED_SOURCE_NOT_FOUND", $"Compiled model '{fullPath}' does not exist.", "Choose an existing configured .vmdl_c file.");
+            }
+
+            return;
+        }
+
+        var inventory = RequireCatalogueInventoryFactory().OpenReadOnly(fullPath);
+        (inventory as IDisposable)?.Dispose();
+    }
+
+    private static bool IsGuidedSourcePathError(S2ModKitException exception) =>
+        exception.Error.Code is "GUIDED_SOURCE_PATH_INVALID" or "GUIDED_SOURCE_NOT_FOUND"
+            or "VPK_DIRECTORY_NAME_INVALID" or "VPK_DIRECTORY_NOT_FOUND";
+
     private static List<GuidedSourceOption> CreateGuidedSources(
         string[] baseVpkPaths,
         string[] modVpkPaths,
@@ -1115,6 +1256,24 @@ public sealed partial class S2ModKitCli
                     fullPath));
             }
         }
+    }
+
+    private static async Task<int?> ReadGuidedSourceChoiceAsync(
+        GuidedWorkflowSession session,
+        TextReader input,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        output.WriteLine("Choose a source:");
+        for (var index = 0; index < session.Sources.Count; index++)
+        {
+            var source = session.Sources[index];
+            output.WriteLine(session.Expert
+                ? string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {source.DisplayName} [{source.Kind}; {source.SourceId}] {source.Path}")
+                : string.Create(CultureInfo.InvariantCulture, $"  {index + 1}. {source.DisplayName} ({FormatSourceKind(source.Kind)})"));
+        }
+
+        return await ReadGuidedChoiceAsync(input, output, session.Sources.Count, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<int?> ReadGuidedChoiceAsync(
@@ -1152,6 +1311,14 @@ public sealed partial class S2ModKitCli
         }
     }
 
+    private static GuidedWorkflowSession ResetGuidedSourceSelection(GuidedWorkflowSession session) =>
+        ResetGuidedResourceSelection(session) with
+        {
+            Step = GuidedWorkflowContract.SourceSelectionStep,
+            SelectedSourceId = null,
+            SelectedHeroId = null,
+        };
+
     private static GuidedWorkflowSession ResetGuidedResourceSelection(GuidedWorkflowSession session) => session with
     {
         Step = GuidedWorkflowContract.ResourceSelectionStep,
@@ -1170,6 +1337,7 @@ public sealed partial class S2ModKitCli
         TranslationZ = null,
         MaximumVertexDisplacement = null,
         MaximumCollisionDisplacement = null,
+        ExperimentalParameters = null,
         RecipePath = null,
         RecipeContentHash = null,
         PlanFingerprint = null,
@@ -1206,6 +1374,7 @@ public sealed partial class S2ModKitCli
         TranslationZ = null,
         MaximumVertexDisplacement = null,
         MaximumCollisionDisplacement = null,
+        ExperimentalParameters = null,
         RecipePath = null,
         RecipeContentHash = null,
         PlanFingerprint = null,
@@ -1491,7 +1660,8 @@ public sealed partial class S2ModKitCli
         float? TranslationZ,
         float? MaximumVertexDisplacement,
         float? MaximumCollisionDisplacement,
-        AffineScaffoldOptions? Affine = null);
+        AffineScaffoldOptions? Affine = null,
+        ExperimentalScaffoldOptions? Experimental = null);
 
     private readonly record struct GuidedNumberResult(bool Canceled, float Value);
 }

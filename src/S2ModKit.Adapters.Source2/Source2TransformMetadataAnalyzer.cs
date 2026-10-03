@@ -53,6 +53,7 @@ internal static partial class Source2TransformMetadataAnalyzer
 {
     private const uint R8G8B8A8Unorm = 28;
     private const uint R8G8B8A8Uint = 30;
+    private const uint R16G16B16A16Sint = 14;
     private const int PackedAttributeSize = 4;
     private const int MaximumDistanceFieldBytes = 512 * 1024 * 1024;
 
@@ -61,7 +62,10 @@ internal static partial class Source2TransformMetadataAnalyzer
         KVObject meshData,
         Source2GeometryAnalysis geometry,
         string context,
-        bool boneSizeIsHalfExtent = false)
+        bool boneSizeIsHalfExtent = false,
+        bool allowWideBlendIndices = false,
+        bool requireCommonSkinningRoot = true,
+        bool requireAllBoneSpheres = true)
     {
         ArgumentNullException.ThrowIfNull(embeddedMeshDescriptor);
         ArgumentNullException.ThrowIfNull(geometry);
@@ -80,21 +84,32 @@ internal static partial class Source2TransformMetadataAnalyzer
 
         var vertexDescriptor = RequireCollection(vertexDescriptors[0], $"{context}.m_vertexBuffers[0]");
         var inputLayout = RequireArray(vertexDescriptor, "m_inputLayoutFields", context);
-        var blendIndices = RequireLayoutField(inputLayout, "BLENDINDICES", R8G8B8A8Uint, context);
-        var indexOffset = RequirePackedOffset(blendIndices, vertexBuffer.Snapshot.Stride, "BLENDINDICES", context);
+        var blendIndices = TryLayoutField(inputLayout, "BLENDINDICES", context)
+            ?? throw new InvalidDataException($"{context} has no BLENDINDICES field.");
+        var indexFormat = RequireUInt32(blendIndices, "m_Format", context);
+        if (indexFormat != R8G8B8A8Uint
+            && (!allowWideBlendIndices || indexFormat != R16G16B16A16Sint))
+        {
+            throw new InvalidDataException($"{context} BLENDINDICES is not the supported packed per-vertex profile.");
+        }
+
+        ValidatePackedPerVertexField(blendIndices, "BLENDINDICES", indexFormat, context);
+        var indexWidth = indexFormat == R16G16B16A16Sint ? 8 : PackedAttributeSize;
+        var indexOffset = RequirePackedOffset(blendIndices, vertexBuffer.Snapshot.Stride, "BLENDINDICES", context, indexWidth);
         var blendWeights = TryLayoutField(inputLayout, "BLENDWEIGHT", context);
         int? weightOffset = null;
         if (blendWeights is not null)
         {
             ValidatePackedPerVertexField(blendWeights, "BLENDWEIGHT", R8G8B8A8Unorm, context);
             weightOffset = RequirePackedOffset(blendWeights, geometry.VertexBuffers[0].Snapshot.Stride, "BLENDWEIGHT", context);
-            if (RangesOverlap(indexOffset, weightOffset.Value))
+            if (RangesOverlap(indexOffset, indexWidth, weightOffset.Value, PackedAttributeSize))
             {
                 throw new InvalidDataException($"{context} blend-index and blend-weight byte ranges overlap.");
             }
         }
 
-        return AnalyzeWholeMeshCore(meshData, geometry, indexOffset, weightOffset, context, boneSizeIsHalfExtent);
+        return AnalyzeWholeMeshCore(meshData, geometry, indexOffset, weightOffset, context, boneSizeIsHalfExtent,
+            indexFormat, requireCommonSkinningRoot, requireAllBoneSpheres);
     }
 
     public static Source2WholeMeshTransformAnalysis AnalyzeRawMbufWholeMesh(
@@ -112,7 +127,10 @@ internal static partial class Source2TransformMetadataAnalyzer
         int indexOffset,
         int? weightOffset,
         string context,
-        bool boneSizeIsHalfExtent = false)
+        bool boneSizeIsHalfExtent = false,
+        uint indexFormat = R8G8B8A8Uint,
+        bool requireCommonSkinningRoot = true,
+        bool requireAllBoneSpheres = true)
     {
         ArgumentNullException.ThrowIfNull(meshData);
         ArgumentNullException.ThrowIfNull(geometry);
@@ -126,7 +144,8 @@ internal static partial class Source2TransformMetadataAnalyzer
         }
 
         var vertexBuffer = geometry.VertexBuffers[0];
-        if (indexOffset < 0 || indexOffset > vertexBuffer.Snapshot.Stride - PackedAttributeSize)
+        var indexWidth = indexFormat == R16G16B16A16Sint ? 8 : PackedAttributeSize;
+        if (indexOffset < 0 || indexOffset > vertexBuffer.Snapshot.Stride - indexWidth)
         {
             throw new InvalidDataException($"{context} blend-index offset is outside the vertex stride.");
         }
@@ -167,23 +186,32 @@ internal static partial class Source2TransformMetadataAnalyzer
         }
 
         var rigidSingleInfluence = weightOffset is null;
-        var declaredWeightCount = rigidSingleInfluence ? ReadWeightCount(meshData, context) : 0;
+        var declaredWeightCount = rigidSingleInfluence || indexFormat == R16G16B16A16Sint
+            ? ReadWeightCount(meshData, context)
+            : 0;
         if (rigidSingleInfluence && declaredWeightCount != 1)
         {
             throw new InvalidDataException(
                 $"{context} has no BLENDWEIGHT field but declares blend weight count {declaredWeightCount}; the rigid profile requires exactly one influence per vertex.");
         }
 
-        var bones = ReadSkeleton(meshData, context, boneSizeIsHalfExtent: boneSizeIsHalfExtent);
+        if (!rigidSingleInfluence && indexFormat == R16G16B16A16Sint
+            && declaredWeightCount is < 1 or > 4)
+        {
+            throw new InvalidDataException($"{context} declares {declaredWeightCount} blend influences for four packed weight slots.");
+        }
+
+        var bones = ReadSkeleton(meshData, context, allowExtendedInventory: indexFormat == R16G16B16A16Sint,
+            boneSizeIsHalfExtent: boneSizeIsHalfExtent);
         var influencedIndices = new HashSet<int>();
         var verticesByBone = new Dictionary<int, HashSet<int>>();
         foreach (var vertex in selectedVertices)
         {
             var recordOffset = checked(vertex * vertexBuffer.Snapshot.Stride);
-            var indices = vertexBuffer.Decoded.AsSpan(recordOffset + indexOffset, PackedAttributeSize);
+            var indices = vertexBuffer.Decoded.AsSpan(recordOffset + indexOffset, indexWidth);
             if (rigidSingleInfluence)
             {
-                AddInfluence(indices[0], vertex, bones, influencedIndices, verticesByBone, context);
+                AddInfluence(ReadBlendIndex(indices, 0, indexFormat), vertex, bones, influencedIndices, verticesByBone, context);
                 continue;
             }
 
@@ -192,12 +220,18 @@ internal static partial class Source2TransformMetadataAnalyzer
             for (var influence = 0; influence < PackedAttributeSize; influence++)
             {
                 weightSum = checked(weightSum + weights[influence]);
+                if (indexFormat == R16G16B16A16Sint
+                    && influence >= declaredWeightCount && weights[influence] != 0)
+                {
+                    throw new InvalidDataException($"{context} vertex {vertex} uses an undeclared blend influence.");
+                }
+
                 if (weights[influence] == 0)
                 {
                     continue;
                 }
 
-                AddInfluence(indices[influence], vertex, bones, influencedIndices, verticesByBone, context);
+                AddInfluence(ReadBlendIndex(indices, influence, indexFormat), vertex, bones, influencedIndices, verticesByBone, context);
             }
 
             if (weightSum != byte.MaxValue)
@@ -211,14 +245,16 @@ internal static partial class Source2TransformMetadataAnalyzer
             throw new InvalidDataException($"{context} has no non-zero skinning influences.");
         }
 
-        var rootIndex = FindDeepestCommonAncestor(bones, influencedIndices, context);
-        var rootName = bones[rootIndex].Name;
+        var rootName = requireCommonSkinningRoot
+            ? bones[FindDeepestCommonAncestor(bones, influencedIndices, context)].Name
+            : string.Empty;
         var boneBounds = influencedIndices.Order()
             .Select(index => AnalyzeBoneBounds(
                 bones[index],
                 verticesByBone[index],
                 vertexBuffer,
-                context))
+                context,
+                requireAllBoneSpheres))
             .ToImmutableArray();
         return new Source2WholeMeshTransformAnalysis(
             0,
@@ -226,7 +262,7 @@ internal static partial class Source2TransformMetadataAnalyzer
             new ContentHash(VertexSetHash.Compute(selectedVertices)),
             selectedVertices.Length,
             rootName,
-            StringToken.Get(rootName),
+            rootName.Length == 0 ? 0 : StringToken.Get(rootName),
             influencedIndices.Order().Select(index => bones[index].Name).ToImmutableArray(),
             boneBounds);
     }
@@ -235,7 +271,8 @@ internal static partial class Source2TransformMetadataAnalyzer
         Bone bone,
         HashSet<int> influencedVertices,
         Source2VertexBufferAnalysis vertexBuffer,
-        string context)
+        string context,
+        bool requireSphereMatch)
     {
         if (influencedVertices.Count == 0)
         {
@@ -250,7 +287,7 @@ internal static partial class Source2TransformMetadataAnalyzer
         var computedRadius = localPoints.Max(point => MathF.Sqrt(
             (point.X * point.X) + (point.Y * point.Y) + (point.Z * point.Z)));
         if (!float.IsFinite(computedRadius)
-            || !NearlyEqual(computedRadius, bone.SphereRadius))
+            || (requireSphereMatch && !NearlyEqual(computedRadius, bone.SphereRadius)))
         {
             throw new InvalidDataException(
                 $"{context} bone '{bone.Name}' culling sphere cannot be reproduced from its influenced vertices and inverse bind pose " +
@@ -548,7 +585,7 @@ internal static partial class Source2TransformMetadataAnalyzer
         Dictionary<int, HashSet<int>> verticesByBone,
         string context)
     {
-        if (boneIndex >= bones.Length)
+        if (boneIndex < 0 || boneIndex >= bones.Length)
         {
             throw new InvalidDataException($"{context} vertex {vertex} references out-of-range bone {boneIndex}.");
         }
@@ -563,10 +600,10 @@ internal static partial class Source2TransformMetadataAnalyzer
         influencedVertices.Add(vertex);
     }
 
-    private static int RequirePackedOffset(KVObject field, int stride, string semantic, string context)
+    private static int RequirePackedOffset(KVObject field, int stride, string semantic, string context, int width = PackedAttributeSize)
     {
         var offset = RequireInt32(field, "m_nOffset", context);
-        if (offset < 0 || offset > stride - PackedAttributeSize)
+        if (offset < 0 || offset > stride - width)
         {
             throw new InvalidDataException($"{context} {semantic} offset {offset} escapes stride {stride}.");
         }
@@ -574,8 +611,13 @@ internal static partial class Source2TransformMetadataAnalyzer
         return offset;
     }
 
-    private static bool RangesOverlap(int left, int right) =>
-        left < right + PackedAttributeSize && right < left + PackedAttributeSize;
+    private static bool RangesOverlap(int left, int leftWidth, int right, int rightWidth) =>
+        left < right + rightWidth && right < left + leftWidth;
+
+    private static int ReadBlendIndex(ReadOnlySpan<byte> indices, int influence, uint format) =>
+        format == R16G16B16A16Sint
+            ? BinaryPrimitives.ReadInt16LittleEndian(indices.Slice(influence * sizeof(short)))
+            : indices[influence];
 
     private static void ValidateGridExtents(
         GeometryBounds bounds,

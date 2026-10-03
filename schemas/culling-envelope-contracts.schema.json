@@ -1,0 +1,376 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.invalid/schemas/culling-envelope-contracts.schema.json",
+  "title": "Versioned culling inventory, conservative bounds plan, and evidence contracts",
+  "oneOf": [
+    { "$ref": "#/definitions/inventory" },
+    { "$ref": "#/definitions/plan" },
+    { "$ref": "#/definitions/evidence" }
+  ],
+  "definitions": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logicalPath", "contentHash", "size"],
+      "properties": {
+        "logicalPath": { "type": "string", "minLength": 1 },
+        "contentHash": { "$ref": "#/definitions/hash" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "fieldIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourcePath", "resourceHash", "resourceBlockIndex", "resourceBlockType", "fieldPath", "meshOrdinal", "fieldOrdinal", "coveredLods"],
+      "properties": {
+        "resourcePath": { "type": "string", "minLength": 1 },
+        "resourceHash": { "$ref": "#/definitions/hash" },
+        "resourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "resourceBlockType": { "type": "string", "minLength": 1 },
+        "fieldPath": { "type": "string", "minLength": 1 },
+        "meshOrdinal": { "type": ["integer", "null"], "minimum": 0 },
+        "fieldOrdinal": { "type": ["integer", "null"], "minimum": 0 },
+        "coveredLods": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "rawFieldValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "minimum", "maximum", "center", "halfExtents", "radius"],
+      "properties": {
+        "kind": { "enum": ["aabb_min_max", "aabb_center_half_extents", "sphere_radius"] },
+        "minimum": { "oneOf": [{ "$ref": "#/definitions/vector3" }, { "type": "null" }] },
+        "maximum": { "oneOf": [{ "$ref": "#/definitions/vector3" }, { "type": "null" }] },
+        "center": { "oneOf": [{ "$ref": "#/definitions/vector3" }, { "type": "null" }] },
+        "halfExtents": { "oneOf": [{ "$ref": "#/definitions/vector3" }, { "type": "null" }] },
+        "radius": { "type": ["number", "null"] }
+      },
+      "oneOf": [
+        {
+          "properties": { "kind": { "enum": ["aabb_min_max"] }, "minimum": { "$ref": "#/definitions/vector3" }, "maximum": { "$ref": "#/definitions/vector3" }, "center": { "type": "null" }, "halfExtents": { "type": "null" }, "radius": { "type": "null" } }
+        },
+        {
+          "properties": { "kind": { "enum": ["aabb_center_half_extents"] }, "minimum": { "type": "null" }, "maximum": { "type": "null" }, "center": { "$ref": "#/definitions/vector3" }, "halfExtents": { "$ref": "#/definitions/vector3" }, "radius": { "type": "null" } }
+        },
+        {
+          "properties": { "kind": { "enum": ["sphere_radius"] }, "minimum": { "type": "null" }, "maximum": { "type": "null" }, "center": { "type": "null" }, "halfExtents": { "type": "null" }, "radius": { "type": "number" } }
+        }
+      ]
+    },
+    "coordinateSpace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "spaceId", "matrixIdentity", "matrix3x4", "reasonCode"],
+      "properties": {
+        "status": { "enum": ["verified", "absent", "unsupported"] },
+        "spaceId": { "type": ["string", "null"] },
+        "matrixIdentity": { "oneOf": [{ "$ref": "#/definitions/hash" }, { "type": "null" }] },
+        "matrix3x4": {
+          "type": ["array", "null"],
+          "minItems": 12,
+          "maxItems": 12,
+          "items": { "type": "number" }
+        },
+        "reasonCode": { "type": ["string", "null"] }
+      },
+      "oneOf": [
+        {
+          "properties": { "status": { "enum": ["verified"] }, "spaceId": { "type": "string", "minLength": 1 }, "matrixIdentity": { "$ref": "#/definitions/hash" }, "matrix3x4": { "type": "array", "minItems": 12, "maxItems": 12 }, "reasonCode": { "type": "null" } }
+        },
+        {
+          "properties": { "status": { "enum": ["absent"] }, "spaceId": { "type": "null" }, "matrixIdentity": { "type": "null" }, "matrix3x4": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } }
+        },
+        {
+          "properties": { "status": { "enum": ["unsupported"] }, "spaceId": { "type": "null" }, "matrixIdentity": { "type": "null" }, "matrix3x4": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "contributorSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourcePath", "resourceHash", "coveredLods", "meshOrdinal", "meshResourceBlockIndex", "vertexBufferOrdinal", "vertexResourceBlockIndex", "indexBufferOrdinal", "indexResourceBlockIndex", "vertexCount", "contributorCount", "vertexBlockHash", "decodedVertexBufferHash", "indexBlockHash", "decodedIndexBufferHash", "blendIndexFormat", "blendWeightFormat", "boneRemapStatus", "boneRemapIdentity", "resolvedModelBoneIndex"],
+      "properties": {
+        "resourcePath": { "type": "string", "minLength": 1 },
+        "resourceHash": { "$ref": "#/definitions/hash" },
+        "coveredLods": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0 } },
+        "meshOrdinal": { "type": "integer", "minimum": 0 },
+        "meshResourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "vertexBufferOrdinal": { "type": "integer", "minimum": 0 },
+        "vertexResourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "indexBufferOrdinal": { "type": "integer", "minimum": 0 },
+        "indexResourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "vertexCount": { "type": "integer", "minimum": 0 },
+        "contributorCount": { "type": "integer", "minimum": 0 },
+        "vertexBlockHash": { "$ref": "#/definitions/hash" },
+        "decodedVertexBufferHash": { "$ref": "#/definitions/hash" },
+        "indexBlockHash": { "$ref": "#/definitions/hash" },
+        "decodedIndexBufferHash": { "$ref": "#/definitions/hash" },
+        "blendIndexFormat": { "type": ["integer", "null"], "minimum": 0 },
+        "blendWeightFormat": { "type": ["integer", "null"], "minimum": 0 },
+        "boneRemapStatus": { "enum": ["verified", "absent", "unsupported"] },
+        "boneRemapIdentity": { "oneOf": [{ "$ref": "#/definitions/hash" }, { "type": "null" }] },
+        "resolvedModelBoneIndex": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "contributorSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "identityAlgorithm", "identityHash", "contributorCount", "sources", "reasonCode"],
+      "properties": {
+        "status": { "enum": ["verified", "absent", "unsupported"] },
+        "identityAlgorithm": { "type": ["string", "null"] },
+        "identityHash": { "oneOf": [{ "$ref": "#/definitions/hash" }, { "type": "null" }] },
+        "contributorCount": { "type": ["integer", "null"], "minimum": 0 },
+        "sources": { "type": ["array", "null"], "items": { "$ref": "#/definitions/contributorSource" } },
+        "reasonCode": { "type": ["string", "null"] }
+      },
+      "oneOf": [
+        {
+          "properties": { "status": { "enum": ["verified"] }, "identityAlgorithm": { "type": "string", "minLength": 1 }, "identityHash": { "$ref": "#/definitions/hash" }, "contributorCount": { "type": "integer", "minimum": 0 }, "sources": { "type": "array", "minItems": 1 }, "reasonCode": { "type": "null" } }
+        },
+        {
+          "properties": { "status": { "enum": ["absent"] }, "identityAlgorithm": { "type": "null" }, "identityHash": { "type": "null" }, "contributorCount": { "type": "null" }, "sources": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } }
+        },
+        {
+          "properties": { "status": { "enum": ["unsupported"] }, "identityAlgorithm": { "type": "null" }, "identityHash": { "type": "null" }, "contributorCount": { "type": "null" }, "sources": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "inventoryField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "status", "rawOriginalValue", "coordinateSpace", "contributors"],
+      "properties": {
+        "identity": { "$ref": "#/definitions/fieldIdentity" },
+        "status": { "enum": ["verified", "absent", "unsupported"] },
+        "rawOriginalValue": { "oneOf": [{ "$ref": "#/definitions/rawFieldValue" }, { "type": "null" }] },
+        "coordinateSpace": { "oneOf": [{ "$ref": "#/definitions/coordinateSpace" }, { "type": "null" }] },
+        "contributors": { "oneOf": [{ "$ref": "#/definitions/contributorSet" }, { "type": "null" }] }
+      },
+      "oneOf": [
+        {
+          "properties": { "status": { "enum": ["verified"] }, "rawOriginalValue": { "$ref": "#/definitions/rawFieldValue" }, "coordinateSpace": { "allOf": [{ "$ref": "#/definitions/coordinateSpace" }, { "properties": { "status": { "enum": ["verified"] } } }] }, "contributors": { "allOf": [{ "$ref": "#/definitions/contributorSet" }, { "properties": { "status": { "enum": ["verified"] } } }] } }
+        },
+        {
+          "properties": { "status": { "enum": ["absent"] }, "rawOriginalValue": { "type": "null" }, "coordinateSpace": { "type": "null" }, "contributors": { "type": "null" } }
+        },
+        {
+          "properties": { "status": { "enum": ["unsupported"] }, "coordinateSpace": { "$ref": "#/definitions/coordinateSpace" }, "contributors": { "$ref": "#/definitions/contributorSet" } }
+        }
+      ]
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "resource", "status", "fields", "boneRemaps", "extensions"],
+      "properties": {
+        "schemaVersion": { "enum": [1] },
+        "resource": { "$ref": "#/definitions/resource" },
+        "status": { "enum": ["verified", "partial", "unsupported"] },
+        "fields": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/inventoryField" } },
+        "boneRemaps": { "type": "array", "items": { "$ref": "#/definitions/boneRemapInventory" } },
+        "extensions": { "type": "object" }
+      }
+    },
+    "boneRemapInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourcePath", "resourceHash", "meshOrdinal", "meshResourceBlockIndex", "coveredLods", "boneRemapStatus", "boneRemapIdentity", "boneRemapValues", "renderBoneNamesStatus", "renderBoneNames", "modelBoneNamesStatus", "modelBoneNames", "reasonCode"],
+      "properties": {
+        "resourcePath": { "type": "string", "minLength": 1 },
+        "resourceHash": { "$ref": "#/definitions/hash" },
+        "meshOrdinal": { "type": "integer", "minimum": 0 },
+        "meshResourceBlockIndex": { "type": "integer", "minimum": 0 },
+        "coveredLods": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 0 } },
+        "boneRemapStatus": { "enum": ["verified", "absent", "unsupported"] },
+        "boneRemapIdentity": { "oneOf": [{ "$ref": "#/definitions/hash" }, { "type": "null" }] },
+        "boneRemapValues": { "type": ["array", "null"], "items": { "type": "integer", "minimum": 0 } },
+        "renderBoneNamesStatus": { "enum": ["verified", "absent", "unsupported"] },
+        "renderBoneNames": { "type": ["array", "null"], "items": { "type": "string", "minLength": 1 } },
+        "modelBoneNamesStatus": { "enum": ["verified", "absent", "unsupported"] },
+        "modelBoneNames": { "type": ["array", "null"], "items": { "type": "string", "minLength": 1 } },
+        "reasonCode": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            { "properties": { "boneRemapStatus": { "enum": ["verified"] }, "boneRemapIdentity": { "$ref": "#/definitions/hash" }, "boneRemapValues": { "type": "array", "minItems": 1 }, "renderBoneNamesStatus": { "enum": ["verified"] }, "renderBoneNames": { "type": "array", "minItems": 1 }, "reasonCode": { "type": "null" } } },
+            { "properties": { "boneRemapStatus": { "enum": ["absent"] }, "boneRemapIdentity": { "type": "null" }, "boneRemapValues": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } } },
+            { "properties": { "boneRemapStatus": { "enum": ["unsupported"] }, "boneRemapIdentity": { "type": "null" }, "boneRemapValues": { "type": "null" }, "reasonCode": { "type": "string", "minLength": 1 } } }
+          ]
+        },
+        {
+          "oneOf": [
+            { "properties": { "renderBoneNamesStatus": { "enum": ["verified"] }, "renderBoneNames": { "type": "array", "minItems": 1 } } },
+            { "properties": { "renderBoneNamesStatus": { "enum": ["absent"] }, "renderBoneNames": { "type": "null" } } },
+            { "properties": { "renderBoneNamesStatus": { "enum": ["unsupported"] }, "renderBoneNames": { "type": "null" } } }
+          ]
+        },
+        {
+          "oneOf": [
+            { "properties": { "modelBoneNamesStatus": { "enum": ["verified"] }, "modelBoneNames": { "type": "array", "minItems": 1 } } },
+            { "properties": { "modelBoneNamesStatus": { "enum": ["absent"] }, "modelBoneNames": { "type": "null" } } },
+            { "properties": { "modelBoneNamesStatus": { "enum": ["unsupported"] }, "modelBoneNames": { "type": "null" } } }
+          ]
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "enum": ["conservative_culling_envelope"] },
+        "version": { "enum": [1] }
+      }
+    },
+    "growth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["measure", "originalValue", "plannedValue", "delta"],
+      "properties": {
+        "measure": { "type": "string", "minLength": 1 },
+        "originalValue": { "type": "number" },
+        "plannedValue": { "type": "number" },
+        "delta": { "type": "number" }
+      }
+    },
+    "planTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "originalValue", "coordinateSpace", "contributors", "plannedOutputValue", "growth"],
+      "properties": {
+        "identity": { "$ref": "#/definitions/fieldIdentity" },
+        "originalValue": { "$ref": "#/definitions/rawFieldValue" },
+        "coordinateSpace": { "$ref": "#/definitions/coordinateSpace" },
+        "contributors": { "$ref": "#/definitions/contributorSet" },
+        "plannedOutputValue": { "$ref": "#/definitions/rawFieldValue" },
+        "growth": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/growth" } }
+      },
+      "allOf": [
+        { "properties": { "coordinateSpace": { "properties": { "status": { "enum": ["verified"] } } } } },
+        { "properties": { "contributors": { "properties": { "status": { "enum": ["verified"] } } } } }
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "planId", "policy", "input", "targets", "extensions"],
+      "properties": {
+        "schemaVersion": { "enum": [1] },
+        "planId": { "type": "string", "minLength": 1 },
+        "policy": { "$ref": "#/definitions/policy" },
+        "input": { "$ref": "#/definitions/resource" },
+        "targets": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/planTarget" } },
+        "extensions": { "type": "object" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "originalEnvelopeContained", "geometryContained", "policyOutputMatched", "resultCode"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "not_run"] },
+        "originalEnvelopeContained": { "type": ["boolean", "null"] },
+        "geometryContained": { "type": ["boolean", "null"] },
+        "policyOutputMatched": { "type": ["boolean", "null"] },
+        "resultCode": { "type": ["string", "null"] }
+      },
+      "oneOf": [
+        {
+          "properties": { "status": { "enum": ["passed"] }, "originalEnvelopeContained": { "enum": [true] }, "geometryContained": { "enum": [true] }, "policyOutputMatched": { "enum": [true] }, "resultCode": { "type": "null" } }
+        },
+        {
+          "properties": { "status": { "enum": ["not_run"] }, "originalEnvelopeContained": { "type": "null" }, "geometryContained": { "type": "null" }, "policyOutputMatched": { "type": "null" }, "resultCode": { "type": "null" } }
+        },
+        {
+          "properties": { "status": { "enum": ["failed"] }, "resultCode": { "type": "string", "minLength": 1 } },
+          "anyOf": [
+              { "properties": { "originalEnvelopeContained": { "const": false } } },
+              { "properties": { "geometryContained": { "const": false } } },
+              { "properties": { "policyOutputMatched": { "const": false } } }
+          ]
+        }
+      ]
+    },
+    "evidenceTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "originalValue", "coordinateSpace", "contributors", "plannedOutputValue", "observedOutputValue", "verification"],
+      "properties": {
+        "identity": { "$ref": "#/definitions/fieldIdentity" },
+        "originalValue": { "$ref": "#/definitions/rawFieldValue" },
+        "coordinateSpace": { "$ref": "#/definitions/coordinateSpace" },
+        "contributors": { "$ref": "#/definitions/contributorSet" },
+        "plannedOutputValue": { "$ref": "#/definitions/rawFieldValue" },
+        "observedOutputValue": { "oneOf": [{ "$ref": "#/definitions/rawFieldValue" }, { "type": "null" }] },
+        "verification": { "$ref": "#/definitions/verification" }
+      },
+      "allOf": [
+        { "properties": { "coordinateSpace": { "properties": { "status": { "const": "verified" } } } } },
+        { "properties": { "contributors": { "properties": { "status": { "const": "verified" } } } } }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "verification": { "properties": { "status": { "enum": ["passed"] } } },
+            "observedOutputValue": { "$ref": "#/definitions/rawFieldValue" }
+          }
+        },
+        {
+          "properties": {
+            "verification": { "properties": { "status": { "enum": ["failed", "not_run"] } } }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "policy", "planFingerprint", "input", "output", "targets", "extensions"],
+      "properties": {
+        "schemaVersion": { "enum": [1] },
+        "policy": { "$ref": "#/definitions/policy" },
+        "planFingerprint": { "$ref": "#/definitions/hash" },
+        "input": { "$ref": "#/definitions/resource" },
+        "output": { "oneOf": [{ "$ref": "#/definitions/resource" }, { "type": "null" }] },
+        "targets": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/evidenceTarget" } },
+        "extensions": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            { "properties": { "output": { "$ref": "#/definitions/resource" } } },
+            {
+              "properties": {
+                "output": { "type": "null" },
+                "targets": {
+                  "items": {
+                    "required": ["verification"],
+                    "properties": {
+                      "verification": {
+                        "required": ["status"],
+                        "properties": { "status": { "enum": ["failed", "not_run"] } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

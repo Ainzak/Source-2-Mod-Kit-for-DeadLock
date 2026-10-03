@@ -46,13 +46,18 @@ public sealed partial class CliContractTests
         return path;
     }
 
-    private sealed class FakeCatalogueInventoryFactory(ContentHash directoryHash) : IResourceCatalogInventoryFactory
+    private sealed class FakeCatalogueInventoryFactory(ContentHash directoryHash, string? missingPath = null) : IResourceCatalogInventoryFactory
     {
         public int OpenCount { get; private set; }
 
         public IResourceCatalogInventory OpenReadOnly(string baseVpkPath)
         {
             OpenCount++;
+            if (missingPath is not null && string.Equals(Path.GetFullPath(baseVpkPath), Path.GetFullPath(missingPath), StringComparison.OrdinalIgnoreCase))
+            {
+                throw Errors.Input("VPK_DIRECTORY_NOT_FOUND", $"Base VPK '{baseVpkPath}' does not exist.", "Provide an existing read-only *_dir.vpk path.");
+            }
+
             return new FakeCatalogueInventory(directoryHash);
         }
     }
@@ -152,6 +157,21 @@ public sealed partial class CliContractTests
         public RecipeDocument? LastRecipe { get; private set; }
 
         public RecipeScaffoldRequest? LastScaffoldRequest { get; private set; }
+
+        public bool ExperimentalAvailable { get; init; }
+
+        public Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
+            Task.FromResult(TestDiscovery with
+            {
+                SchemaVersion = 3,
+                ExperimentalPolicy = new("preserve_unverified", 1),
+                Candidates = TestDiscovery.Candidates.Select(candidate => candidate with
+                {
+                    Capabilities = ExperimentalAvailable
+                        ? new ComponentCapability[] { new("transform_component", 5, "available", [new("PROBE_VERIFIED", "Fixture probe.")], []), new("transform_component", 6, "available", [new("PROBE_VERIFIED", "Fixture probe.")], []) }
+                        : candidate.Capabilities,
+                }).ToArray(),
+            });
 
         public static ContentHash TestInputHash => TestHash;
 
@@ -265,6 +285,22 @@ public sealed partial class CliContractTests
                 InputHash = TestHash,
                 Operations = [operation],
             };
+            if (request.Experimental is { } experimental)
+            {
+                var transform = (TransformComponentOperation)operation;
+                recipe = recipe with
+                {
+                    SchemaVersion = experimental.Region is null ? 6 : 7,
+                    Operations = [transform with
+                    {
+                        Version = experimental.Region is null ? 5 : 6,
+                        Granularity = experimental.Region is null ? "draw_call_vertices" : "axis_ramp_vertices",
+                        RuntimeMetadataPolicy = experimental.Policy,
+                        Region = experimental.Region,
+                        Transform = transform.Transform with { Pivot = experimental.Pivot },
+                    }],
+                };
+            }
             var recipeBytes = JsonDefaults.SerializeToUtf8(recipe);
             if (writeScaffoldedRecipe)
             {

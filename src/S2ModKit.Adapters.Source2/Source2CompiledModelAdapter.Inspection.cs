@@ -17,14 +17,17 @@ public sealed partial class Source2CompiledModelAdapter
     public Task<ModelSnapshot> InspectAsync(ArtifactContent artifact, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var parsed = Parse(artifact);
+        using var parsed = Parse(artifact, allowLodExcludedMeshes: true);
         return Task.FromResult(parsed.Snapshot);
     }
 
     TransformPlanningResult ITransformOperationPlanner.PlanTransform(TransformPlanningRequest request) =>
         PlanTransform(request);
 
-    private ParsedModel Parse(ArtifactContent artifact, bool retainGeometryAnalysis = false)
+    private ParsedModel Parse(
+        ArtifactContent artifact,
+        bool retainGeometryAnalysis = false,
+        bool allowLodExcludedMeshes = false)
     {
         var envelope = ResourceEnvelopeReader.Read(artifact.Bytes);
         var stream = new MemoryStream(artifact.Bytes.ToArray(), writable: false);
@@ -32,7 +35,7 @@ public sealed partial class Source2CompiledModelAdapter
         try
         {
             resource.Read(stream, verifyFileSize: true, leaveOpen: true);
-            var analysis = Analyze(resource, envelope, artifact, retainGeometryAnalysis);
+            var analysis = Analyze(resource, envelope, artifact, retainGeometryAnalysis, allowLodExcludedMeshes);
             return new ParsedModel(stream, resource, envelope, analysis.Snapshot, analysis.MeshesByOrdinal);
         }
         catch (S2ModKitException)
@@ -55,7 +58,8 @@ public sealed partial class Source2CompiledModelAdapter
         Resource resource,
         Source2ResourceEnvelope envelope,
         ArtifactContent artifact,
-        bool retainGeometryAnalysis)
+        bool retainGeometryAnalysis,
+        bool allowLodExcludedMeshes)
     {
         if (resource.ResourceType != ResourceType.Model)
         {
@@ -108,12 +112,23 @@ public sealed partial class Source2CompiledModelAdapter
         var lodMasks = RequireArray(modelData, "m_refLODGroupMasks", "model DATA");
         var lodDistances = RequireArray(modelData, "m_lodGroupSwitchDistances", "model DATA");
         var meshBlockIndices = resource.Blocks.Select((block, index) => (block, index)).Where(item => item.block is Mesh).Select(item => item.index).ToArray();
-        if (embeddedMeshes.Count is < 1 or > MaximumEmbeddedMeshCount
-            || embeddedMeshes.Count != lodMasks.Count
-            || embeddedMeshes.Count != meshBlockIndices.Length)
-        {
-            throw Errors.Unsupported("EMBEDDED_MESH_COUNT_UNSUPPORTED", $"Embedded descriptors={embeddedMeshes.Count}, LOD masks={lodMasks.Count}, MDAT blocks={meshBlockIndices.Length}.", "Use a model with one descriptor and LOD mask per embedded MDAT block.");
-        }
+
+        var referencedBlocks = new HashSet<int>();
+        var meshes = new Dictionary<int, ParsedMesh>();
+        var lodLevels = new HashSet<int>();
+        // The descriptor table is validated before the native geometry codec is acquired, so a
+        // rejected input (for example a strict zero-mask rejection) never opens, and can never
+        // leak, the codec's native-library handle.
+        var table = ValidateRootMeshTable(
+            embeddedMeshes,
+            lodMasks,
+            lodDistances.Count,
+            new RootMeshTableFacts(
+                resource.Blocks.Count,
+                envelope.Blocks.Select(block => block.Type).ToArray(),
+                meshBlockIndices),
+            allowLodExcludedMeshes);
+        referencedBlocks.UnionWith(table.Select(entry => entry.BlockIndex));
 
         IMeshOptimizerCodec? geometryCodec = null;
         string? geometryCodecFailure = null;
@@ -139,55 +154,40 @@ public sealed partial class Source2CompiledModelAdapter
             }
         }
 
-        var referencedBlocks = new HashSet<int>();
-        var meshes = new Dictionary<int, ParsedMesh>();
-        var lodLevels = new HashSet<int>();
         try
         {
-            for (var meshOrdinal = 0; meshOrdinal < embeddedMeshes.Count; meshOrdinal++)
+            // Zero-mask descriptors stay excluded: their block identities participate in the
+            // reference accounting above, but their geometry stays opaque and no mesh, LOD, or
+            // draw-call identity is fabricated for them.
+            foreach (var entry in table.Where(entry => entry.LodMask != 0))
             {
-                var descriptor = RequireCollection(embeddedMeshes[meshOrdinal], $"embedded_meshes[{meshOrdinal}]");
-                var declaredOrdinal = RequireInt32(descriptor, "m_nMeshIndex", $"embedded_meshes[{meshOrdinal}]");
-                var blockIndex = RequireInt32(descriptor, "m_nDataBlock", $"embedded_meshes[{meshOrdinal}]");
-                if (declaredOrdinal != meshOrdinal
-                    || blockIndex < 0
-                    || blockIndex >= resource.Blocks.Count
-                    || resource.Blocks[blockIndex] is not Mesh mesh
-                    || !string.Equals(envelope.Blocks[blockIndex].Type, "MDAT", StringComparison.Ordinal)
-                    || !referencedBlocks.Add(blockIndex))
-                {
-                    throw Errors.Unsupported("EMBEDDED_MESH_REFERENCE_UNSUPPORTED", $"Embedded mesh {meshOrdinal} does not map uniquely to one MDAT block.", "Use an intact model with sequential mesh indices and unique MDAT references.");
-                }
-
-                var mask = ReadUnsignedInteger(lodMasks[meshOrdinal], $"m_refLODGroupMasks[{meshOrdinal}]");
-                if (BitOperations.PopCount(mask) != 1)
-                {
-                    throw Errors.Unsupported("LOD_MASK_UNSUPPORTED", $"Embedded mesh {meshOrdinal} has LOD mask {mask}; exactly one bit is required.", "Use a model with one explicit LOD assignment per embedded mesh.");
-                }
-
-                var lod = BitOperations.TrailingZeroCount(mask);
-                var lineage = Source2MeshLineageExtractor.Extract(descriptor, lod, $"embedded_meshes[{meshOrdinal}]");
-                lodLevels.Add(lod);
-                var drawCalls = ReadDrawCalls(mesh, artifact.LogicalPath, lod, meshOrdinal);
+                var mesh = (Mesh)resource.Blocks[entry.BlockIndex];
+                var lod = entry.MeshLods[0];
+                var lineage = Source2MeshLineageExtractor.Extract(entry.Descriptor, lod, $"embedded_meshes[{entry.MeshOrdinal}]");
+                lodLevels.UnionWith(entry.MeshLods);
+                var drawCalls = ReadDrawCalls(mesh, artifact.LogicalPath, lod, entry.MeshOrdinal);
                 var geometry = AnalyzeGeometry(
-                    descriptor,
+                    entry.Descriptor,
                     envelope,
                     drawCalls,
                     geometryCodec,
                     geometryCodecFailure,
-                    $"embedded mesh {meshOrdinal}");
+                    $"embedded mesh {entry.MeshOrdinal}");
                 meshes.Add(
-                    meshOrdinal,
+                    entry.MeshOrdinal,
                     new ParsedMesh(
-                        meshOrdinal,
+                        entry.MeshOrdinal,
                         lod,
-                        blockIndex,
-                        descriptor,
+                        entry.BlockIndex,
+                        entry.Descriptor,
                         mesh,
                         drawCalls,
                         geometry.Snapshot,
                         retainGeometryAnalysis ? geometry.Analysis : null,
-                        lineage));
+                        lineage)
+                    {
+                        LodMask = entry.LodMask,
+                    });
             }
         }
         finally
@@ -200,13 +200,7 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Unsupported("UNREFERENCED_MDAT_BLOCK", "At least one MDAT block is not represented by the embedded-mesh table.", "Use a model whose CTRL table accounts for every MDAT block.");
         }
 
-        var orderedLods = lodLevels.Order().ToArray();
-        var expectedLods = Enumerable.Range(0, orderedLods[^1] + 1).ToArray();
-        if (!orderedLods.SequenceEqual(expectedLods) || lodDistances.Count != orderedLods.Length)
-        {
-            throw Errors.Unsupported("LOD_INVENTORY_UNSUPPORTED", $"LOD masks identify [{string.Join(", ", orderedLods)}] with {lodDistances.Count} switch distances.", "Use a model with contiguous LOD levels and one switch distance per level.");
-        }
-
+        var orderedLods = CollectActiveLodLevels(lodLevels, lodDistances.Count);
         var duplicateId = meshes.Values.SelectMany(mesh => mesh.DrawCalls).GroupBy(item => item.Snapshot.Id, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
         if (duplicateId is not null)
         {
@@ -215,22 +209,126 @@ public sealed partial class Source2CompiledModelAdapter
 
         var lods = orderedLods.Select(lod => new LodSnapshot(
             lod,
-            meshes.Values.Where(mesh => mesh.Lod == lod).OrderBy(mesh => mesh.MeshOrdinal)
+            meshes.Values.Where(mesh => (mesh.LodMask & (1UL << lod)) != 0).OrderBy(mesh => mesh.MeshOrdinal)
                 .Select(mesh => new MeshSnapshot(
                     artifact.LogicalPath,
                     mesh.MeshOrdinal,
                     mesh.BlockIndex,
                     KvSemanticHasher.Compute(mesh.Block.Data, "m_drawCalls"),
-                    mesh.DrawCalls.Select(drawCall => drawCall.Snapshot).ToArray())
+                    (mesh.Lod == lod
+                        ? mesh.DrawCalls
+                        : ReadDrawCalls(mesh.Block, artifact.LogicalPath, lod, mesh.MeshOrdinal))
+                        .Select(drawCall => drawCall.Snapshot).ToArray())
                 {
-                    Geometry = mesh.Geometry,
-                    MechanicalLineage = mesh.Lineage,
+                    Geometry = BitOperations.PopCount(mesh.LodMask) == 1 ? mesh.Geometry : null,
+                    MechanicalLineage = mesh.Lod == lod
+                        ? mesh.Lineage
+                        : Source2MeshLineageExtractor.Extract(mesh.Descriptor, lod, $"embedded_meshes[{mesh.MeshOrdinal}]"),
                 })
                 .ToArray())).ToArray();
         var snapshot = new ModelSnapshot(
             new ArtifactSnapshot(artifact.LogicalPath, artifact.ContentHash, artifact.Bytes.Length, envelope.CreateBlockSnapshots()),
             lods);
         return (snapshot, meshes);
+    }
+
+    // Active-LOD inventory projection: excluded meshes contribute nothing, all-zero models are
+    // rejected explicitly before an empty projection is indexed, and the remaining active levels
+    // must be contiguous and agree with the declared switch-distance count.
+    internal static int[] CollectActiveLodLevels(IReadOnlyCollection<int> lodLevels, int lodDistanceCount)
+    {
+        if (lodLevels.Count == 0)
+        {
+            throw Errors.Unsupported("LOD_INVENTORY_UNSUPPORTED", "Every embedded mesh is excluded from all declared LOD groups.", "The model has no active LOD projection; it is not inspectable or mutable through this profile.");
+        }
+
+        var orderedLods = lodLevels.Order().ToArray();
+        var expectedLods = Enumerable.Range(0, orderedLods[^1] + 1).ToArray();
+        if (!orderedLods.SequenceEqual(expectedLods) || lodDistanceCount != orderedLods.Length)
+        {
+            throw Errors.Unsupported("LOD_INVENTORY_UNSUPPORTED", $"LOD masks identify [{string.Join(", ", orderedLods)}] with {lodDistanceCount} switch distances.", "Use a model with contiguous LOD levels and one switch distance per level.");
+        }
+
+        return orderedLods;
+    }
+
+    // Root-MDAT descriptor-table preflight. The whole table — cardinality, sequential ordinals,
+    // MDAT block types/indices, unique references, declared LOD count and every nonzero mask range
+    // — is validated before any zero mask is admitted (inspection) or rejected (strict), so a
+    // later malformed descriptor can never be hidden by an earlier excluded mesh.
+    internal static RootMeshTableEntry[] ValidateRootMeshTable(
+        KVObject embeddedMeshes,
+        KVObject lodMasks,
+        int lodDistanceCount,
+        RootMeshTableFacts blocks,
+        bool allowLodExcludedMeshes)
+    {
+        ArgumentNullException.ThrowIfNull(embeddedMeshes);
+        ArgumentNullException.ThrowIfNull(lodMasks);
+        ArgumentNullException.ThrowIfNull(blocks);
+        if (embeddedMeshes.Count is < 1 or > MaximumEmbeddedMeshCount
+            || embeddedMeshes.Count != lodMasks.Count
+            || embeddedMeshes.Count != blocks.MeshBlockIndices.Count)
+        {
+            throw Errors.Unsupported("EMBEDDED_MESH_COUNT_UNSUPPORTED", $"Embedded descriptors={embeddedMeshes.Count}, LOD masks={lodMasks.Count}, MDAT blocks={blocks.MeshBlockIndices.Count}.", "Use a model with one descriptor and LOD mask per embedded MDAT block.");
+        }
+
+        if (lodDistanceCount is < 1 or > 64)
+        {
+            throw Errors.Unsupported("LOD_MASK_UNSUPPORTED", $"The model declares {lodDistanceCount} LOD switch distances.", "Use a model with one to 64 declared LOD levels.");
+        }
+
+        var entries = new List<RootMeshTableEntry>(embeddedMeshes.Count);
+        var referencedBlocks = new HashSet<int>();
+        for (var meshOrdinal = 0; meshOrdinal < embeddedMeshes.Count; meshOrdinal++)
+        {
+            var descriptor = RequireCollection(embeddedMeshes[meshOrdinal], $"embedded_meshes[{meshOrdinal}]");
+            var declaredOrdinal = RequireInt32(descriptor, "m_nMeshIndex", $"embedded_meshes[{meshOrdinal}]");
+            var blockIndex = RequireInt32(descriptor, "m_nDataBlock", $"embedded_meshes[{meshOrdinal}]");
+            if (declaredOrdinal != meshOrdinal
+                || blockIndex < 0
+                || blockIndex >= blocks.BlockCount
+                || !blocks.MeshBlockIndices.Contains(blockIndex)
+                || !string.Equals(blocks.BlockTypes[blockIndex], "MDAT", StringComparison.Ordinal)
+                || !referencedBlocks.Add(blockIndex))
+            {
+                throw Errors.Unsupported("EMBEDDED_MESH_REFERENCE_UNSUPPORTED", $"Embedded mesh {meshOrdinal} does not map uniquely to one MDAT block.", "Use an intact model with sequential mesh indices and unique MDAT references.");
+            }
+
+            var mask = ReadUnsignedInteger(lodMasks[meshOrdinal], $"m_refLODGroupMasks[{meshOrdinal}]");
+            entries.Add(new RootMeshTableEntry(
+                meshOrdinal,
+                descriptor,
+                blockIndex,
+                mask,
+                mask == 0 ? [] : ExpandRootLodMask(mask, lodDistanceCount, meshOrdinal)));
+        }
+
+        if (!allowLodExcludedMeshes && entries.Any(entry => entry.LodMask == 0))
+        {
+            var firstExcluded = entries.FindIndex(entry => entry.LodMask == 0);
+            throw Errors.Unsupported(
+                "ZERO_LOD_MESH_READ_ONLY",
+                $"Embedded mesh {firstExcluded} has LOD mask 0 and belongs to no LOD group.",
+                "This layout is inspection-only; LOD-excluded meshes have no verified mutation path.");
+        }
+
+        return entries.ToArray();
+    }
+
+    internal static IReadOnlyList<int> ExpandRootLodMask(ulong mask, int lodCount, int meshOrdinal)
+    {
+        if (mask == 0 || lodCount is < 1 or > 64 || BitOperations.Log2(mask) >= lodCount)
+        {
+            throw Errors.Unsupported(
+                "LOD_MASK_UNSUPPORTED",
+                $"Embedded mesh {meshOrdinal} has LOD mask {mask} outside the declared LOD switch-distance range.",
+                "Use a model with a nonzero mask confined to its declared LOD levels.");
+        }
+
+        return Enumerable.Range(0, lodCount)
+            .Where(lod => (mask & (1UL << lod)) != 0)
+            .ToArray();
     }
 
     private static (ModelSnapshot Snapshot, Dictionary<int, ParsedMesh> MeshesByOrdinal) AnalyzeEmbeddedMbuf(
@@ -336,6 +434,7 @@ public sealed partial class Source2CompiledModelAdapter
             retainGeometryAnalysis ? raw.Geometry : null,
             lineage)
         {
+            LodMask = mask,
             PhysicsAnalysis = retainGeometryAnalysis ? physics : null,
             RawMbufAnalysis = retainGeometryAnalysis ? raw : null,
             WholeMeshTransformAnalysis = retainGeometryAnalysis ? transformMetadata : null,
@@ -515,6 +614,8 @@ public sealed partial class Source2CompiledModelAdapter
         Source2GeometryAnalysis? GeometryAnalysis,
         MechanicalMeshLineage Lineage)
     {
+        public ulong LodMask { get; init; }
+
         public Source2ConvexPhysAnalysis? PhysicsAnalysis { get; init; }
 
         public Source2RawMbufAnalysis? RawMbufAnalysis { get; init; }
@@ -523,3 +624,15 @@ public sealed partial class Source2CompiledModelAdapter
     }
 
 }
+
+internal sealed record RootMeshTableEntry(
+    int MeshOrdinal,
+    KVObject Descriptor,
+    int BlockIndex,
+    ulong LodMask,
+    IReadOnlyList<int> MeshLods);
+
+internal sealed record RootMeshTableFacts(
+    int BlockCount,
+    IReadOnlyList<string> BlockTypes,
+    IReadOnlyList<int> MeshBlockIndices);

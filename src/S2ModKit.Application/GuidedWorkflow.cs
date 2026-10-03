@@ -1,13 +1,40 @@
+using System.Text.Json;
 using S2ModKit.Domain;
 
 namespace S2ModKit.Application;
 
 public static class GuidedWorkflow
 {
+    internal static void ValidateSessionShape(ReadOnlySpan<byte> json)
+    {
+        using var document = JsonDocument.Parse(json.ToArray());
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+        MutationPlanJson.RequireUniqueProperties(root);
+        MutationPlanJson.RequireProperties(root, "schemaVersion");
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number == 2)
+        {
+            MutationPlanJson.RequireProperties(root, "schemaVersion", "sessionId", "status", "step", "cataloguePath", "expert", "sources", "experimentalPolicy");
+            MutationPlanJson.RequireProperties(root.GetProperty("experimentalPolicy"), "kind", "version");
+            if (root.TryGetProperty("experimentalParameters", out var parameters))
+            {
+                MutationPlanJson.RequireProperties(parameters, "policy", "pivot");
+                MutationPlanJson.RequireProperties(parameters.GetProperty("policy"), "kind", "version");
+                MutationPlanJson.RequireProperties(parameters.GetProperty("pivot"), "kind", "point");
+                MutationPlanJson.RequireProperties(parameters.GetProperty("pivot").GetProperty("point"), "x", "y", "z");
+                if (parameters.TryGetProperty("region", out var region))
+                    MutationPlanJson.RequireProperties(region, "kind", "version", "axis", "pinnedThrough", "fullFrom");
+            }
+        }
+        else if (root.TryGetProperty("experimentalPolicy", out _) || root.TryGetProperty("experimentalParameters", out _))
+            throw Errors.InvalidRecipe("GUIDED_EXPERIMENTAL_OPT_IN_REQUIRED", "Legacy sessions cannot contain experimental fields, including null.", "Use a new explicitly acknowledged experimental session.");
+    }
+
     public static GuidedWorkflowSession CreateSession(
         string cataloguePath,
         IReadOnlyList<GuidedSourceOption> sources,
-        bool expert)
+        bool expert,
+        bool experimental = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(cataloguePath);
         ArgumentNullException.ThrowIfNull(sources);
@@ -37,6 +64,8 @@ public static class GuidedWorkflow
 
         return new GuidedWorkflowSession
         {
+            SchemaVersion = experimental ? 2 : 1,
+            ExperimentalPolicy = experimental ? new("preserve_unverified", 1) : null,
             SessionId = $"guided-{Guid.NewGuid():N}",
             CataloguePath = cataloguePath,
             Expert = expert,
@@ -47,7 +76,17 @@ public static class GuidedWorkflow
     public static void ValidateSession(GuidedWorkflowSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
-        if (session.SchemaVersion != GuidedWorkflowContract.SchemaVersion
+        if (session.SchemaVersion is not (1 or 2)
+            || (session.SchemaVersion == 1 && (session.ExperimentalPolicy is not null || session.ExperimentalParameters is not null || session.SelectedOperationVersion is 5 or 6))
+            || (session.SchemaVersion == 2 && session.ExperimentalPolicy is not { Kind: "preserve_unverified", Version: 1 })
+            || (session.ExperimentalParameters is { } options && (options.Policy != session.ExperimentalPolicy
+                || session.SelectedOperationVersion is not (5 or 6)
+                || options.Pivot.Kind != "explicit_point" || options.Pivot.ReferenceLod is not null
+                || options.Pivot.Face is not null || options.Pivot.BoneName is not null
+                || options.Pivot.Point is not { } point || !float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z)
+                || (session.SelectedOperationVersion == 6) != (options.Region is not null)
+                || (options.Region is { } region && (region.Kind != "axis_ramp" || region.Version != 1 || region.Axis is not ("x" or "y" or "z")
+                    || !float.IsFinite(region.PinnedThrough) || !float.IsFinite(region.FullFrom) || region.FullFrom <= region.PinnedThrough))))
             || string.IsNullOrWhiteSpace(session.SessionId)
             || string.IsNullOrWhiteSpace(session.CataloguePath)
             || session.Status is not (GuidedWorkflowContract.ActiveStatus or GuidedWorkflowContract.PausedStatus or GuidedWorkflowContract.CompleteStatus)
@@ -63,8 +102,8 @@ public static class GuidedWorkflow
         {
             throw Errors.InvalidRecipe(
                 "GUIDED_SESSION_INVALID",
-                "The guided session does not satisfy the version-1 interaction contract.",
-                "Start a new session or restore an intact version-1 session file.");
+                "The guided session does not satisfy its versioned interaction contract.",
+                "Start a new session or restore an intact session file.");
         }
 
 
@@ -202,24 +241,34 @@ public static class GuidedWorkflow
         var result = new List<GuidedComponentChoice>();
         foreach (var candidate in discovery.Candidates)
         {
-            var actions = CreateActions(candidate.Capabilities);
+            var actions = CreateActions(candidate.Capabilities, discovery.SchemaVersion == 3 && discovery.ExperimentalPolicy is { Kind: "preserve_unverified", Version: 1 });
             if (actions.Count == 0)
             {
                 continue;
             }
 
-            var lods = candidate switch
+            var membership = candidate switch
             {
-                MaterialGroupComponentCandidateV2 material => material.Lods.Select(item => item.Lod),
-                MeshLineageComponentCandidateV2 lineage => lineage.Lods.Select(item => item.Lod),
+                MaterialGroupComponentCandidateV2 material => material.Lods.Select(item => (item.Lod, item.DrawCallCount)).ToArray(),
+                MeshLineageComponentCandidateV2 lineage => lineage.Lods.Select(item => (item.Lod, item.DrawCallCount)).ToArray(),
                 _ => [],
             };
+            var unavailableTransform = actions.Any(action => action.OperationKind == "transform_component")
+                ? null
+                : candidate.Capabilities
+                    .Where(capability => capability.OperationKind == "transform_component")
+                    .OrderBy(capability => capability.Availability == ComponentDiscoveryContract.Blocked ? 0 : 1)
+                    .ThenByDescending(capability => capability.OperationVersion)
+                    .SelectMany(capability => capability.Reasons)
+                    .FirstOrDefault();
             result.Add(new GuidedComponentChoice(
                 candidate.CandidateId,
                 candidate.DisplayLabel,
                 candidate.Kind,
-                lods.Distinct().Order().ToArray(),
-                actions));
+                membership.Select(item => item.Lod).Distinct().Order().ToArray(),
+                actions,
+                membership.Sum(item => item.DrawCallCount),
+                unavailableTransform));
         }
 
         if (result.Count == 0)
@@ -258,6 +307,7 @@ public static class GuidedWorkflow
             operations
                 .SelectMany(operation => operation.GeometryTargets)
                 .Sum(target => target.SelectedVertexCount)
+                + operations.SelectMany(operation => operation.ExperimentalTransformTarget?.GeometryTargets ?? []).Sum(target => target.SelectedVertexCount)
                 + operations
                     .Where(operation => operation.CoupledTransformTarget is not null)
                     .Sum(operation => operation.CoupledTransformTarget!.Visual.VertexCount),
@@ -350,7 +400,8 @@ public static class GuidedWorkflow
                     resource.CandidateLogicalPaths)).ToArray())).ToArray());
 
     private static List<GuidedActionChoice> CreateActions(
-        IReadOnlyList<ComponentCapability> capabilities)
+        IReadOnlyList<ComponentCapability> capabilities,
+        bool experimental)
     {
         var actions = new List<GuidedActionChoice>();
         foreach (var capability in capabilities
@@ -396,15 +447,18 @@ public static class GuidedWorkflow
             }
             else if (capability.OperationKind == "transform_component" && capability.OperationVersion == 4)
             {
-                actions.Add(new GuidedActionChoice(
-                    "transform_component@4:uniform-scale",
-                    "Scale uniformly",
-                    RecipeScaffoldContract.UniformScaleIntent,
-                    capability.OperationKind,
-                    capability.OperationVersion,
-                    true,
-                    false,
-                    false));
+                if (!actions.Any(action => action.Intent == RecipeScaffoldContract.UniformScaleIntent))
+                {
+                    actions.Add(new GuidedActionChoice(
+                        "transform_component@4:uniform-scale",
+                        "Scale uniformly",
+                        RecipeScaffoldContract.UniformScaleIntent,
+                        capability.OperationKind,
+                        capability.OperationVersion,
+                        true,
+                        false,
+                        false));
+                }
                 actions.Add(new GuidedActionChoice(
                     "transform_component@4:affine",
                     "Scale axes / rotate",
@@ -418,6 +472,14 @@ public static class GuidedWorkflow
             }
         }
 
+        if (experimental)
+        {
+            foreach (var capability in capabilities.Where(c => c.OperationKind == "transform_component" && c.OperationVersion is 5 or 6 && c.Availability == "available"))
+                actions.Add(new($"transform_component@{capability.OperationVersion}:experimental",
+                    capability.OperationVersion == 5 ? "Experimental whole-part scale" : "Experimental region scale",
+                    capability.OperationVersion == 5 ? RecipeScaffoldContract.UniformScaleIntent : RecipeScaffoldContract.RegionScaleIntent,
+                    "transform_component", capability.OperationVersion, true, false, false));
+        }
         return actions;
     }
 

@@ -9,7 +9,7 @@ spellings below are the stable English contract.
 
 ## Output and exit codes
 
-- `doctor`, `catalog heroes list`, `catalog resolve`, `compatibility scan`, `inspect`,
+- `doctor`, `bounds diagnose`, `catalog heroes list`, `catalog resolve`, `compatibility scan`, `inspect`,
   `components list`, and `plan` accept `--format text|json`; default is `text`.
 - Commands that publish or manage artifacts return a JSON envelope on stdout by design.
 - In JSON mode stdout contains only the envelope; diagnostics belong on stderr.
@@ -30,7 +30,7 @@ spellings below are the stable English contract.
 
 | Group | Leaf commands |
 |---|---|
-| Diagnostics | `doctor` |
+| Diagnostics | `doctor`, `bounds diagnose` |
 | Guided workflow | `interactive` |
 | Hero catalogue | `catalog heroes list`, `catalog resolve` |
 | Compatibility | `compatibility scan` |
@@ -45,6 +45,20 @@ Checks configured adapter, verifier, and geometry-codec availability.
 
 | Option | Required | Meaning |
 |---|---:|---|
+| `--format` | No | `text` or `json`; default `text`. |
+| `--help` | No | Print help. |
+
+### `s2mod bounds diagnose`
+
+Reads a compiled model and compares stored per-bone sphere and box bounds with decoded vertices
+from every participating buffer. It writes complete JSON and Markdown reports under `--output-root`;
+the compiled input is read-only. This diagnostic does not change transform eligibility.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--input` | Yes | Read-only compiled `.vmdl_c` input file. |
+| `--resource-path` | Yes | Original logical Source 2 `.vmdl_c` resource path for the report. |
+| `--output-root` | Yes | Directory for JSON and Markdown diagnostic reports. |
 | `--format` | No | `text` or `json`; default `text`. |
 | `--help` | No | Print help. |
 
@@ -89,6 +103,7 @@ the same prompt. Narrow or redirected writers can wrap output without changing w
 | `--compiled-model` | No | Compiled `.vmdl_c`; repeat as needed. |
 | `--resume` | No | Resume the existing checkpoint; source options are then forbidden. |
 | `--expert` | No | Show stable IDs, paths, and unavailable-resource details. |
+| `--experimental` | No | Start an acknowledged experimental session (schema 2); saved acknowledgement is retained on resume. Never upgrades a strict checkpoint. |
 | `--help` | No | Print help. |
 
 ### `s2mod catalog heroes list`
@@ -170,6 +185,12 @@ buffer profile is decoded. These IDs can drive `transform_component@3` inside a 
 
 ### `s2mod components list`
 
+`--experimental` explicitly requests discovery schema 3, adding planner-probed whole-part and
+region scale choices. A probe does not qualify arbitrary parameters or anatomical labels.
+The default schema-2 discovery and strict capability rules are unchanged. Experimental IDs
+are distinct: use the same opted-in discovery context when scaffolding. Removal, translation and
+affine intents in that context still use their strict mutation contracts, not experimental fallback.
+
 Lists discovery-v2 `material_group` and exact source-authored whole-mesh `mesh_lineage` candidates
 with capability explanations. The two kinds may overlap. Text and JSON include material membership,
 per-LOD draw calls, and, for a lineage, its mechanical source label and exact mesh/block membership.
@@ -185,6 +206,15 @@ reports `transform_component@2` and remains uniform-only.
 
 ### `s2mod recipe scaffold`
 
+`--experimental` with `--intent uniform-scale` produces the visual-only version-5 profile;
+`--intent region-scale` produces version 6 and additionally requires `--region-axis x|y|z`,
+`--pinned-through`, `--full-from`, and `--pivot-point X,Y,Z`. Coordinates at/below the pinned
+threshold remain unchanged; full strength starts at the larger full threshold, with a smooth
+transition between them. Both require `--scale` and `--max-displacement` (at most 64).
+The exact union and parameters must pass planning before the recipe is published.
+Spheres, occlusion proxies and collision are preserved without proving coherence; hair,
+clothing fit, anatomy and runtime stability are not guaranteed. This is not a strict fallback.
+
 Creates a new canonical recipe from current candidate IDs. Affine scaffolding checks the generated
 recipe with the ordinary dry-run planner before writing it. The command does not publish a plan or
 model and never overwrites `--output`.
@@ -193,7 +223,7 @@ model and never overwrites `--output`.
 |---|---:|---|
 | `--project` | Yes | Project root. |
 | `--component` | Yes | Candidate ID from `components list`; repeat for an explicit union. |
-| `--intent` | Yes | `remove`, `uniform-scale`, `translate`, or `affine`. |
+| `--intent` | Yes | `remove`, `uniform-scale`, `translate`, `affine`, or opted-in `region-scale`. |
 | `--output` | Yes | New recipe JSON path. |
 | `--scale` | For `uniform-scale` | Positive uniform scale in the accepted operation range. |
 | `--translate-x` | For `translate` | Optional finite X translation. |

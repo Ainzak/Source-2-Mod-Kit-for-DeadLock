@@ -341,16 +341,25 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
         IReadOnlyDictionary<string, ComponentCapabilityAnalysis> analyses,
         IReadOnlyDictionary<string, ComponentCapabilityAnalysis> affineAnalyses)
     {
+        var sharedLodMesh = draft.SelectedDrawCalls
+            .GroupBy(call => call.ResourceBlockIndex)
+            .Any(group => group.Select(call => call.Lod).Distinct().Skip(1).Any());
         var capabilities = new List<ComponentCapability>
         {
-            draft.IsLodComplete
+            sharedLodMesh
+                ? SharedLodReadOnlyCapability(RemoveOperation, 1)
+                : draft.IsLodComplete
                 ? AvailableCapability(RemoveOperation)
                 : IncompleteLodCapability(RemoveOperation, "The material group is absent from one or more present LODs required by all_present."),
-            CreateTransformCapability(draft, analyses),
+            sharedLodMesh
+                ? SharedLodReadOnlyCapability(TransformOperation, 1)
+                : CreateTransformCapability(draft, analyses),
         };
         if (capabilityAnalyzer is IAffineComponentCapabilityAnalyzer)
         {
-            capabilities.Add(draft.IsLodComplete
+            capabilities.Add(sharedLodMesh
+                ? SharedLodReadOnlyCapability(TransformOperation, 4)
+                : draft.IsLodComplete
                 ? CreateAffineCapability(draft, affineAnalyses)
                 : new ComponentCapability(
                     TransformOperation,
@@ -380,6 +389,16 @@ public sealed class PreciseComponentDiscoveryService(IComponentCapabilityAnalyze
             draft.LineageLods!,
             capabilities);
     }
+
+    private static ComponentCapability SharedLodReadOnlyCapability(string operation, int version) =>
+        new(
+            operation,
+            version,
+            ComponentDiscoveryContract.Unsupported,
+            [new ComponentCapabilityReason(
+                "SHARED_LOD_MESH_READ_ONLY",
+                "One compiled mesh is reused by multiple LODs; mutation of that shared binary layout is not supported.")],
+            []);
 
     private static ComponentCapability CreateTransformCapability(
         ComponentCandidateDraft draft,

@@ -81,7 +81,10 @@ public sealed class VpkPackagingApplication : IVpkPackagingApplication
             var external = await externalVerifier.VerifyAsync(candidate.TemporaryPath, input.LogicalPath, cancellationToken).ConfigureAwait(false);
             RequireExternalBoundary(external, requireExternalVerifier);
 
-            var packageId = $"vpk-{candidate.Comparison.OutputArchive.ContentHash.Value[..20]}";
+            var packageId = CreatePackageId("replace_source", buildId, input.LogicalPath,
+                replacement.ContentHash, candidate.Comparison.OutputArchive.ContentHash,
+                candidate.AdapterName, candidate.AdapterVersion,
+                candidate.Comparison.SourceArchive.ContentHash, input.ContentHash);
             var boundaries = candidate.Comparison.Boundaries
                 .Concat([external, new BoundaryEvidence("runtime", "untested", "The package has not been installed or observed in live Deadlock.")])
                 .ToArray();
@@ -133,7 +136,9 @@ public sealed class VpkPackagingApplication : IVpkPackagingApplication
             var external = await externalVerifier.VerifyAsync(candidate.TemporaryPath, input.LogicalPath, cancellationToken).ConfigureAwait(false);
             RequireExternalBoundary(external, requireExternalVerifier);
 
-            var packageId = $"vpk-{candidate.Comparison.OutputArchive.ContentHash.Value[..20]}";
+            var packageId = CreatePackageId("minimal", buildId, input.LogicalPath,
+                replacement.ContentHash, candidate.Comparison.OutputArchive.ContentHash,
+                candidate.AdapterName, candidate.AdapterVersion);
             var boundaries = candidate.Comparison.Boundaries
                 .Concat([external, new BoundaryEvidence("runtime", "untested", "The package has not been installed or observed in live Deadlock.")])
                 .ToArray();
@@ -224,6 +229,21 @@ public sealed class VpkPackagingApplication : IVpkPackagingApplication
 
         await projectWorkspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VpkPackageRunResult(package, evidence);
+    }
+
+    // Package bytes can be identical for different recipes/builds. Identity must also
+    // bind the immutable manifest provenance; returning another build's evidence is unsafe.
+    // Canonical ordered JSON words avoid separator ambiguity and exclude machine paths/timestamps.
+    // Previously published content-only IDs remain readable through LoadPackageAsync.
+    private static string CreatePackageId(
+        string mode, string buildId, string logicalPath, ContentHash replacementHash,
+        ContentHash archiveHash, string adapterName, string adapterVersion,
+        ContentHash? sourceHash = null, ContentHash? sourceEntryHash = null)
+    {
+        string?[] identity = ["s2modkit.package-identity@1", mode, buildId,
+            StableIdentity.NormalizePath(logicalPath), replacementHash.Value, archiveHash.Value,
+            adapterName, adapterVersion, sourceHash?.Value, sourceEntryHash?.Value];
+        return $"vpk-{ContentHash.Compute(JsonDefaults.SerializeToUtf8(identity)).Value[..20]}";
     }
 
     private static void RequireMatchingBuild(ArtifactContent input, PublishedBuild build, ArtifactContent replacement)
