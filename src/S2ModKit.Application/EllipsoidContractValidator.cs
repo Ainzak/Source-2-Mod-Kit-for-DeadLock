@@ -17,6 +17,8 @@ public static class EllipsoidContractValidator
         _ = Field(operation.LocalTransform!, operation.Limits.MaximumVertexDisplacement);
     }
 
+    public static void ValidateLocalTransform(EllipsoidVisualTransform intent, float limit) => _ = Field(intent, limit);
+
     public static void ValidatePlan(MutationPlan plan)
     {
         if (plan.SchemaVersion != 4 || plan.Operations is not [{ Kind: "transform_component", Version: 7, EllipsoidTransformTarget: not null } operation]
@@ -72,6 +74,7 @@ public static class EllipsoidContractValidator
             || target.Buffers.Select(b => b.Lod).Distinct().Count() != target.Buffers.Count
             || !target.Buffers.Select(b => b.Lod).SequenceEqual(target.Buffers.Select(b => b.Lod).Order())) throw Invalid("Malformed ellipsoid profile, policies or target inventory.");
         var field = Field(target.LocalTransform, target.DisplacementLimit);
+        if (JsonDefaults.Serialize(target.Mirror) != JsonDefaults.Serialize(EllipsoidFieldMath.Mirror(field))) throw Invalid("Mirror plane, reflected center or certificate drift.");
         RecipeValidator.ValidateSelector(target.Selector);
         var expected = Certificate(field.Certificate);
         if (target.Certificate is null || !CanonicalInteger(target.Certificate.Numerator, out var numerator) || !CanonicalInteger(target.Certificate.Denominator, out var denominator)
@@ -79,6 +82,18 @@ public static class EllipsoidContractValidator
             || target.Certificate != expected) throw Invalid("The exact certificate is noncanonical, unreduced or stale.");
         foreach (var b in target.Buffers)
         {
+            if (field is MirroredEllipsoidScale)
+            {
+                if (b.MirroredMasks is not [not null, not null] || b.MirroredMasks.Any(m => !Hash(m.MaskHash) || !Hash(m.WeightHash)
+                    || m.CoreVertexCount < 0 || m.TransitionVertexCount < 0 || m.PinnedVertexCount < 0
+                    || (long)m.CoreVertexCount + m.TransitionVertexCount + m.PinnedVertexCount != b.VertexCount
+                    || m.ChangedPositionCount <= 0 || m.ChangedPositionCount > m.CoreVertexCount + m.TransitionVertexCount)
+                    || b.MirroredMasks.Sum(m => m.ChangedPositionCount) != b.ChangedPositionCount
+                    || b.MirroredMasks.Sum(m => m.CoreVertexCount) != b.CoreVertexCount
+                    || b.MirroredMasks.Sum(m => m.TransitionVertexCount) != b.TransitionVertexCount)
+                    throw Invalid("Both mirrored fields require complete masks and changed effects in every LOD.");
+            }
+            else if (b.MirroredMasks is not null) throw Invalid("Single fields cannot carry mirrored masks.");
             if (b.Lod < 0 || b.MeshOrdinal < 0 || b.ResourceBlockIndex < 0 || b.VertexBufferOrdinal < 0 || b.IndexBufferOrdinal < 0
                 || b.VertexResourceBlockIndex < 0 || b.IndexResourceBlockIndex < 0 || b.VertexCount <= 0 || b.OwnershipPolicy != "exclusive"
                 || !Portable(b.ResourcePath)
@@ -188,12 +203,7 @@ public static class EllipsoidContractValidator
     public static IEnumerable<BoundaryEvidence> PlannedBoundaries() => Checks.Select(n => new BoundaryEvidence(n, "not_applicable", "Planned facts do not observe output bytes."))
         .Concat(Risks.Select(n => new BoundaryEvidence(n, "untested", "Preservation does not qualify the consumer.")));
 
-    private static EllipsoidScale Field(EllipsoidVisualTransform intent, float limit)
-    {
-        RecipeValidator.ValidateEllipsoidIntent(intent, limit);
-        try { return new(Point(intent.Field.Center), Point(intent.Field.OuterRadii), intent.Field.CoreFraction, intent.UniformScale, limit); }
-        catch (ArgumentException ex) { throw Errors.Unsupported("ELLIPSOID_JACOBIAN_UNPROVEN", $"Jacobian admission rejected: {ex.Message}", "Choose an admitted field and regenerate the plan."); }
-    }
+    private static IEllipsoidScale Field(EllipsoidVisualTransform intent, float limit) => EllipsoidFieldMath.Create(intent, limit);
 
     // This projection supplies storage identities to the existing common checker;
     // it is never persisted or used to evaluate a legacy uniform transform.
@@ -217,7 +227,6 @@ public static class EllipsoidContractValidator
         var array = values.ToArray();
         return array.SequenceEqual(array.OrderBy(v => v.Block).ThenBy(v => v.Path, StringComparer.Ordinal));
     }
-    private static Point3 Point(TransformVector3 p) => new(p.X, p.Y, p.Z);
     private static bool Bounds(GeometryBounds? b) => b?.Min is not null && b.Max is not null && Finite(b.Min) && Finite(b.Max) && b.Min.X < b.Max.X && b.Min.Y < b.Max.Y && b.Min.Z < b.Max.Z;
     private static bool Finite(TransformVector3 p) => float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z);
     private static bool Same<T>(T a, T b) => JsonDefaults.Serialize(a) == JsonDefaults.Serialize(b);

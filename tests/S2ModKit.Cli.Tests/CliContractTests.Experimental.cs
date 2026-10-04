@@ -37,7 +37,7 @@ public sealed partial class CliContractTests
             Assert.Empty(error.ToString());
             var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(await File.ReadAllBytesAsync(sessionPath, TestContext.Current.CancellationToken), "session");
             Assert.Equal(GuidedWorkflowContract.OutputSelectionStep, session.Step);
-            Assert.Equal(2, session.SchemaVersion);
+            Assert.Equal(3, session.SchemaVersion);
             Assert.Equal(new RegionScaleSelection("axis_ramp", 1, "z", 0, 4), session.ExperimentalParameters!.Region);
             Assert.True(app.LastScaffoldRequest!.ExperimentalDiscovery);
             Assert.Equal(6, Assert.Single(app.LastRecipe!.Operations).Version);

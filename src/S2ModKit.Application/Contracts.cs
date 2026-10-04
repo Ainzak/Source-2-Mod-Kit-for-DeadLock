@@ -186,6 +186,8 @@ public sealed record TransformPlanningResult(
     public PlannedExperimentalTransformTarget? ExperimentalTransformTarget { get; init; }
 
     public PlannedEllipsoidTransformTarget? EllipsoidTransformTarget { get; init; }
+
+    public PlannedCoordinatedTransformTarget? CoordinatedTransformTarget { get; init; }
 }
 
 public sealed record AffineSelectionBoundsEvidence(
@@ -270,12 +272,27 @@ public interface IS2ModKitApplication
     Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
         throw Errors.Unsupported("EXPERIMENTAL_DISCOVERY_UNAVAILABLE", "This application cannot discover experimental components.", "Use a configured experimental planner.");
 
+    Task<ComponentDiscoveryResultV2> DiscoverCoordinatedComponentsAsync(string projectRoot, CancellationToken token = default) =>
+        throw Errors.Unsupported("COORDINATED_DISCOVERY_UNAVAILABLE", "Coordinated discovery is not configured.", "Configure a compatible adapter.");
+
+    Task<CoordinatedSelectionProbe> ProbeCoordinatedSelectionAsync(string projectRoot, IReadOnlyList<string> componentIds, CoordinatedScaffoldOptions options, CancellationToken token = default) =>
+        throw Errors.Unsupported("COORDINATED_DISCOVERY_UNAVAILABLE", "Coordinated union probing is not configured.", "Configure a compatible adapter.");
+
+    Task<CoordinatedSelectionPreview> PreviewCoordinatedSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken token = default) =>
+        throw Errors.Unsupported("COORDINATED_PREVIEW_UNAVAILABLE", "Coordinated preview is not configured.", "Configure a compatible adapter.");
+
+    Task<ComponentDiscoveryResultV2> DiscoverEllipsoidComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
+        throw Errors.Unsupported("ELLIPSOID_DISCOVERY_UNAVAILABLE", "This application cannot probe local fields.", "Use a configured single-field planner.");
+
     Task<RecipeScaffoldResult> ScaffoldRecipeAsync(
         string projectRoot,
         RecipeScaffoldRequest request,
         CancellationToken cancellationToken = default);
 
     Task<PlanRunResult> PlanAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default);
+
+    Task<EllipsoidSelectionPreview> PreviewEllipsoidSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default) =>
+        throw Errors.Unsupported("ELLIPSOID_PREVIEW_UNAVAILABLE", "This application has no read-only selection preview.", "Use a configured preview reader.");
 
     Task<BuildRunResult> BuildAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default);
 

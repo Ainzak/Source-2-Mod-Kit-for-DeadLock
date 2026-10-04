@@ -14,7 +14,9 @@ public static partial class RecipeValidator
 
     public static void ValidateEllipsoidIntent(EllipsoidVisualTransform? intent, float displacementLimit)
     {
-        if (intent?.Field is not { Kind: "ellipsoid", Version: 1, CoordinateSpace: "model", Center: not null, OuterRadii: not null } field
+        if (intent?.Field is not { Version: 1, CoordinateSpace: "model", Center: not null, OuterRadii: not null } field
+            || field.Kind is not ("ellipsoid" or "mirrored_ellipsoids")
+            || (field.Kind == "ellipsoid" ? field.MirrorPlane is not null : field.MirrorPlane is not { Axis: "x" or "y" or "z" } plane || !float.IsFinite(plane.Coordinate))
             || intent.NumericalPolicy is not { Kind: "ellipsoid_numeric", Version: 1 })
             throw EllipsoidInvalid("Require ellipsoid@1 in model space and ellipsoid_numeric@1.");
         var radii = new[] { field.OuterRadii.X, field.OuterRadii.Y, field.OuterRadii.Z };

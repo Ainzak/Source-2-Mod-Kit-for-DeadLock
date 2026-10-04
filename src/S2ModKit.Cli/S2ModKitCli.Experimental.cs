@@ -8,7 +8,9 @@ public sealed partial class S2ModKitCli
     private const string ExperimentalWarning = "Experimental visual edit: culling spheres, proxies and collision are preserved without proving coherence. Anatomy, hair, clothing fit and runtime stability are not guaranteed.";
 
     private Task<ComponentDiscoveryResultV2> DiscoverGuidedComponentsAsync(GuidedWorkflowSession session, CancellationToken token) =>
-        session.ExperimentalPolicy is not null ? application.DiscoverExperimentalComponentsAsync(session.ProjectRoot!, token)
+        session.SchemaVersion == 4 ? application.DiscoverCoordinatedComponentsAsync(session.ProjectRoot!, token)
+            : session.SchemaVersion == 3 ? application.DiscoverEllipsoidComponentsAsync(session.ProjectRoot!, token)
+            : session.ExperimentalPolicy is not null ? application.DiscoverExperimentalComponentsAsync(session.ProjectRoot!, token)
             : application.DiscoverComponentsAsync(session.ProjectRoot!, token);
 
     private static async Task<GuidedActionParameters?> ReadGuidedExperimentalParametersAsync(int version,
@@ -52,7 +54,7 @@ public sealed partial class S2ModKitCli
     {
         if (!enabled)
         {
-            if (axis is not null || pinned is not null || full is not null || intent == RecipeScaffoldContract.RegionScaleIntent)
+            if (axis is not null || pinned is not null || full is not null || intent is RecipeScaffoldContract.RegionScaleIntent or RecipeScaffoldContract.EllipsoidScaleIntent or RecipeScaffoldContract.MirroredEllipsoidScaleIntent)
                 throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPT_IN_REQUIRED", "Region options require --experimental.", "Explicitly acknowledge the experimental contract.");
             return null;
         }

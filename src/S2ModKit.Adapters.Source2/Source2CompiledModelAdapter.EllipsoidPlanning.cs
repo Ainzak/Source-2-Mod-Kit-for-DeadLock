@@ -7,12 +7,7 @@ namespace S2ModKit.Adapters.Source2;
 
 public sealed partial class Source2CompiledModelAdapter
 {
-    private static EllipsoidScale EllipsoidMath(EllipsoidVisualTransform intent, float limit)
-    {
-        RecipeValidator.ValidateEllipsoidIntent(intent, limit);
-        try { return new(ToAffinePoint(intent.Field.Center), ToAffinePoint(intent.Field.OuterRadii), intent.Field.CoreFraction, intent.UniformScale, limit); }
-        catch (ArgumentException e) { throw ExperimentalUnsupported("ELLIPSOID_JACOBIAN_UNPROVEN", e.Message); }
-    }
+    private static IEllipsoidScale EllipsoidMath(EllipsoidVisualTransform intent, float limit) => EllipsoidFieldMath.Create(intent, limit);
 
     private TransformPlanningResult PlanEllipsoidTransform(TransformPlanningRequest request, ParsedModel parsed)
     {
@@ -48,6 +43,7 @@ public sealed partial class Source2CompiledModelAdapter
             EllipsoidContractValidator.Certificate(math.Certificate), buffers.Max(b => b.MaximumDisplacement), math.DisplacementLimit,
             buffers, boxes.OrderBy(b => b.ResourceBlockIndex).ThenBy(b => b.FieldPath, StringComparer.Ordinal).ToArray(),
             preserved.OrderBy(b => b.ResourceBlockIndex).ThenBy(b => b.FieldPath, StringComparer.Ordinal).ToArray(), sourceBlocks);
+        target = target with { Mirror = EllipsoidFieldMath.Mirror(math) };
         target = target with { TargetFingerprint = MutationPlanJson.ComputeEllipsoidTargetFingerprint(target) };
         EllipsoidContractValidator.ValidateTarget(target);
         return new([], [], buffers.SelectMany(b => new[] { b.ResourceBlockIndex, b.VertexResourceBlockIndex }).Distinct().Order()
@@ -56,7 +52,7 @@ public sealed partial class Source2CompiledModelAdapter
     }
 
     private static (byte[] Bytes, Point3[] Points, PlannedEllipsoidBuffer Facts) PlanEllipsoidBuffer(
-        ArtifactContent input, Source2AffineProfile profile, EllipsoidScale math)
+        ArtifactContent input, Source2AffineProfile profile, IEllipsoidScale math)
     {
         var calculated = CalculateEllipsoidWords(profile.Vertices.Decoded, profile.Vertices.Snapshot.PositionLayout, profile.PackedFrameLayout, profile.SelectedVertices.Length, math);
         var (bytes, points, maskHash, weightHash, core, transition, pinned, positions, frames, maximum) = calculated;
@@ -72,13 +68,14 @@ public sealed partial class Source2CompiledModelAdapter
             core, transition, pinned, positions, frames, EllipsoidPositionHash(profile.Vertices.Decoded, v.PositionLayout, points.Length),
             EllipsoidPositionHash(bytes, v.PositionLayout, points.Length), Source2PackedFrameCodec.HashSelected(profile.Vertices.Decoded, profile.PackedFrameLayout, profile.SelectedVertices),
             Source2PackedFrameCodec.HashSelected(bytes, profile.PackedFrameLayout, profile.SelectedVertices),
-            profile.SelectionBounds, ToAffineBounds(Bounds3.FromPoints(points)), maximum));
+            profile.SelectionBounds, ToAffineBounds(Bounds3.FromPoints(points)), maximum)
+        { MirroredMasks = calculated.MirroredMasks });
     }
 
     // Complete record deformation shared by planning/writing only. The reopen verifier
     // has a separate reconstruction loop and must never call this calculator.
     internal static EllipsoidWordCalculation CalculateEllipsoidWords(ReadOnlySpan<byte> decoded, PositionLayout positionLayout,
-        PackedFrameLayout frameLayout, int count, EllipsoidScale math)
+        PackedFrameLayout frameLayout, int count, IEllipsoidScale math)
     {
         if (count <= 0 || positionLayout.Format != "R32G32B32_FLOAT" || frameLayout.Format != "R32_UINT"
             || frameLayout.EncodingProfile != Source2PackedFrameCodec.EncodingProfile || positionLayout.Offset < 0 || frameLayout.Offset < 0
@@ -92,12 +89,30 @@ public sealed partial class Source2CompiledModelAdapter
         var weights = new byte[checked(points.Length * 12)];
         int core = 0, transition = 0, pinned = 0, positions = 0, frames = 0;
         float maximum = 0;
+        var pairMasks = math is MirroredEllipsoidScale ? new byte[][] { new byte[count * 8], new byte[count * 8] } : null;
+        var pairWeights = math is MirroredEllipsoidScale ? new byte[][] { new byte[count * 12], new byte[count * 12] } : null;
+        var pairCounts = new int[2, 4];
         for (var vertex = 0; vertex < count; vertex++)
         {
             var original = new Point3(BinaryPrimitives.ReadSingleLittleEndian(decoded.Slice(vertex * positionLayout.Stride + positionLayout.Offset)), BinaryPrimitives.ReadSingleLittleEndian(decoded.Slice(vertex * positionLayout.Stride + positionLayout.Offset + 4)), BinaryPrimitives.ReadSingleLittleEndian(decoded.Slice(vertex * positionLayout.Stride + positionLayout.Offset + 8)));
             EllipsoidPointResult result;
             try { result = math.Evaluate(original); }
             catch (ArgumentException e) { throw EllipsoidNumericFailure(e); }
+            if (math is MirroredEllipsoidScale pair)
+            {
+                var members = pair.EvaluatePair(original);
+                EllipsoidPointResult[] results = [members.Base, members.Reflected];
+                for (var side = 0; side < 2; side++)
+                {
+                    var part = results[side];
+                    BinaryPrimitives.WriteInt32LittleEndian(pairMasks![side].AsSpan(vertex * 8), vertex);
+                    BinaryPrimitives.WriteInt32LittleEndian(pairMasks[side].AsSpan(vertex * 8 + 4), (int)part.Membership);
+                    BinaryPrimitives.WriteInt32LittleEndian(pairWeights![side].AsSpan(vertex * 12), vertex);
+                    BinaryPrimitives.WriteInt64LittleEndian(pairWeights[side].AsSpan(vertex * 12 + 4), BitConverter.DoubleToInt64Bits(part.Weight));
+                    pairCounts[side, (int)part.Membership]++;
+                    if (RegionPositionWordsChanged(original, part.Position)) pairCounts[side, 3]++;
+                }
+            }
             points[vertex] = result.Position;
             BinaryPrimitives.WriteInt32LittleEndian(masks.AsSpan(vertex * 8), vertex);
             BinaryPrimitives.WriteInt32LittleEndian(masks.AsSpan(vertex * 8 + 4), (int)result.Membership);
@@ -120,11 +135,20 @@ public sealed partial class Source2CompiledModelAdapter
             if (result.Membership != EllipsoidMembership.Pinned) WritePosition(bytes, positionLayout, vertex, result.Position);
             if (result.Membership == EllipsoidMembership.Transition) BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(location), packed);
         }
-        return new(bytes, points, ContentHash.Compute(masks), ContentHash.Compute(weights), core, transition, pinned, positions, frames, maximum);
+        if (pairMasks is not null && (pairCounts[0, 3] == 0 || pairCounts[1, 3] == 0))
+            throw ExperimentalUnsupported("ELLIPSOID_EMPTY_LOD_EFFECT", "Both mirrored fields must change stored positions in every LOD.");
+        return new(bytes, points, ContentHash.Compute(masks), ContentHash.Compute(weights), core, transition, pinned, positions, frames, maximum)
+        {
+            MirroredMasks = pairMasks is null ? null : Enumerable.Range(0, 2).Select(side => new EllipsoidFieldMask(
+                ContentHash.Compute(pairMasks[side]), ContentHash.Compute(pairWeights![side]), pairCounts[side, 0], pairCounts[side, 1], pairCounts[side, 2], pairCounts[side, 3])).ToArray(),
+        };
     }
 
     internal sealed record EllipsoidWordCalculation(byte[] Bytes, Point3[] Points, ContentHash MaskHash, ContentHash WeightHash,
-        int Core, int Transition, int Pinned, int ChangedPositions, int ChangedFrames, float MaximumDisplacement);
+        int Core, int Transition, int Pinned, int ChangedPositions, int ChangedFrames, float MaximumDisplacement)
+    {
+        internal IReadOnlyList<EllipsoidFieldMask>? MirroredMasks { get; init; }
+    }
 
     internal static ContentHash EllipsoidPositionHash(ReadOnlySpan<byte> bytes, PositionLayout layout, int count)
     {

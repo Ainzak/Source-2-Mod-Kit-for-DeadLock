@@ -228,6 +228,8 @@ public sealed partial class SyntheticPipelineTests
         }
 
         public IReadOnlyDictionary<string, (PublishedBuild Build, ArtifactContent Content)> Builds => builds;
+        public int PlanCount => plans.Count;
+        public int EvidenceWriteCount { get; private set; }
 
         private ProjectManifest Project { get; }
 
@@ -269,8 +271,11 @@ public sealed partial class SyntheticPipelineTests
         public Task<(PublishedBuild Build, ArtifactContent Content)> LoadBuildAsync(string projectRoot, string buildId, CancellationToken cancellationToken = default) =>
             Task.FromResult(builds[buildId]);
 
-        public Task SaveEvidenceAsync(string projectRoot, string reportId, string json, string markdown, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task SaveEvidenceAsync(string projectRoot, string reportId, string json, string markdown, CancellationToken cancellationToken = default)
+        {
+            EvidenceWriteCount++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class UnusedResourceSourceFactory : IProjectResourceSourceFactory

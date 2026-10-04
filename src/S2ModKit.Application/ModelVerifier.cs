@@ -3,13 +3,18 @@ using S2ModKit.Geometry;
 
 namespace S2ModKit.Application;
 
-public sealed class ModelVerifier
+public sealed partial class ModelVerifier
 {
     public static VerificationResult Verify(ModelSnapshot before, ModelSnapshot after, MutationPlan plan)
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.SchemaVersion == 5 || plan.Operations.Any(operation => operation.Version == 8 || operation.CoordinatedTransformTarget is not null))
+        {
+            _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));
+            return VerifyCoordinatedSnapshot(before, after, plan);
+        }
         if (plan.SchemaVersion == 4 || plan.Operations.Any(operation => operation.Version == 7 || operation.EllipsoidTransformTarget is not null))
         {
             _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));

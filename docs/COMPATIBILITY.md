@@ -1,6 +1,6 @@
 # S2ModKit compatibility matrix
 
-Updated: 2026-10-03.
+Updated: 2026-10-04.
 Status: current pre-alpha production boundary.
 
 Compatibility is determined from inspected structure, not a hero allowlist. A named hero below is
@@ -28,9 +28,19 @@ umbrella, then rolled back. These observations do not qualify other models or al
 | `transform_component@4`, one selected buffer in a multi-buffer mesh | Offline qualified | Abrams teeth, four LODs | Selected positions/frames and derived scene/bone bounds change; other buffers and indices remain unchanged. Other body selections still fail their bounds or distance-field checks. Live-game behavior is untested. |
 | `transform_component@5`, complete root buffer visual scale | Experimental, explicit opt-in | Grey Talon head and Mina umbrella player observations; Yamato shortsword and Werewolf gun offline builds | Preserves unresolved spheres/proxies/collision without claiming coherence. Procedural/cloth, morphs, flat affected boxes and incomplete ownership reject. |
 | `transform_component@6`, bounded axis-ramp region scale | Experimental, explicit opt-in | Grey Talon region player observation | Pins a half-space and updates transition shading. Crude head shape and buried hair remain observed limitations; not automatic anatomy or sculpting. |
+| `transform_component@7`, single ellipsoid or disjoint mirrored pair | Experimental, offline qualified | Abrams face single/mirrored fields; Mina umbrella handle/canopy fields | Smooth local scaling in one complete ordinary buffer per LOD; exact pinned words, differential transition frames and independent reopen. Mina's mirrored canopy player test showed no clear change, possibly a smaller-looking umbrella, and was rolled back; it does not qualify the intended appearance. Mirroring retains asymmetry; broader field parameters can fail triangle or certificate checks. |
+| `transform_component@8`, common field across ordinary buffers | Experimental, offline qualified; bounded owner appearance report | Abrams face/head-detail/teeth, three members across four LODs | Atomic common-field geometry and complete shared box closure. Owner accepts the enlarged head and neck; the report arrived after rollback and is not an active-bound formal runtime record. Animation, LOD transitions, garment fit and preserved zero-field consumers remain unqualified. |
 | Current-roster coverage | Measured offline | 39 active and five experimental heroes, 45 resource locators | 44 resources pass strict discovery; Priest remains inspection-only. Experimental probes add 26 selections across 15 resources; 43 resources have some transform before and after opt-in. A probe is not a completed build or a player test. |
 | Non-empty external mesh resource handles | Unsupported | Structural synthetic tests | Requires a future explicitly reviewed resource-resolution and rewrite profile. |
 | Arbitrary topology, weight, and morph edits | Unsupported | — | No typed mutation or allowed-change contract. |
+
+On the same October 3 Abrams and Mina inputs, all 27 candidate views and earlier transform
+capabilities are unchanged. Local-field probes add six candidate views representing four unique
+exact selectors (three Abrams, one Mina). Mirrored shaping is a new action on those enclosing
+selectors, with each actual pair requiring an exact plan. One explicit acknowledged Abrams union
+additionally qualifies coordination; individual discovery probes with reject zero policies do not
+advertise it. These are new editing actions on two already supported resources, not new hero support
+or a new roster-wide scan. Broad body, procedural hair and clothing-fit support remain unavailable.
 
 The October 1 patch preserved 43 of 45 model hashes; changed Billy and Rat King models were
 rescanned rather than inheriting old results. A complete Grey Talon eye-material selection passed
@@ -48,11 +58,12 @@ inspection-only.
 | Contract | Current writer | Retained compatibility |
 |---|---:|---|
 | Project manifest | 2 | Version 1 schema/reader retained. |
-| Recipe | 7 | Versions 1–6 remain readable with unchanged meaning under versioned schemas. Experimental whole-part/region recipes require an explicit preservation policy. |
-| Build evidence | 8 | Versions 1–7 remain published under versioned schemas. Experimental consumer obligations remain visibly untested. |
+| Recipe | 9 | Versions 1–8 remain readable with unchanged meaning. Local fields use schema 8; coordinated fields use schema 9 with explicit member maps and preservation policies. |
+| Mutation plan | 5 | Legacy and versions 2–4 retain their meanings; schema 5 binds one coordinated operation and shared closure. |
+| Build evidence | 10 | Versions 1–9 remain readable. Experimental consumer obligations remain visibly untested. |
 | Package evidence | 2 | Version 1 replace-source packages remain readable. |
-| Component discovery | 2 default; 3 opt-in | Versions 1–2 remain published; experimental output preserves candidate kinds but has separately bound identities. |
-| Guided session | 1 default; 2 opt-in | Existing strict sessions do not silently upgrade to experimental mode. |
+| Component discovery | 2 default; 4 local opt-in; 5 coordinated opt-in | Earlier versions remain readable; opted-in identities and exact probes are separately bound. |
+| Guided session | 1 default; 3 local opt-in; 4 coordinated opt-in | Earlier versions retain their meanings. Schema 4 freezes exact selected IDs, common-field options and preview identity. Existing sessions never silently upgrade. |
 | Installation receipt | 1 | Current. |
 | Runtime observation | 1 | Current. |
 | Hero catalogue | 1 | New additive navigation contract; no earlier persisted versions. |

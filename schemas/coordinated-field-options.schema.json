@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/coordinated-field-options.schema.json",
+  "title": "Explicit coordinated field options v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "policy",
+    "zeroBoneBoxPolicy",
+    "zeroRenderSpherePolicy",
+    "field",
+    "maximumDisplacement"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "coordinated_field_options"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "zeroBoneBoxPolicy": {
+      "$ref": "coordinated-contracts.schema.json#/definitions/zeroBoneBoxPolicy"
+    },
+    "zeroRenderSpherePolicy": {
+      "$ref": "coordinated-contracts.schema.json#/definitions/zeroRenderSpherePolicy"
+    },
+    "field": {
+      "oneOf": [
+        {
+          "$ref": "coordinated-contracts.schema.json#/definitions/coordinatedEllipsoidField"
+        },
+        {
+          "$ref": "coordinated-contracts.schema.json#/definitions/coordinatedAxisRampField"
+        },
+        {
+          "$ref": "coordinated-contracts.schema.json#/definitions/coordinatedTiltedRampField"
+        }
+      ]
+    },
+    "maximumDisplacement": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 64
+    }
+  },
+  "allOf": [
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "zeroRenderSpherePolicy": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "reject"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "zeroBoneBoxPolicy": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "preserve_all_zero_single_contributor_unverified"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

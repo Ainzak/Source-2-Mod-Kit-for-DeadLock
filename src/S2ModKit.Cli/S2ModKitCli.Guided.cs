@@ -22,6 +22,7 @@ public sealed partial class S2ModKitCli
         bool resume,
         bool expert,
         bool experimental,
+        string? coordinatedOptionsPath,
         TextReader input,
         TextWriter output,
         CancellationToken cancellationToken)
@@ -125,6 +126,7 @@ public sealed partial class S2ModKitCli
             resume,
             expert,
             experimental,
+            coordinatedOptionsPath,
             input,
             output,
             cancellationToken).ConfigureAwait(false);
@@ -139,6 +141,7 @@ public sealed partial class S2ModKitCli
         bool resume,
         bool expert,
         bool experimental,
+        string? coordinatedOptionsPath,
         TextReader input,
         TextWriter output,
         CancellationToken cancellationToken)
@@ -148,7 +151,7 @@ public sealed partial class S2ModKitCli
         GuidedWorkflowSession session;
         if (resume)
         {
-            if (baseVpkPaths.Length != 0 || modVpkPaths.Length != 0 || compiledModelPaths.Length != 0)
+            if (baseVpkPaths.Length != 0 || modVpkPaths.Length != 0 || compiledModelPaths.Length != 0 || coordinatedOptionsPath is not null)
             {
                 throw Errors.Input(
                     "GUIDED_RESUME_SOURCES_FORBIDDEN",
@@ -193,6 +196,9 @@ public sealed partial class S2ModKitCli
 
             var sources = CreateGuidedSources(baseVpkPaths, modVpkPaths, compiledModelPaths);
             session = GuidedWorkflow.CreateSession(fullCataloguePath, sources, expert, experimental);
+            if (coordinatedOptionsPath is not null)
+                session = session with { SchemaVersion = 4, CoordinatedParameters = await ReadCoordinatedOptionsAsync(coordinatedOptionsPath, experimental, RecipeScaffoldContract.CoordinatedFieldIntent, cancellationToken).ConfigureAwait(false) };
+
             await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: false, cancellationToken).ConfigureAwait(false);
             output.WriteLine("S2ModKit guided workflow");
             output.WriteLine("Enter a number, or 'cancel' to save and stop.");
@@ -398,7 +404,7 @@ public sealed partial class S2ModKitCli
                     catalogue,
                     cancellationToken).ConfigureAwait(false);
                 var discovery = await DiscoverGuidedComponentsAsync(session, cancellationToken).ConfigureAwait(false);
-                components = GuidedWorkflow.CreateComponentChoices(discovery);
+                components = session.SchemaVersion == 4 ? CreateCoordinatedCandidateChoices(discovery) : GuidedWorkflow.CreateComponentChoices(discovery);
                 var hiddenComponentCount = discovery.Candidates.Count - components.Count;
                 if (hiddenComponentCount > 0)
                 {
@@ -411,7 +417,7 @@ public sealed partial class S2ModKitCli
                 for (var index = 0; index < components.Count; index++)
                 {
                     var component = components[index];
-                    var actions = string.Join(", ", component.Actions.Select(action => action.DisplayName));
+                    var actions = session.SchemaVersion == 4 ? "exact union probe" : string.Join(", ", component.Actions.Select(action => action.DisplayName));
                     output.WriteLine(session.Expert
                         ? string.Create(
                             CultureInfo.InvariantCulture,
@@ -420,7 +426,11 @@ public sealed partial class S2ModKitCli
                 }
 
                 output.WriteLine("  0. Back to resource selection");
-                var selectedIndex = await ReadGuidedChoiceAsync(input, output, components.Count, cancellationToken, allowBack: true).ConfigureAwait(false);
+                var selectedIndices = session.SchemaVersion == 4
+                    ? await ReadGuidedUnionChoicesAsync(input, output, components.Count, cancellationToken).ConfigureAwait(false)
+                    : null;
+                var selectedIndex = session.SchemaVersion == 4 ? selectedIndices?.FirstOrDefault()
+                    : await ReadGuidedChoiceAsync(input, output, components.Count, cancellationToken, allowBack: true).ConfigureAwait(false);
                 if (selectedIndex is null)
                 {
                     return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
@@ -435,6 +445,16 @@ public sealed partial class S2ModKitCli
                 }
 
                 var chosenComponent = components[selectedIndex.Value];
+                IReadOnlyList<string>? selectedIds = null;
+                if (session.SchemaVersion == 4)
+                {
+                    selectedIds = selectedIndices!.Select(i => components[i].CandidateId).Order(StringComparer.Ordinal).ToArray();
+                    try { chosenComponent = GuidedWorkflow.CreateCoordinatedChoice(await application.ProbeCoordinatedSelectionAsync(session.ProjectRoot!, selectedIds, session.CoordinatedParameters!, cancellationToken).ConfigureAwait(false)); }
+                    catch (S2ModKitException exception) when (exception.Error.Category is ErrorCategory.SelectionOrLod or ErrorCategory.UnsupportedCapability or ErrorCategory.CliOrSchema)
+                    { output.WriteLine($"Union rejected [{exception.Error.Code}]: {exception.Error.Summary}"); continue; }
+                    components = [chosenComponent];
+                }
+
                 output.WriteLine(string.Create(
                     CultureInfo.InvariantCulture,
                     $"Selection: {chosenComponent.Kind}, {chosenComponent.DrawCallCount} draw call(s) across {chosenComponent.Lods.Count} LOD(s)."));
@@ -447,6 +467,7 @@ public sealed partial class S2ModKitCli
 
                 session = session with
                 {
+                    SelectedComponentIds = selectedIds,
                     SelectedComponentId = chosenComponent.CandidateId,
                     SelectedComponentLabel = chosenComponent.DisplayLabel,
                     Step = GuidedWorkflowContract.ActionSelectionStep,
@@ -466,7 +487,9 @@ public sealed partial class S2ModKitCli
                 if (components is null)
                 {
                     var discovery = await DiscoverGuidedComponentsAsync(session, cancellationToken).ConfigureAwait(false);
-                    components = GuidedWorkflow.CreateComponentChoices(discovery);
+                    components = session.SchemaVersion == 4
+                        ? [GuidedWorkflow.CreateCoordinatedChoice(await application.ProbeCoordinatedSelectionAsync(session.ProjectRoot!, session.SelectedComponentIds!, session.CoordinatedParameters!, cancellationToken).ConfigureAwait(false))]
+                        : GuidedWorkflow.CreateComponentChoices(discovery);
                 }
 
                 var selectedComponent = components.SingleOrDefault(component =>
@@ -525,10 +548,23 @@ public sealed partial class S2ModKitCli
                                 "Start a new session and select from current capability results.");
                     }
 
-                    var parameters = await ReadGuidedActionParametersAsync(action, input, output, cancellationToken).ConfigureAwait(false);
+                    var parameters = action.OperationVersion == 8
+                        ? new GuidedActionParameters(null, null, null, null, session.CoordinatedParameters!.MaximumDisplacement, null)
+                        : await ReadGuidedActionParametersAsync(action, input, output, cancellationToken).ConfigureAwait(false);
                     if (parameters is null)
                     {
                         return await PauseGuidedSessionAsync(fullSessionPath, session, output, cancellationToken).ConfigureAwait(false);
+                    }
+                    if (parameters.Back)
+                    {
+                        session = ResetGuidedComponentSelection(session) with
+                        {
+                            Step = GuidedWorkflowContract.ActionSelectionStep,
+                            SelectedComponentId = session.SelectedComponentId,
+                            SelectedComponentLabel = session.SelectedComponentLabel,
+                        };
+                        await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
 
                     var recipePath = session.RecipePath ?? CreateGuidedRecipePath(fullSessionPath);
@@ -541,23 +577,25 @@ public sealed partial class S2ModKitCli
                         MaximumVertexDisplacement = parameters.MaximumVertexDisplacement,
                         MaximumCollisionDisplacement = parameters.MaximumCollisionDisplacement,
                         ExperimentalParameters = parameters.Experimental,
+                        EllipsoidParameters = parameters.Ellipsoid,
                         RecipePath = recipePath,
                     };
                     await WriteGuidedSessionAsync(fullSessionPath, session, overwrite: true, cancellationToken).ConfigureAwait(false);
                     var scaffold = await application.ScaffoldRecipeAsync(
                         session.ProjectRoot!,
                         new RecipeScaffoldRequest(
-                            [session.SelectedComponentId!],
+                            session.SelectedComponentIds ?? [session.SelectedComponentId!],
                             action.Intent,
                             recipePath,
-                            parameters.UniformScale,
+                            parameters.Ellipsoid is null ? parameters.UniformScale : null,
                             parameters.TranslationX,
                             parameters.TranslationY,
                             parameters.TranslationZ,
                             ReferenceLod: null,
-                            parameters.MaximumVertexDisplacement,
+                            action.OperationVersion == 8 ? null : parameters.MaximumVertexDisplacement,
                             parameters.MaximumCollisionDisplacement,
-                            parameters.Affine, parameters.Experimental, ExperimentalDiscovery: session.ExperimentalPolicy is not null),
+                            parameters.Affine, parameters.Experimental, ExperimentalDiscovery: session.ExperimentalPolicy is not null,
+                            Ellipsoid: parameters.Ellipsoid, ExperimentalDiscoverySchemaVersion: session.SchemaVersion == 4 ? 5 : session.SchemaVersion == 3 ? 4 : 3, Coordinated: session.CoordinatedParameters),
                         cancellationToken).ConfigureAwait(false);
                     session = session with
                     {
@@ -575,11 +613,19 @@ public sealed partial class S2ModKitCli
                         ?? await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
                     var plan = await application.PlanAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
                     var review = GuidedWorkflow.CreateDryRunReview(plan);
+                    var localPreview = session.SelectedOperationVersion == 7
+                        ? await CreateGuidedEllipsoidPreviewAsync(session, recipe, fullSessionPath, review.PlanFingerprint, output, cancellationToken).ConfigureAwait(false) : null;
+                    foreach (var buffer in plan.Plan.Operations.SelectMany(op => op.EllipsoidTransformTarget?.Buffers ?? []))
+                        output.WriteLine($"Field LOD {buffer.Lod}: {buffer.CoreVertexCount} core, {buffer.TransitionVertexCount} transition, {buffer.PinnedVertexCount} pinned; {buffer.ChangedPositionCount} positions changed. Mechanical enclosing buffer, not automatic anatomy.");
                     foreach (var buffer in plan.Plan.Operations.SelectMany(op => op.ExperimentalTransformTarget?.Region?.Buffers ?? []))
                         output.WriteLine($"Region LOD {buffer.Lod}: {buffer.PinnedVertexCount} pinned, {buffer.TransitionVertexCount} transition, {buffer.FullVertexCount} full; {buffer.ChangedVertexCount} changed. This is a spatial mask, not an anatomical label.");
+                    var coordinatedPreview = session.SelectedOperationVersion == 8
+                        ? await CreateGuidedCoordinatedPreviewAsync(session, recipe, fullSessionPath, review.PlanFingerprint, output, cancellationToken).ConfigureAwait(false) : null;
                     session = session with
                     {
+                        CoordinatedPreview = coordinatedPreview,
                         PlanFingerprint = review.PlanFingerprint,
+                        EllipsoidPreview = localPreview,
                         PlannedDrawCallCount = review.SelectedDrawCallCount,
                         PlannedLodCount = review.LodCount,
                         PlannedTargetBlockCount = review.TargetBlockCount,
@@ -596,6 +642,10 @@ public sealed partial class S2ModKitCli
 
         if (session.Step == GuidedWorkflowContract.OutputSelectionStep)
         {
+            if (session.SelectedOperationVersion == 7)
+                _ = await CreateGuidedEllipsoidPreviewAsync(session, await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false), fullSessionPath, session.PlanFingerprint, output, cancellationToken).ConfigureAwait(false);
+            if (session.SelectedOperationVersion == 8)
+                _ = await CreateGuidedCoordinatedPreviewAsync(session, await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false), fullSessionPath, session.PlanFingerprint, output, cancellationToken).ConfigureAwait(false);
             RenderGuidedDryRun(output, session);
             if (session.OutputChoice is null)
             {
@@ -632,7 +682,7 @@ public sealed partial class S2ModKitCli
                 var recipe = await ReadGuidedRecipeAsync(session, cancellationToken).ConfigureAwait(false);
                 if (session.BuildId is null)
                 {
-                    if (recipe.SchemaVersion is 6 or 7) output.WriteLine(ExperimentalWarning);
+                    if (recipe.SchemaVersion is 6 or 7 or 8 or 9) output.WriteLine(ExperimentalWarning);
                     var built = await application.BuildAsync(session.ProjectRoot!, recipe, cancellationToken).ConfigureAwait(false);
                     session = session with
                     {
@@ -893,6 +943,8 @@ public sealed partial class S2ModKitCli
         TextWriter output,
         CancellationToken cancellationToken)
     {
+        if (action.OperationVersion == 7)
+            return await ReadGuidedEllipsoidParametersAsync(action.Intent == RecipeScaffoldContract.MirroredEllipsoidScaleIntent, input, output, cancellationToken).ConfigureAwait(false);
         if (action.OperationVersion is 5 or 6)
             return await ReadGuidedExperimentalParametersAsync(action.OperationVersion, input, output, cancellationToken).ConfigureAwait(false);
         if (action.RequiresAffine)
@@ -1057,7 +1109,7 @@ public sealed partial class S2ModKitCli
         }
     }
 
-    private static async Task<RecipeDocument> ReadGuidedRecipeAsync(
+    private async Task<RecipeDocument> ReadGuidedRecipeAsync(
         GuidedWorkflowSession session,
         CancellationToken cancellationToken)
     {
@@ -1091,9 +1143,22 @@ public sealed partial class S2ModKitCli
 
         var recipe = JsonDefaults.Deserialize<RecipeDocument>(bytes, "Guided recipe");
         RecipeValidator.Validate(recipe);
-        if (recipe.SchemaVersion is 6 or 7 && (session.ExperimentalPolicy is null || recipe.Operations is not [TransformComponentOperation operation]
+        if (recipe.SchemaVersion is 6 or 7 or 8 or 9 && (session.ExperimentalPolicy is null || recipe.Operations is not [TransformComponentOperation operation]
             || operation.RuntimeMetadataPolicy != session.ExperimentalPolicy || operation.Version != session.SelectedOperationVersion))
             throw Errors.InvalidRecipe("GUIDED_EXPERIMENTAL_RECIPE_MISMATCH", "The saved recipe does not match this session's explicit experimental acknowledgement.", "Restore the matching session/recipe or start a new session.");
+        if (recipe.SchemaVersion == 8 && (session.EllipsoidParameters is null || recipe.Operations is not [TransformComponentOperation local]
+            || JsonDefaults.Serialize(local.LocalTransform) != JsonDefaults.Serialize(session.EllipsoidParameters.LocalTransform)
+            || local.Limits.MaximumVertexDisplacement != session.MaximumVertexDisplacement))
+            throw Errors.InvalidRecipe("GUIDED_ELLIPSOID_RECIPE_MISMATCH", "Saved local-field parameters differ from the exact recipe.", "Restore the matching session and recipe.");
+        if (session.SchemaVersion == 4)
+        {
+            var probe = await application.ProbeCoordinatedSelectionAsync(session.ProjectRoot!, session.SelectedComponentIds!, session.CoordinatedParameters!, cancellationToken).ConfigureAwait(false);
+            if (recipe.SchemaVersion != 9 || recipe.Operations is not [TransformComponentOperation coordinated]
+                || JsonDefaults.Serialize(coordinated.CoordinatedTransform) != JsonDefaults.Serialize(new CoordinatedVisualTransform(probe.Members, session.CoordinatedParameters!.Field))
+                || coordinated.ZeroBoneBoxPolicy != session.CoordinatedParameters.ZeroBoneBoxPolicy || coordinated.ZeroRenderSpherePolicy != session.CoordinatedParameters.ZeroRenderSpherePolicy
+                || coordinated.Limits.MaximumVertexDisplacement != session.CoordinatedParameters.MaximumDisplacement)
+                throw Errors.InvalidRecipe("GUIDED_COORDINATED_RECIPE_MISMATCH", "Saved exact selection/common field/policies differ from the recipe.", "Restore the matching immutable session and recipe.");
+        }
         return recipe;
     }
 
@@ -1177,7 +1242,10 @@ public sealed partial class S2ModKitCli
         RecipeScaffoldContract.RemoveIntent => "Remove",
         RecipeScaffoldContract.UniformScaleIntent => "Scale uniformly",
         RecipeScaffoldContract.AffineIntent => "Scale axes / rotate",
+        RecipeScaffoldContract.CoordinatedFieldIntent => "Coordinated common field",
         RecipeScaffoldContract.RegionScaleIntent => "Experimental region scale",
+        RecipeScaffoldContract.MirroredEllipsoidScaleIntent => "Experimental disjoint mirrored ellipsoids",
+        RecipeScaffoldContract.EllipsoidScaleIntent => "Experimental local ellipsoid scale",
         _ => "Move",
     };
 
@@ -1338,6 +1406,10 @@ public sealed partial class S2ModKitCli
         MaximumVertexDisplacement = null,
         MaximumCollisionDisplacement = null,
         ExperimentalParameters = null,
+        EllipsoidParameters = null,
+        EllipsoidPreview = null,
+        SelectedComponentIds = null,
+        CoordinatedPreview = null,
         RecipePath = null,
         RecipeContentHash = null,
         PlanFingerprint = null,
@@ -1375,6 +1447,10 @@ public sealed partial class S2ModKitCli
         MaximumVertexDisplacement = null,
         MaximumCollisionDisplacement = null,
         ExperimentalParameters = null,
+        EllipsoidParameters = null,
+        EllipsoidPreview = null,
+        SelectedComponentIds = null,
+        CoordinatedPreview = null,
         RecipePath = null,
         RecipeContentHash = null,
         PlanFingerprint = null,
@@ -1661,7 +1737,9 @@ public sealed partial class S2ModKitCli
         float? MaximumVertexDisplacement,
         float? MaximumCollisionDisplacement,
         AffineScaffoldOptions? Affine = null,
-        ExperimentalScaffoldOptions? Experimental = null);
+        ExperimentalScaffoldOptions? Experimental = null,
+        EllipsoidScaffoldOptions? Ellipsoid = null,
+        bool Back = false);
 
     private readonly record struct GuidedNumberResult(bool Canceled, float Value);
 }

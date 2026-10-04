@@ -15,6 +15,9 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
 - Transform the supported embedded visual/convex-physics accessory profile atomically.
 - Transform explicitly selected disconnected triangle islands inside a broader draw call.
 - Opt into experimental complete-buffer scaling or axis-ramp region scaling on eligible parts.
+- Shape an eligible buffer with a local ellipsoid or disjoint mirrored pair, or apply one common
+  field atomically to several eligible ordinary buffers.
+- Preview selected and excluded geometry across every LOD before building.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
 
@@ -28,6 +31,10 @@ It verifies prescribed geometry, conservative box expansion and unchanged data, 
 sphere containment, occlusion proxies or collision correspondence. It is not anatomical sculpting:
 hair, clothing and animation may not follow an enlarged part. See the compatibility matrix before
 using an experimental edit.
+
+Local, mirrored and coordinated actions are available in the source checkout. Downloadable v0.2.0
+includes the earlier whole-buffer and axis-ramp actions. See [the user guide](docs/USER-GUIDE.md)
+for explicit field parameters, coordinated options and the guided workflow.
 
 ## Quick start
 

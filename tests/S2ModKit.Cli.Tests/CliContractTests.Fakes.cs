@@ -158,7 +158,29 @@ public sealed partial class CliContractTests
 
         public RecipeScaffoldRequest? LastScaffoldRequest { get; private set; }
 
+        public Task<ComponentDiscoveryResultV2> DiscoverCoordinatedComponentsAsync(string projectRoot, CancellationToken token = default) =>
+            Task.FromResult(TestDiscovery with { SchemaVersion = 5, ExperimentalPolicy = new("preserve_unverified", 1) });
+
+        public Task<CoordinatedSelectionProbe> ProbeCoordinatedSelectionAsync(string projectRoot, IReadOnlyList<string> ids, CoordinatedScaffoldOptions options, CancellationToken token = default) =>
+            Task.FromResult(new CoordinatedSelectionProbe(TestDiscovery.DiscoveryFingerprint, ids,
+                [new("first", [new(0, ["dc_0123456789abcdef01234567"], 3)]), new("second", [new(0, ["dc_111111111111111111111111"], 3)])],
+                new("transform_component", 8, "available", [new("FIXTURE_PROBE", "Synthetic exact union only.")], [])));
+
         public bool ExperimentalAvailable { get; init; }
+        public bool EllipsoidAvailable { get; init; }
+
+        public async Task<ComponentDiscoveryResultV2> DiscoverEllipsoidComponentsAsync(string projectRoot, CancellationToken cancellationToken = default)
+        {
+            var discovery = await DiscoverExperimentalComponentsAsync(projectRoot, cancellationToken);
+            return discovery with
+            {
+                SchemaVersion = 4,
+                Candidates = discovery.Candidates.Select(c => c with
+                {
+                    Capabilities = [.. c.Capabilities, new("transform_component", 7, EllipsoidAvailable ? "available" : "unsupported", [new("PROBE_FIXTURE", "Fixture probe.")], [])],
+                }).ToArray(),
+            };
+        }
 
         public Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
             Task.FromResult(TestDiscovery with
@@ -298,6 +320,18 @@ public sealed partial class CliContractTests
                         RuntimeMetadataPolicy = experimental.Policy,
                         Region = experimental.Region,
                         Transform = transform.Transform with { Pivot = experimental.Pivot },
+                    }],
+                };
+            }
+            if (request.Ellipsoid is { } local)
+            {
+                recipe = recipe with
+                {
+                    SchemaVersion = 8,
+                    Operations = [((TransformComponentOperation)operation) with
+                    {
+                        Version = 7, Granularity = "ellipsoid_vertices", Transform = null!,
+                        RuntimeMetadataPolicy = local.Policy, LocalTransform = local.LocalTransform,
                     }],
                 };
             }

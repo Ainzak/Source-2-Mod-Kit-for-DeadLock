@@ -137,6 +137,7 @@ public sealed partial class CliContractTests
             new HelpContract(["components", "list"], "s2mod components list"),
             new HelpContract(["recipe", "scaffold"], "s2mod recipe scaffold"),
             new HelpContract(["plan"], "s2mod plan"),
+            new HelpContract(["selection-preview"], "s2mod selection-preview"),
             new HelpContract(["build"], "s2mod build"),
             new HelpContract(["verify"], "s2mod verify"),
             new HelpContract(["package", "create"], "s2mod package create"),

@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/coordinated-selection-preview.schema.json",
+  "title": "Coordinated bind-space selection preview v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "projectionProfile",
+    "proofLevel",
+    "inputHash",
+    "planFingerprint",
+    "targetFingerprint",
+    "previewFingerprint",
+    "transform",
+    "policy",
+    "zeroBoneBoxPolicy",
+    "zeroRenderSpherePolicy",
+    "lods",
+    "contactSheetHash",
+    "limitations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "coordinated_selection"
+      ]
+    },
+    "projectionProfile": {
+      "enum": [
+        "coordinated_orthographic_selection@1"
+      ]
+    },
+    "proofLevel": {
+      "enum": [
+        "bind_space_prediction"
+      ]
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "planFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "targetFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "previewFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "transform": {
+      "$ref": "coordinated-contracts.schema.json#/definitions/coordinatedVisualTransform"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "zeroBoneBoxPolicy": {
+      "$ref": "coordinated-contracts.schema.json#/definitions/zeroBoneBoxPolicy"
+    },
+    "zeroRenderSpherePolicy": {
+      "$ref": "coordinated-contracts.schema.json#/definitions/zeroRenderSpherePolicy"
+    },
+    "lods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lod",
+          "members",
+          "excludedBuffers"
+        ],
+        "properties": {
+          "lod": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "buffer",
+                "drawCallIds",
+                "triangleCount"
+              ],
+              "properties": {
+                "buffer": {
+                  "$ref": "coordinated-contracts.schema.json#/definitions/plannedCoordinatedBuffer"
+                },
+                "drawCallIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^dc_[0-9a-f]{24}$"
+                  }
+                },
+                "triangleCount": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "excludedBuffers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "meshOrdinal",
+                "vertexBufferOrdinal",
+                "vertexCount",
+                "positionIdentity",
+                "drawCallIds",
+                "materialPaths"
+              ],
+              "properties": {
+                "meshOrdinal": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "vertexBufferOrdinal": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "vertexCount": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "positionIdentity": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "drawCallIds": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^dc_[0-9a-f]{24}$"
+                  }
+                },
+                "materialPaths": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "sourceLabel": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "contactSheetHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

@@ -5,6 +5,28 @@ namespace S2ModKit.Application.Tests;
 
 public sealed partial class SyntheticPipelineTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EllipsoidPreviewNeverPersistsPlanEvidenceOrBuildEvenWhenGeometryDrifts(bool drift)
+    {
+        var adapter = new EllipsoidPipelineAdapter { Failure = drift ? "preview_geometry_drift" : null };
+        var workspace = new MemoryWorkspace(adapter.Input);
+        var application = EllipsoidApplication(workspace, adapter, adapter);
+        if (drift)
+            await Assert.ThrowsAsync<S2ModKitException>(() => application.PreviewEllipsoidSelectionAsync("memory", adapter.Recipe, TestContext.Current.CancellationToken));
+        else
+        {
+            var preview = await application.PreviewEllipsoidSelectionAsync("memory", adapter.Recipe, TestContext.Current.CancellationToken);
+            Assert.Equal(adapter.Input.ContentHash, preview.InputHash);
+            Assert.Equal(["core", "transition", "pinned"], preview.Lods[0].Points.Select(p => p.Membership));
+        }
+        Assert.Equal(0, workspace.PlanCount);
+        Assert.Equal(0, workspace.EvidenceWriteCount);
+        Assert.Empty(workspace.Builds);
+        Assert.Equal(0, adapter.AuditCount);
+    }
+
     [Fact]
     public async Task EllipsoidPipelineEmitsPlannedAndObservedEvidenceAndReverifies()
     {
@@ -54,13 +76,13 @@ public sealed partial class SyntheticPipelineTests
 
     // Synthetic Application fixture. This proves publication/evidence orchestration, not
     // Source 2 encoding or geometry correctness (tested separately by resource fixtures).
-    private sealed class EllipsoidPipelineAdapter : IModelInspector, IResourceDependencyReader, IModelRewriter, ITransformOperationPlanner, IEllipsoidTransformVerifier
+    private sealed class EllipsoidPipelineAdapter : IModelInspector, IResourceDependencyReader, IModelRewriter, ITransformOperationPlanner, IEllipsoidTransformVerifier, IEllipsoidPreviewGeometryReader
     {
         private readonly byte[] outputBytes = "synthetic-output"u8.ToArray();
         private readonly PlannedEllipsoidTransformTarget target;
         public EllipsoidPipelineAdapter()
         {
-            var original = ExperimentalVisualContractTests.EllipsoidPlan().Operations[0].EllipsoidTransformTarget!;
+            var original = EllipsoidSelectionPreviewTests.Fixture().Plan.Operations[0].EllipsoidTransformTarget!;
             var buffer = original.Buffers[0];
             var draw = DrawCallSnapshot.Create(Input.LogicalPath, 0, 0, 0, original.Selector.MaterialPath!, 0, 3);
             target = original with { InputHash = Input.ContentHash };
@@ -97,6 +119,13 @@ public sealed partial class SyntheticPipelineTests
         public bool CanReadDependencies(ArtifactContent artifact) => true;
         public Task<IReadOnlyList<ResourceDependency>> ReadDependenciesAsync(ArtifactContent artifact, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ResourceDependency>>([]);
         public Task<ModelSnapshot> InspectAsync(ArtifactContent artifact, CancellationToken cancellationToken = default) => Task.FromResult(artifact.ContentHash == Input.ContentHash ? Before : After);
+        public Task<EllipsoidPreviewGeometry> ReadEllipsoidPreviewGeometryAsync(ArtifactContent input, MutationPlan plan, CancellationToken cancellationToken = default)
+        {
+            var geometry = EllipsoidSelectionPreviewTests.Fixture().Geometry;
+            var lod = geometry.Lods[0] with { DrawCallIds = plan.Operations[0].SelectedDrawCalls.Select(c => c.DrawCallId).Order(StringComparer.Ordinal).ToArray() };
+            if (Failure == "preview_geometry_drift") lod = lod with { Points = lod.Points.Skip(1).ToArray() };
+            return Task.FromResult(geometry with { InputHash = input.ContentHash, PlanFingerprint = plan.Fingerprint, Lods = [lod] });
+        }
         public TransformPlanningResult PlanTransform(TransformPlanningRequest request)
         {
             var frozen = target;

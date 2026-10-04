@@ -85,7 +85,7 @@ public sealed partial class Source2CompiledModelAdapter
     // Deliberately separate from PlanEllipsoidBuffer. Only pure field/frame/triangle/hash
     // primitives are shared; counts and all prescribed words are reconstructed here.
     private static EllipsoidBufferObservation VerifyEllipsoidBuffer(ArtifactContent input, Source2AffineProfile source,
-        Source2AffineProfile observed, PlannedEllipsoidBuffer facts, EllipsoidScale math)
+        Source2AffineProfile observed, PlannedEllipsoidBuffer facts, IEllipsoidScale math)
     {
         ValidateExperimentalVertexStreams(source);
         ValidateExperimentalVertexStreams(observed);
@@ -109,10 +109,28 @@ public sealed partial class Source2CompiledModelAdapter
         var points = new Point3[v.VertexCount];
         int core = 0, transition = 0, pinned = 0, changedPositions = 0, changedFrames = 0;
         float maximum = 0;
+        var memberMaskWords = math is MirroredEllipsoidScale ? new[] { new byte[v.VertexCount * 8], new byte[v.VertexCount * 8] } : null;
+        var memberWeightWords = math is MirroredEllipsoidScale ? new[] { new byte[v.VertexCount * 12], new byte[v.VertexCount * 12] } : null;
+        var memberCounts = new int[2, 4];
         foreach (var vertex in source.SelectedVertices)
         {
             var original = Source2GeometryAnalyzer.ReadPosition(source.Vertices, vertex);
             var result = math.Evaluate(original);
+            if (math is MirroredEllipsoidScale mirrored)
+            {
+                // Independently reconstruct both field inventories, not the planning calculator's result.
+                EllipsoidScale[] fields = [mirrored.Base, mirrored.Reflected];
+                for (var side = 0; side < fields.Length; side++)
+                {
+                    var prescribed = fields[side].Evaluate(original);
+                    BinaryPrimitives.WriteInt32LittleEndian(memberMaskWords![side].AsSpan(vertex * 8), vertex);
+                    BinaryPrimitives.WriteInt32LittleEndian(memberMaskWords![side].AsSpan(vertex * 8 + 4), (int)prescribed.Membership);
+                    BinaryPrimitives.WriteInt32LittleEndian(memberWeightWords![side].AsSpan(vertex * 12), vertex);
+                    BinaryPrimitives.WriteInt64LittleEndian(memberWeightWords![side].AsSpan(vertex * 12 + 4), BitConverter.DoubleToInt64Bits(prescribed.Weight));
+                    memberCounts[side, (int)prescribed.Membership]++;
+                    if (RegionPositionWordsChanged(original, prescribed.Position)) memberCounts[side, 3]++;
+                }
+            }
             points[vertex] = Source2GeometryAnalyzer.ReadPosition(observed.Vertices, vertex);
             BinaryPrimitives.WriteInt32LittleEndian(masks.AsSpan(vertex * 8), vertex);
             BinaryPrimitives.WriteInt32LittleEndian(masks.AsSpan(vertex * 8 + 4), (int)result.Membership);
@@ -128,6 +146,13 @@ public sealed partial class Source2CompiledModelAdapter
             if (packed != originalWord) changedFrames++;
             if (result.Membership != EllipsoidMembership.Pinned) WritePosition(expected, v.PositionLayout, vertex, result.Position);
             if (result.Membership == EllipsoidMembership.Transition) BinaryPrimitives.WriteUInt32LittleEndian(expected.AsSpan(offset), packed);
+        }
+        if (math is MirroredEllipsoidScale)
+        {
+            var reconstructed = Enumerable.Range(0, 2).Select(side => new EllipsoidFieldMask(ContentHash.Compute(memberMaskWords![side]),
+                ContentHash.Compute(memberWeightWords![side]), memberCounts[side, 0], memberCounts[side, 1], memberCounts[side, 2], memberCounts[side, 3])).ToArray();
+            if (reconstructed.Any(m => m.ChangedPositionCount == 0) || JsonDefaults.Serialize(reconstructed) != JsonDefaults.Serialize(facts.MirroredMasks))
+                throw EllipsoidDrift("Independent mirrored field masks or per-side LOD effects differ.");
         }
         var maskHash = ContentHash.Compute(masks);
         var weightHash = ContentHash.Compute(weights);

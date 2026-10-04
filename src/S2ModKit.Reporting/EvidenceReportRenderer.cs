@@ -96,6 +96,17 @@ public sealed class EvidenceReportRenderer : IReportRenderer, IVpkPackageReportR
                 text.AppendLine("  - Sphere containment, proxy coherence, collision correspondence and runtime remain untested.");
             }
 
+            if (operation.CoordinatedTransform is { } coordinated)
+            {
+                var target = coordinated.Target;
+                AppendInvariantLine(text, $"- Coordinated profile: `{Escape(target.StructuralProfileId)}@{target.StructuralProfileVersion}`; {target.CoordinatedTransform.Members.Count} members, {target.Buffers.Count} complete buffers");
+                AppendInvariantLine(text, $"  - Common field: `{Escape(target.FieldProof.Kind)}@{target.FieldProof.Version}`; maximum displacement {target.MaximumDisplacement:R}/{target.DisplacementLimit:R}");
+                foreach (var buffer in target.Buffers)
+                    AppendInvariantLine(text, $"  - `{Escape(buffer.MemberId)}`, LOD {buffer.Lod}, mesh {buffer.MeshOrdinal}, buffer {buffer.VertexBufferOrdinal}: full {buffer.FullVertexCount}, transition {buffer.TransitionVertexCount}, pinned {buffer.PinnedVertexCount}");
+                AppendInvariantLine(text, $"  - Positive boxes: {coordinated.Boxes.Count}; preserved zero boxes: {coordinated.ZeroBoxes.Count}; preserved paired zero spheres: {coordinated.ZeroRenderSpheres.Count}");
+                text.AppendLine("  - Zero-field containment/consumer behavior, sphere containment, proxy/collision coherence, clothing/pose fit and runtime remain untested.");
+            }
+
             if (operation.AffineTransform is { } affine)
             {
                 AppendInvariantLine(text, $"- Affine profile: `{Escape(affine.StructuralProfileId)}@{affine.StructuralProfileVersion}`; selection `{Escape(affine.SelectionKind)}`");

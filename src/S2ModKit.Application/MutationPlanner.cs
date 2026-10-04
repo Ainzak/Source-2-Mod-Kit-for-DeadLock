@@ -5,7 +5,7 @@ using S2ModKit.Geometry;
 
 namespace S2ModKit.Application;
 
-public sealed class MutationPlanner
+public sealed partial class MutationPlanner
 {
     public static MutationPlan CreatePlan(
         ModelSnapshot model,
@@ -46,6 +46,7 @@ public sealed class MutationPlanner
         {
             EllipsoidContractValidator.ValidateRecipe(recipe);
         }
+        if (recipe.SchemaVersion == 9) CoordinatedContractValidator.ValidateRecipe(recipe);
 
         if (recipe.InputHash != model.Artifact.ContentHash)
         {
@@ -113,9 +114,15 @@ public sealed class MutationPlanner
             }
 
             var result = transformPlanner.PlanTransform(new TransformPlanningRequest(input, model, transform, selected));
+            if (transform.Version != 8 && result.CoordinatedTransformTarget is not null)
+                throw Errors.Verification("COORDINATED_RESULT_DRIFT", "A legacy planner returned coordinated targets.", "Reject the mixed result.");
             if (transform.Version != 7 && result.EllipsoidTransformTarget is not null)
                 throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "A legacy planner returned a localized target outside its version boundary.", "Reject the mixed planner result.");
-            if (transform.Version == 7)
+            if (transform.Version == 8)
+            {
+                ValidateCoordinatedResult(result, transform, recipe.InputHash, blocksByIndex);
+            }
+            else if (transform.Version == 7)
             {
                 ValidateEllipsoidResult(result, transform, recipe.InputHash, blocksByIndex);
             }
@@ -148,14 +155,15 @@ public sealed class MutationPlanner
                 AffineTransformTarget = result.AffineTransformTarget,
                 ExperimentalTransformTarget = result.ExperimentalTransformTarget,
                 EllipsoidTransformTarget = result.EllipsoidTransformTarget,
+                CoordinatedTransformTarget = result.CoordinatedTransformTarget,
             });
         }
 
-        if (recipe.SchemaVersion is 6 or 7 or 8)
+        if (recipe.SchemaVersion is 6 or 7 or 8 or 9)
         {
             var provisional = new MutationPlan(recipe.RecipeId, recipe.InputHash, recipe.InputHash, plannedOperations)
             {
-                SchemaVersion = recipe.SchemaVersion == 8 ? 4 : recipe.SchemaVersion == 7 ? 3 : 2,
+                SchemaVersion = recipe.SchemaVersion == 9 ? 5 : recipe.SchemaVersion == 8 ? 4 : recipe.SchemaVersion == 7 ? 3 : 2,
                 Inputs = inputs,
             };
             var experimental = provisional with { Fingerprint = MutationPlanJson.ComputeExperimentalFingerprint(provisional) };

@@ -12,12 +12,15 @@ public sealed partial class SchemaContractTests
     [InlineData("component-discovery.schema.json")]
     [InlineData("hero-catalogue.schema.json")]
     [InlineData("guided-session.schema.json")]
+    [InlineData("v2/guided-session.schema.json")]
+    [InlineData("v3/component-discovery.schema.json")]
     [InlineData("evidence.schema.json")]
     [InlineData("package.schema.json")]
     [InlineData("installation.schema.json")]
     [InlineData("runtime-observation.schema.json")]
     [InlineData("culling-envelope-contracts.schema.json")]
     [InlineData("ellipsoid-contracts.schema.json")]
+    [InlineData("ellipsoid-selection-preview.schema.json")]
     [InlineData("mutation-plan.schema.json")]
     [InlineData("v7/recipe.schema.json")]
     [InlineData("v8/evidence.schema.json")]
@@ -42,6 +45,25 @@ public sealed partial class SchemaContractTests
 
         Assert.NotNull(schema);
         Assert.Contains("draft-07", schema.SchemaVersion?.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SelectionSummaryConformsToStrictSchemaAndRejectsMissingIdentityOrRuntimeClaims()
+    {
+        var (plan, geometry) = EllipsoidSelectionPreviewTests.Fixture();
+        var artifacts = S2ModKit.Reporting.EllipsoidSelectionPreviewRenderer.Render(EllipsoidSelectionPreviewBuilder.Create(plan, geometry));
+        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("ellipsoid-selection-preview.schema.json"), TestContext.Current.CancellationToken);
+        var json = System.Text.Encoding.UTF8.GetString(artifacts.SummaryJson.Span);
+        Assert.Empty(schema.Validate(json));
+        var missing = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        missing.AsObject().Remove("planFingerprint");
+        Assert.NotEmpty(schema.Validate(missing.ToJsonString()));
+        var runtime = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        runtime["proofLevel"] = "runtime_verified";
+        Assert.NotEmpty(schema.Validate(runtime.ToJsonString()));
+        var extra = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        extra["editableAnatomy"] = "head";
+        Assert.NotEmpty(schema.Validate(extra.ToJsonString()));
     }
 
     [Fact]

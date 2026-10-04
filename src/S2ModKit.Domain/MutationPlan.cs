@@ -43,6 +43,9 @@ public sealed record PlannedOperation(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PlannedEllipsoidTransformTarget? EllipsoidTransformTarget { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedCoordinatedTransformTarget? CoordinatedTransformTarget { get; init; }
 }
 
 public sealed record GeometryBounds(

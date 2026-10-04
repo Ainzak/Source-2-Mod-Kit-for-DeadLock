@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/ellipsoid-selection-preview/v1",
+  "title": "Read-only ellipsoid selection summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "projectionProfile",
+    "proofLevel",
+    "inputHash",
+    "planFingerprint",
+    "targetFingerprint",
+    "previewFingerprint",
+    "resourcePath",
+    "localTransform",
+    "lods",
+    "contactSheetHash",
+    "limitations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "single_ellipsoid_selection",
+        "mirrored_ellipsoid_selection"
+      ]
+    },
+    "projectionProfile": {
+      "type": "string",
+      "enum": [
+        "orthographic_selection@1"
+      ]
+    },
+    "proofLevel": {
+      "type": "string",
+      "enum": [
+        "bind_space_prediction"
+      ]
+    },
+    "inputHash": {
+      "$ref": "#/definitions/hash"
+    },
+    "planFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "targetFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "previewFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "resourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "localTransform": {
+      "$ref": "ellipsoid-contracts.schema.json#/definitions/localTransform"
+    },
+    "lods": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/definitions/lod"
+      }
+    },
+    "contactSheetHash": {
+      "$ref": "#/definitions/hash"
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "definitions": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "vertexBufferOrdinal",
+        "vertexResourceBlockIndex",
+        "drawCallIds",
+        "vertexCount",
+        "triangleCount",
+        "contextBufferCount",
+        "contextPointCount",
+        "coreVertexCount",
+        "transitionVertexCount",
+        "pinnedVertexCount",
+        "changedPositionCount",
+        "changedFrameCount",
+        "maskHash",
+        "weightHash",
+        "inputPositionHash",
+        "expectedPositionHash",
+        "maximumDisplacement"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "meshOrdinal": {
+          "$ref": "#/definitions/count"
+        },
+        "resourceBlockIndex": {
+          "$ref": "#/definitions/count"
+        },
+        "vertexBufferOrdinal": {
+          "$ref": "#/definitions/count"
+        },
+        "vertexResourceBlockIndex": {
+          "$ref": "#/definitions/count"
+        },
+        "drawCallIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^dc_[0-9a-f]{24}$"
+          }
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "triangleCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "contextBufferCount": {
+          "$ref": "#/definitions/count"
+        },
+        "contextPointCount": {
+          "$ref": "#/definitions/count"
+        },
+        "coreVertexCount": {
+          "$ref": "#/definitions/count"
+        },
+        "transitionVertexCount": {
+          "$ref": "#/definitions/count"
+        },
+        "pinnedVertexCount": {
+          "$ref": "#/definitions/count"
+        },
+        "changedPositionCount": {
+          "$ref": "#/definitions/count"
+        },
+        "changedFrameCount": {
+          "$ref": "#/definitions/count"
+        },
+        "maskHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "inputPositionHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirroredMasks": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "ellipsoid-contracts.schema.json#/definitions/fieldMask"
+          }
+        }
+      }
+    }
+  }
+}

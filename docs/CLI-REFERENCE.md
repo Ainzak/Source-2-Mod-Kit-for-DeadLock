@@ -35,7 +35,7 @@ spellings below are the stable English contract.
 | Hero catalogue | `catalog heroes list`, `catalog resolve` |
 | Compatibility | `compatibility scan` |
 | Projects | `project create`, `project create-vpk` |
-| Inspection and authoring | `inspect`, `components list`, `recipe scaffold`, `plan` |
+| Inspection and authoring | `inspect`, `components list`, `recipe scaffold`, `plan`, `selection-preview` |
 | Candidate lifecycle | `build`, `verify`, `package create`, `package create-minimal`, `package verify` |
 | Managed addon lifecycle | `addons inventory`, `addons install`, `addons verify-active`, `addons rollback`, `runtime record` |
 
@@ -103,7 +103,8 @@ the same prompt. Narrow or redirected writers can wrap output without changing w
 | `--compiled-model` | No | Compiled `.vmdl_c`; repeat as needed. |
 | `--resume` | No | Resume the existing checkpoint; source options are then forbidden. |
 | `--expert` | No | Show stable IDs, paths, and unavailable-resource details. |
-| `--experimental` | No | Start an acknowledged experimental session (schema 2); saved acknowledgement is retained on resume. Never upgrades a strict checkpoint. |
+| `--experimental` | No | Start an acknowledged experimental session (schema 3); saved acknowledgement is retained on resume. Old schema-2 checkpoints retain their discovery route. Never upgrades a strict checkpoint. |
+| `--coordinated-options` | No | With `--experimental`, start a schema-4 session using explicit version-1 common-field options JSON. Select comma-separated numbered components; the exact union is planner-probed. Resume uses saved typed options and forbids supplying replacements. |
 | `--help` | No | Print help. |
 
 ### `s2mod catalog heroes list`
@@ -185,8 +186,9 @@ buffer profile is decoded. These IDs can drive `transform_component@3` inside a 
 
 ### `s2mod components list`
 
-`--experimental` explicitly requests discovery schema 3, adding planner-probed whole-part and
-region scale choices. A probe does not qualify arbitrary parameters or anatomical labels.
+`--experimental` explicitly requests discovery schema 4, adding planner-probed whole-part,
+region and local ellipsoid scale choices. A probe establishes storage eligibility; explicit
+field parameters still require exact planning. It does not identify anatomy.
 The default schema-2 discovery and strict capability rules are unchanged. Experimental IDs
 are distinct: use the same opted-in discovery context when scaffolding. Removal, translation and
 affine intents in that context still use their strict mutation contracts, not experimental fallback.
@@ -202,9 +204,18 @@ reports `transform_component@2` and remains uniform-only.
 |---|---:|---|
 | `--project` | Yes | Project root. |
 | `--format` | No | `text` or `json`; default `text`. |
+| `--experimental` | No | Request schema-4 experimental capability probes. |
+| `--coordinated` | No | With `--experimental`, use discovery schema 5 and bounded operation-8 planner probes. Candidate probes use explicit reject policies; exact acknowledged unions are reassessed during scaffolding. |
 | `--help` | No | Print help. |
 
 ### `s2mod recipe scaffold`
+
+`--intent mirrored-ellipsoid-scale` uses the same explicit field parameters with required
+`--mirror-axis x|y|z` and `--mirror-coordinate <number>`. The reflected center must be exactly
+representable; outer supports must be disjoint (touching pinned boundaries are allowed).
+Both fields must change stored geometry in every LOD. Asymmetric input is preserved, not repaired.
+The experimental guided workflow offers the same paired action and saves the exact plane/field.
+
 
 `--experimental` with `--intent uniform-scale` produces the visual-only version-5 profile;
 `--intent region-scale` produces version 6 and additionally requires `--region-axis x|y|z`,
@@ -212,6 +223,12 @@ reports `transform_component@2` and remains uniform-only.
 threshold remain unchanged; full strength starts at the larger full threshold, with a smooth
 transition between them. Both require `--scale` and `--max-displacement` (at most 64).
 The exact union and parameters must pass planning before the recipe is published.
+`--intent ellipsoid-scale --experimental` emits recipe schema 8 and operation version 7.
+It requires explicit `--field-center X,Y,Z`, `--field-radii X,Y,Z`, `--core-fraction`,
+`--scale` and `--max-displacement`. The center anchors selection and scaling; there is
+no independent pivot. Core fraction is the inner ellipsoid's radius fraction; influence
+falls smoothly to zero at the outer ellipsoid. Scale must be in 0.5..2, excluding 1;
+the Jacobian certificate, displacement cap (at most 64) and exact all-LOD plan must pass.
 Spheres, occlusion proxies and collision are preserved without proving coherence; hair,
 clothing fit, anatomy and runtime stability are not guaranteed. This is not a strict fallback.
 
@@ -223,7 +240,11 @@ model and never overwrites `--output`.
 |---|---:|---|
 | `--project` | Yes | Project root. |
 | `--component` | Yes | Candidate ID from `components list`; repeat for an explicit union. |
-| `--intent` | Yes | `remove`, `uniform-scale`, `translate`, `affine`, or opted-in `region-scale`. |
+| `--intent` | Yes | `remove`, `uniform-scale`, `translate`, `affine`, or opted-in `region-scale` / `ellipsoid-scale`. |
+| `--experimental` | No | Acknowledge the experimental visual policy and use current experimental candidate IDs. |
+| `--field-center` | For `ellipsoid-scale` | Explicit model-space center as `X,Y,Z`. |
+| `--field-radii` | For `ellipsoid-scale` | Explicit positive outer radii as `X,Y,Z`. |
+| `--core-fraction` | For `ellipsoid-scale` | Explicit inner radius fraction in `(0,1)`. |
 | `--output` | Yes | New recipe JSON path. |
 | `--scale` | For `uniform-scale` | Positive uniform scale in the accepted operation range. |
 | `--translate-x` | For `translate` | Optional finite X translation. |
@@ -243,6 +264,7 @@ model and never overwrites `--output`.
 | `--pivot-bone` | For bone pivot | Exact influencing bone name. |
 | `--frame` | No | `model` (default) or `bone-bind`. |
 | `--frame-bone` | For bone-bind frame | Exact influencing bone name. |
+| `--coordinated-options` | For coordinated-field | Version-1 typed common-field JSON with every policy, field and displacement limit. Use `--experimental --intent coordinated-field` and current schema-5 component IDs; other transform parameters are forbidden. |
 | `--help` | No | Print help. |
 
 Scaffolding emits recipe schema version 1 for removal, version 2 for `transform_component@1`, and
@@ -265,6 +287,49 @@ Recipe schema version 4 also accepts `transform_component@3` at
 `connected_component_vertices` granularity. It requires explicit `connectedComponentIdsByLod` and
 expected vertex totals from current inspect evidence. Automatic scaffolding for arbitrary island
 groups is not yet exposed; manual recipes still pass the same strict plan/build verification.
+
+Coordinated authoring uses one explicit options document, validated by
+`coordinated-field-options.schema.json`, plus selected candidate IDs from
+`components list --experimental --coordinated`. Its `schemaVersion: 1` and
+`kind: coordinated_field_options` bind `policy`, `zeroBoneBoxPolicy`,
+`zeroRenderSpherePolicy`, `field`, and `maximumDisplacement`. Declare both zero policies
+as `reject@1` unless explicitly acknowledging their separately named unverified preservation
+profiles. One ellipsoid, axis ramp, or tilted ramp applies to all selected ordinary members.
+Whole-buffer correspondence requires a unique authored mesh lineage and unique complete material
+membership in every LOD; absent or ambiguous mapping rejects. Material and lineage views can overlap
+and are deduplicated. No label infers anatomy, hair, eyeballs, clothing or attachments.
+The canonical schema-9 recipe is published only after exact common-field planning passes.
+
+### `s2mod selection-preview`
+
+```powershell
+s2mod selection-preview --project H:\S2ModKit\projects\example --recipe H:\S2ModKit\recipes\field.json --output-root H:\S2ModKit\diagnostics
+```
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--project` | Yes | Project containing immutable imported input and its complete dependency graph. |
+| `--recipe` | Yes | Explicit acknowledged local-field schema 8 (`transform_component@7`) or coordinated schema 9 (`transform_component@8`). |
+| `--output-root` | Yes | Configurable ignored directory for diagnostic artifacts. |
+| `--help` | No | Print help. |
+
+Returns a JSON envelope with the content-addressed directory, summary/contact-sheet paths and
+hashes. Produces `selection-summary.json` (strict ellipsoid or coordinated summary schema 1) and a static SVG contact sheet
+showing original/predicted XY, XZ and YZ geometry in every LOD. Core, transition and pinned points
+retain source-derived colors; enclosing buffer topology and model axes are labelled. Gray geometry
+is non-editable context. Each focused view retains every enclosing point and triangle; only context
+is cropped. Coordinated sheets show each participating buffer and use one common field; their
+summary lists exact members and excluded siblings with draw-call IDs, material paths and advisory
+source labels. Guided coordinated selection uses the same typed options document and preview,
+then persists the exact union and artifact identity for resume. There is no Blender or interactive viewport dependency.
+
+The command plans from immutable source without saving a plan, building or editing a resource.
+Matching existing artifacts are reused; conflicting or incomplete artifacts reject without
+overwriting. Incomplete geometry or a preview exceeding eight LODs, one million points (including
+context), three million triangle indices or the 64 MiB SVG character budget rejects without
+publishing a partial preview. These are bind-space predictions, not texture, animation, hair,
+clothing-fit, collision or runtime qualification. Use an ignored root: sheets contain source geometry.
+
 
 ### `s2mod plan`
 

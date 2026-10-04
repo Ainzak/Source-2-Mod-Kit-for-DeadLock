@@ -1,0 +1,746 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/guided-session.schema.json",
+  "title": "S2ModKit guided workflow session v3 with strict v1/v2 compatibility",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sessionId",
+    "status",
+    "step",
+    "cataloguePath",
+    "expert",
+    "sources"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "active",
+        "paused",
+        "complete"
+      ]
+    },
+    "step": {
+      "enum": [
+        "source_selection",
+        "hero_selection",
+        "resource_selection",
+        "component_selection",
+        "action_selection",
+        "review",
+        "output_selection",
+        "install_selection",
+        "rollback_selection",
+        "complete"
+      ]
+    },
+    "cataloguePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expert": {
+      "type": "boolean"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/source"
+      }
+    },
+    "selectedSourceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedHeroId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedResourceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedLogicalPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectReady": {
+      "type": "boolean"
+    },
+    "selectedComponentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedComponentLabel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedIntent": {
+      "enum": [
+        "remove",
+        "uniform-scale",
+        "translate",
+        "affine",
+        "region-scale",
+        "ellipsoid-scale",
+        "mirrored-ellipsoid-scale"
+      ]
+    },
+    "selectedOperationKind": {
+      "enum": [
+        "remove_component",
+        "transform_component"
+      ]
+    },
+    "selectedOperationVersion": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "enum": [
+        null,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "uniformScale": {
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 4
+    },
+    "translationX": {
+      "type": "number",
+      "minimum": -256,
+      "maximum": 256
+    },
+    "translationY": {
+      "type": "number",
+      "minimum": -256,
+      "maximum": 256
+    },
+    "translationZ": {
+      "type": "number",
+      "minimum": -256,
+      "maximum": 256
+    },
+    "maximumVertexDisplacement": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 256
+    },
+    "maximumCollisionDisplacement": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 256
+    },
+    "recipePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recipeContentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "planFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "plannedDrawCallCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plannedLodCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plannedTargetBlockCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plannedVertexCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plannedCoupledCollision": {
+      "type": "boolean"
+    },
+    "outputChoice": {
+      "enum": [
+        "plan_only",
+        "build_only",
+        "minimal_package",
+        "export_package"
+      ]
+    },
+    "buildId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "buildContentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "packageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packageContentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "exportPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exportContentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "addonsRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installationTargetFileName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "installationSlot": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99
+    },
+    "installationStatus": {
+      "enum": [
+        "installed_unverified",
+        "active",
+        "rolled_back"
+      ]
+    },
+    "experimentalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "experimentalParameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "pivot"
+      ],
+      "properties": {
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "preserve_unverified"
+              ]
+            },
+            "version": {
+              "enum": [
+                1
+              ]
+            }
+          }
+        },
+        "pivot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "point"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "explicit_point"
+              ]
+            },
+            "point": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "region": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version",
+            "axis",
+            "pinnedThrough",
+            "fullFrom"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "axis_ramp"
+              ]
+            },
+            "version": {
+              "enum": [
+                1
+              ]
+            },
+            "axis": {
+              "enum": [
+                "x",
+                "y",
+                "z"
+              ]
+            },
+            "pinnedThrough": {
+              "type": "number"
+            },
+            "fullFrom": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "ellipsoidParameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "localTransform"
+      ],
+      "properties": {
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "preserve_unverified"
+              ]
+            },
+            "version": {
+              "enum": [
+                1
+              ]
+            }
+          }
+        },
+        "localTransform": {
+          "$ref": "../../ellipsoid-contracts.schema.json#/definitions/localTransform"
+        }
+      }
+    },
+    "ellipsoidPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "previewFingerprint",
+        "planFingerprint",
+        "summaryHash",
+        "contactSheetHash",
+        "summaryPath",
+        "contactSheetPath"
+      ],
+      "properties": {
+        "previewFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "planFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "summaryHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "contactSheetHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "summaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contactSheetPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "definitions": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceId",
+        "kind",
+        "displayName",
+        "path"
+      ],
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "base_vpk",
+            "mod_vpk",
+            "compiled_model"
+          ]
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "schemaVersion": {
+              "enum": [
+                1
+              ]
+            },
+            "selectedOperationVersion": {
+              "enum": [
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "experimentalPolicy"
+                ]
+              },
+              {
+                "required": [
+                  "experimentalParameters"
+                ]
+              },
+              {
+                "required": [
+                  "ellipsoidParameters"
+                ]
+              },
+              {
+                "required": [
+                  "ellipsoidPreview"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "experimentalPolicy"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "enum": [
+                2
+              ]
+            },
+            "selectedOperationVersion": {
+              "enum": [
+                null,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "ellipsoidParameters"
+                ]
+              },
+              {
+                "required": [
+                  "ellipsoidPreview"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "schemaVersion": {
+              "enum": [
+                3
+              ]
+            }
+          },
+          "required": [
+            "experimentalPolicy"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "not": {
+            "properties": {
+              "selectedOperationVersion": {
+                "enum": [
+                  7
+                ]
+              }
+            },
+            "required": [
+              "selectedOperationVersion"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "selectedIntent": {
+              "enum": [
+                "ellipsoid-scale",
+                "mirrored-ellipsoid-scale"
+              ]
+            },
+            "schemaVersion": {
+              "enum": [
+                3
+              ]
+            },
+            "selectedOperationKind": {
+              "enum": [
+                "transform_component"
+              ]
+            }
+          },
+          "required": [
+            "selectedOperationKind",
+            "selectedIntent"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "not": {
+            "required": [
+              "ellipsoidParameters"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "selectedOperationVersion": {
+              "enum": [
+                7
+              ]
+            },
+            "selectedOperationKind": {
+              "enum": [
+                "transform_component"
+              ]
+            },
+            "selectedIntent": {
+              "enum": [
+                "ellipsoid-scale",
+                "mirrored-ellipsoid-scale"
+              ]
+            },
+            "schemaVersion": {
+              "enum": [
+                3
+              ]
+            }
+          },
+          "required": [
+            "selectedOperationKind",
+            "selectedOperationVersion",
+            "selectedIntent",
+            "uniformScale",
+            "maximumVertexDisplacement"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "not": {
+            "properties": {
+              "selectedOperationVersion": {
+                "enum": [
+                  7
+                ]
+              },
+              "step": {
+                "enum": [
+                  "review",
+                  "output_selection",
+                  "install_selection",
+                  "rollback_selection",
+                  "complete"
+                ]
+              }
+            },
+            "required": [
+              "selectedOperationVersion",
+              "step"
+            ]
+          }
+        },
+        {
+          "required": [
+            "ellipsoidParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "not": {
+            "properties": {
+              "selectedOperationVersion": {
+                "enum": [
+                  7
+                ]
+              },
+              "step": {
+                "enum": [
+                  "output_selection",
+                  "install_selection",
+                  "rollback_selection",
+                  "complete"
+                ]
+              }
+            },
+            "required": [
+              "selectedOperationVersion",
+              "step"
+            ]
+          }
+        },
+        {
+          "required": [
+            "ellipsoidPreview"
+          ]
+        }
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "not": {
+            "required": [
+              "ellipsoidPreview"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "selectedOperationVersion": {
+              "enum": [
+                7
+              ]
+            },
+            "schemaVersion": {
+              "enum": [
+                3
+              ]
+            }
+          },
+          "required": [
+            "ellipsoidParameters",
+            "planFingerprint",
+            "selectedOperationVersion"
+          ]
+        }
+      ]
+    }
+  ]
+}

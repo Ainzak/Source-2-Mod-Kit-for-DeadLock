@@ -11,9 +11,9 @@ public static partial class RecipeValidator
     {
         ArgumentNullException.ThrowIfNull(recipe);
 
-        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8))
+        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9))
         {
-            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 8 are supported.", "Migrate the recipe to a published schema version.");
+            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 9 are supported.", "Migrate the recipe to a published schema version.");
         }
 
         ValidateIdentifier(recipe.RecipeId, "recipeId");
@@ -26,6 +26,10 @@ public static partial class RecipeValidator
         {
             throw Errors.InvalidRecipe("RECIPE_EMPTY", "A recipe must contain at least one operation.", "Add a supported typed operation.");
         }
+
+        if (recipe.SchemaVersion == 9
+            && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 8 }))
+            throw CoordinatedInvalid("Schema 9 requires exactly one transform_component@8 common field.");
 
         if (recipe.SchemaVersion == 8
             && (recipe.Operations.Count != 1 || recipe.Operations[0] is not TransformComponentOperation { Version: 7 }))
@@ -76,6 +80,8 @@ public static partial class RecipeValidator
             }
 
             ValidateOperation(operation);
+            if (operation is TransformComponentOperation { Version: 8 } && recipe.SchemaVersion != 9)
+                throw CoordinatedInvalid("Coordinated transforms require recipe schema 9.");
             if (operation is TransformComponentOperation { Version: 7 } && recipe.SchemaVersion != 8)
                 throw EllipsoidInvalid("Ellipsoid transforms require recipe schema 8.");
             if (operation is TransformComponentOperation { Version: 6 } && recipe.SchemaVersion != 7)
@@ -130,6 +136,8 @@ public static partial class RecipeValidator
 
     private static void ValidateTransformComponent(TransformComponentOperation operation)
     {
+        if (operation.Version != 8 && (operation.CoordinatedTransform is not null || operation.ZeroBoneBoxPolicy is not null || operation.ZeroRenderSpherePolicy is not null))
+            throw CoordinatedInvalid("Earlier operations cannot contain coordinated intent or zero-field policies.");
         if (operation.Version != 7 && operation.LocalTransform is not null)
             throw EllipsoidInvalid("Earlier operations cannot contain localTransform.");
         if (operation.Version != 6 && operation.Region is not null)
@@ -142,6 +150,7 @@ public static partial class RecipeValidator
             5 => operation.Granularity == "draw_call_vertices",
             6 => operation.Granularity == "axis_ramp_vertices",
             7 => operation.Granularity == "ellipsoid_vertices",
+            8 => operation.Granularity == "coordinated_buffer_vertices",
             _ => false,
         };
         if (!validGranularity)
@@ -162,6 +171,12 @@ public static partial class RecipeValidator
             throw Errors.InvalidRecipe("OWNERSHIP_POLICY_UNSUPPORTED", "transform_component@1 requires exclusive vertex ownership.", "Set ownershipPolicy to exclusive.");
         }
 
+
+        if (operation.Version == 8)
+        {
+            ValidateCoordinatedTransform(operation);
+            return;
+        }
 
         if (operation.Version == 7)
         {

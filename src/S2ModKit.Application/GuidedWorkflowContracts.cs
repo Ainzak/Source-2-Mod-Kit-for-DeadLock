@@ -66,6 +66,21 @@ public sealed record GuidedWorkflowSession
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ExperimentalScaffoldOptions? ExperimentalParameters { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EllipsoidScaffoldOptions? EllipsoidParameters { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GuidedEllipsoidPreview? EllipsoidPreview { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CoordinatedScaffoldOptions? CoordinatedParameters { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? SelectedComponentIds { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GuidedEllipsoidPreview? CoordinatedPreview { get; init; }
+
     public string SessionId { get; init; } = string.Empty;
 
     public string Status { get; init; } = GuidedWorkflowContract.ActiveStatus;
@@ -152,6 +167,9 @@ public sealed record GuidedWorkflowSession
 
     public string? InstallationStatus { get; init; }
 }
+
+public sealed record GuidedEllipsoidPreview(ContentHash PreviewFingerprint, ContentHash PlanFingerprint, ContentHash SummaryHash,
+    ContentHash ContactSheetHash, string SummaryPath, string ContactSheetPath);
 
 public sealed record GuidedResourceChoice(
     string ResourceId,

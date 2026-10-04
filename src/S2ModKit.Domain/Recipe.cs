@@ -73,6 +73,15 @@ public sealed record TransformComponentOperation : RecipeOperation
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public EllipsoidVisualTransform? LocalTransform { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CoordinatedVisualTransform? CoordinatedTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ZeroBoneBoxPolicy? ZeroBoneBoxPolicy { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ZeroRenderSpherePolicy? ZeroRenderSpherePolicy { get; init; }
+
     public ComponentTransform Transform { get; init; } = new();
 
     public TransformLimits Limits { get; init; } = new();

@@ -23,10 +23,11 @@ public static class JsonDefaults
             }
             if (typeof(T) == typeof(EvidenceReport)) ExperimentalEvidenceValidator.ValidateShape(utf8Json);
             if (typeof(T) == typeof(GuidedWorkflowSession)) GuidedWorkflow.ValidateSessionShape(utf8Json);
+            if (typeof(T) == typeof(ComponentDiscoveryResultV2)) EllipsoidDiscoveryJson.ValidateShape(utf8Json);
 
             var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
                 ?? throw Errors.InvalidRecipe("JSON_NULL_DOCUMENT", $"{description} cannot be null.", "Provide a JSON object matching the published schema.");
-            if (result is RecipeDocument { SchemaVersion: 8 } recipe)
+            if (result is RecipeDocument { SchemaVersion: 8 or 9 } recipe)
             {
                 // Shape dispatch already forbids a serialized legacy transform, including
                 // null. Remove only the old CLR initializer revived by its absence.
@@ -35,14 +36,18 @@ public static class JsonDefaults
                     Operations = recipe.Operations.Select(operation => operation is TransformComponentOperation transform
                     ? transform with { Transform = null! } : operation).ToArray()
                 };
-                EllipsoidContractValidator.ValidateRecipe(recipe);
+                if (recipe.SchemaVersion == 9) CoordinatedContractValidator.ValidateRecipe(recipe);
+                else EllipsoidContractValidator.ValidateRecipe(recipe);
                 result = (T)(object)recipe;
             }
             if (result is EvidenceReport evidence)
             {
-                if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
+                if (evidence.SchemaVersion == 10) CoordinatedContractValidator.ValidateEvidence(evidence);
+                else if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
                 else ExperimentalEvidenceValidator.Validate(evidence);
             }
+            if (result is ComponentDiscoveryResultV2 discovery) EllipsoidDiscoveryJson.Validate(discovery);
+            if (result is GuidedWorkflowSession { SchemaVersion: 3 or 4 } session) GuidedWorkflow.ValidateSession(session);
             return result;
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
@@ -62,6 +67,7 @@ public static class JsonDefaults
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (CoordinatedContractJson.RecipeShape(root)) return;
         if (EllipsoidContractJson.RecipeShape(root)) return;
         var versions = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();
         var regionRecipe = versions.Any(property => property.Value.ValueKind == JsonValueKind.Number

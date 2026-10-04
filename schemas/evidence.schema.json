@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/evidence/v9",
-  "title": "S2ModKit evidence v9 with unchanged v6-v8 compatibility",
+  "$id": "https://s2modkit.local/schemas/evidence/v10",
+  "title": "S2ModKit evidence v10 with unchanged earlier compatibility",
   "definitions": {
     "contentHash": {
       "$ref": "v8/evidence.schema.json#/definitions/contentHash"
@@ -136,6 +136,9 @@
     },
     {
       "$ref": "ellipsoid-contracts.schema.json#/definitions/evidence"
+    },
+    {
+      "$ref": "coordinated-contracts.schema.json#/definitions/evidence"
     }
   ]
 }

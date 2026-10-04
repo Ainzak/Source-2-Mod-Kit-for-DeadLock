@@ -5,7 +5,7 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Application;
 
-public sealed class S2ModKitApplication : IS2ModKitApplication
+public sealed partial class S2ModKitApplication : IS2ModKitApplication
 {
     private readonly IProjectWorkspace workspace;
     private readonly ProjectImporter projectImporter;
@@ -92,6 +92,15 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             .DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ComponentDiscoveryResultV2> DiscoverEllipsoidComponentsAsync(string projectRoot, CancellationToken cancellationToken = default)
+    {
+        var (_, input, _) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
+        RequireInspector(input);
+        var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
+        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner)
+            .DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<RecipeScaffoldResult> ScaffoldRecipeAsync(
         string projectRoot,
         RecipeScaffoldRequest request,
@@ -101,7 +110,13 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var (_, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
-        var discovery = request.Experimental is not null || request.ExperimentalDiscovery
+        if (request.ExperimentalDiscoverySchemaVersion is not (3 or 4 or 5))
+            throw Errors.InvalidRecipe("SCAFFOLD_DISCOVERY_VERSION_INVALID", "Unknown experimental discovery identity version.", "Use schema 3 for historical sessions or schema 4 for local fields.");
+        var discovery = request.Coordinated is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 5)
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverCoordinatedAsync(input, model, cancellationToken).ConfigureAwait(false)
+            : request.Ellipsoid is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 4)
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false)
+            : request.Experimental is not null || request.ExperimentalDiscovery
             ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
             : await new PreciseComponentDiscoveryService(componentCapabilityAnalyzer).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
         var recipe = await new ComponentRecipeScaffolder(componentCapabilityAnalyzer)
@@ -110,7 +125,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var canonicalJson = JsonDefaults.SerializeToUtf8(recipe);
         var reparsed = JsonDefaults.Deserialize<RecipeDocument>(canonicalJson, "Scaffolded recipe");
         RecipeValidator.Validate(reparsed);
-        if (request.Intent == RecipeScaffoldContract.AffineIntent || request.Experimental is not null)
+        if (request.Intent == RecipeScaffoldContract.AffineIntent || request.Experimental is not null || request.Ellipsoid is not null || request.Coordinated is not null)
         {
             _ = CreatePlan(input, model, reparsed, dependencies);
         }
@@ -160,6 +175,19 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         return new PlanRunResult(plan, evidence);
     }
 
+    public async Task<EllipsoidSelectionPreview> PreviewEllipsoidSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default)
+    {
+        EllipsoidContractValidator.ValidateRecipe(recipe);
+        var (_, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
+        RequireInspector(input);
+        if (inspector is not IEllipsoidPreviewGeometryReader reader)
+            throw Errors.Unsupported("ELLIPSOID_PREVIEW_READER_REQUIRED", "The configured adapter cannot read complete contact-sheet geometry.", "Use a configured Source 2 geometry reader.");
+        var snapshot = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
+        var plan = CreatePlan(input, snapshot, recipe, dependencies);
+        var geometry = await reader.ReadEllipsoidPreviewGeometryAsync(input, plan, cancellationToken).ConfigureAwait(false);
+        return EllipsoidSelectionPreviewBuilder.Create(plan, geometry);
+    }
+
     public async Task<BuildRunResult> BuildAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default)
     {
         var (project, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
@@ -185,6 +213,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var ellipsoidVerification = await VerifyEllipsoidAsync(input,
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
+        var coordinatedVerification = await VerifyCoordinatedAsync(input,
+            new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = new List<BoundaryEvidence>
         {
@@ -194,6 +224,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         boundaries.AddRange(internalVerification.Boundaries);
         if (experimentalVerification is not null) boundaries.AddRange(experimentalVerification.Boundaries);
         if (ellipsoidVerification is not null) boundaries.AddRange(ellipsoidVerification.Boundaries);
+        if (coordinatedVerification is not null) boundaries.AddRange(coordinatedVerification.Boundaries);
         boundaries.Add(externalBoundary);
         boundaries.Add(new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed."));
 
@@ -204,7 +235,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var buildId = $"{plan.Fingerprint.Value[..16]}-{computedOutputHash.Value[..12]}";
-        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification);
+        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification);
         var publication = new BuildPublication(buildId, plan, candidate, reports.RenderJson(evidence), reports.RenderMarkdown(evidence));
         var published = await workspace.PublishBuildAsync(projectRoot, publication, cancellationToken).ConfigureAwait(false);
         var publishedEvidence = JsonDefaults.Deserialize<EvidenceReport>(Encoding.UTF8.GetBytes(published.EvidenceJson), "Published build evidence");
@@ -224,10 +255,12 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         var internalVerification = ModelVerifier.Verify(before, after, plan);
         var experimentalVerification = await VerifyExperimentalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var ellipsoidVerification = await VerifyEllipsoidAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
+        var coordinatedVerification = await VerifyCoordinatedAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var candidate = new RewriteCandidate(candidateContent.LogicalPath, candidateContent.Bytes, after);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = internalVerification.Boundaries.Concat(experimentalVerification?.Boundaries ?? [])
             .Concat(ellipsoidVerification?.Boundaries ?? [])
+            .Concat(coordinatedVerification?.Boundaries ?? [])
             .Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
 
         if (!internalVerification.IsValid || externalBoundary.Status == "failed")
@@ -236,7 +269,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         }
 
         var reportId = $"{buildId}-verify";
-        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification);
+        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification);
         await workspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VerifyRunResult(published, evidence);
     }
@@ -285,6 +318,15 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         return await verifier.VerifyEllipsoidTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<CoordinatedTransformVerification?> VerifyCoordinatedAsync(
+        ArtifactContent input, ArtifactContent output, MutationPlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.SchemaVersion != 5) return null;
+        if (rewriter is not ICoordinatedTransformVerifier verifier)
+            throw Errors.Unsupported("COORDINATED_VERIFIER_REQUIRED", "The configured adapter has no independent coordinated resource verifier.", "Do not publish this build.");
+        return await verifier.VerifyCoordinatedTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
+    }
+
     private void RequireInspector(ArtifactContent input)
     {
         if (!inspector.CanInspect(input))
@@ -306,7 +348,8 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
         IReadOnlyList<BoundaryEvidence> boundaries,
         IReadOnlyList<string> warnings,
         ExperimentalTransformVerification? experimentalVerification = null,
-        EllipsoidTransformVerification? ellipsoidVerification = null)
+        EllipsoidTransformVerification? ellipsoidVerification = null,
+        CoordinatedTransformVerification? coordinatedVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -383,13 +426,28 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                     throw Errors.Verification("ELLIPSOID_RESULT_DRIFT", "Observed evidence does not cover every frozen target exactly.", "Do not publish this output.");
             }
         }
+        if (plan.SchemaVersion == 5)
+        {
+            operationWarnings.Add("Experimental coordinated visual edit: complete member geometry and positive boxes are verified offline; preserved zero boxes/spheres, other culling consumers, clothing/pose fit and runtime remain untested.");
+            if (after is null) boundaries = boundaries.Concat(CoordinatedContractValidator.PlannedBoundaries().Where(b => b.Name != "runtime")).ToArray();
+            else
+            {
+                var target = plan.Operations.Single().CoordinatedTransformTarget!;
+                if (coordinatedVerification is null
+                    || JsonDefaults.Serialize(coordinatedVerification.Boxes.Select(b => b.Target).ToArray()) != JsonDefaults.Serialize(target.BoxTargets)
+                    || JsonDefaults.Serialize(coordinatedVerification.ZeroBoxes.Select(b => b.Target).ToArray()) != JsonDefaults.Serialize(target.ZeroBoxTargets)
+                    || JsonDefaults.Serialize(coordinatedVerification.ZeroRenderSpheres.Select(b => b.Target).ToArray()) != JsonDefaults.Serialize(target.ZeroRenderSphereTargets)
+                    || JsonDefaults.Serialize(coordinatedVerification.PreservedMetadata.Select(p => p.Target).ToArray()) != JsonDefaults.Serialize(target.PreservationTargets))
+                    throw Errors.Verification("COORDINATED_RESULT_DRIFT", "Observed evidence does not cover every coordinated target exactly.", "Do not publish this output.");
+            }
+        }
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var report = new EvidenceReport
         {
-            SchemaVersion = plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
+            SchemaVersion = plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -402,7 +460,7 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 .ToArray(),
             Output = output is null ? null : new ArtifactEvidence(output.LogicalPath, output.ContentHash, output.Bytes.Length, "generated", $"build:{output.ContentHash}", "sha256_and_semantic_reopen"),
             PlanFingerprint = plan.Fingerprint,
-            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification)).ToArray(),
+            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification, coordinatedVerification)).ToArray(),
             Boundaries = boundaries,
             Blocks = CreateBlockEvidence(before, after, plan),
             ToolVersions = toolVersions,
@@ -422,14 +480,17 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
             manifest.VerificationMode);
 
     private static OperationEvidence CreateOperationEvidence(PlannedOperation operation, ModelSnapshot? after,
-        ExperimentalTransformVerification? experimentalVerification, EllipsoidTransformVerification? ellipsoidVerification)
+        ExperimentalTransformVerification? experimentalVerification, EllipsoidTransformVerification? ellipsoidVerification,
+        CoordinatedTransformVerification? coordinatedVerification)
     {
         var outputBlocks = after?.Artifact.Blocks.ToDictionary(block => block.Index);
         return new OperationEvidence(
             operation.OperationId,
             operation.Kind,
             operation.Version,
-            operation.SelectedDrawCalls.Select(item => item.DrawCallId).ToArray(),
+            operation.CoordinatedTransformTarget is not null
+                ? operation.SelectedDrawCalls.Select(item => item.DrawCallId).Order(StringComparer.Ordinal).ToArray()
+                : operation.SelectedDrawCalls.Select(item => item.DrawCallId).ToArray(),
             operation.SelectedDrawCalls.Select(item => item.ResourcePath).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())
         {
             GeometryChanges = (operation.ExperimentalTransformTarget?.GeometryTargets ?? operation.GeometryTargets).Select(target => new GeometryChangeEvidence(
@@ -467,6 +528,12 @@ public sealed class S2ModKitApplication : IS2ModKitApplication
                 ellipsoidVerification?.Buffers,
                 ellipsoidVerification?.Boxes ?? ellipsoid.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
                 ellipsoidVerification?.PreservedMetadata ?? ellipsoid.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
+            CoordinatedTransform = operation.CoordinatedTransformTarget is { } coordinated ? new(coordinated,
+                coordinatedVerification?.Buffers,
+                coordinatedVerification?.Boxes ?? coordinated.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
+                coordinatedVerification?.ZeroBoxes ?? coordinated.ZeroBoxTargets.Select(b => new ZeroBoneBoxPreservationEvidence(b, null, "planned", "untested", "untested")).ToArray(),
+                coordinatedVerification?.ZeroRenderSpheres ?? coordinated.ZeroRenderSphereTargets.Select(s => new ZeroRenderSpherePreservationEvidence(s, null, null, "planned", "untested", "untested")).ToArray(),
+                coordinatedVerification?.PreservedMetadata ?? coordinated.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
         };
     }
 

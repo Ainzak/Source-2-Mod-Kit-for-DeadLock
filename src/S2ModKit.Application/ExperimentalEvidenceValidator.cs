@@ -16,6 +16,8 @@ public static class ExperimentalEvidenceValidator
 
     public static void Validate(EvidenceReport report)
     {
+        if (report.SchemaVersion == 10) { CoordinatedContractValidator.ValidateEvidence(report); return; }
+        if (report.Operations.Any(operation => operation.Version == 8 || operation.CoordinatedTransform is not null)) throw Invalid("Coordinated evidence requires schema 10.");
         if (report.SchemaVersion == 9) { EllipsoidContractValidator.ValidateEvidence(report); return; }
         if (report.Operations.Any(operation => operation.Version == 7 || operation.EllipsoidTransform is not null)) throw Invalid("Ellipsoid evidence requires schema 9.");
         var region = report.SchemaVersion == 8;
@@ -90,6 +92,7 @@ public static class ExperimentalEvidenceValidator
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (CoordinatedContractJson.EvidenceShape(root)) return;
         if (EllipsoidContractJson.EvidenceShape(root)) return;
         var versions = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();
         var isNew = versions.Any(property => property.Value.ValueKind == JsonValueKind.Number

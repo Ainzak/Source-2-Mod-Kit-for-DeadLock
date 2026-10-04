@@ -588,7 +588,8 @@
       "properties": {
         "kind": {
           "enum": [
-            "ellipsoid"
+            "ellipsoid",
+            "mirrored_ellipsoids"
           ]
         },
         "version": {
@@ -611,8 +612,39 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "exclusiveMaximum": 1
+        },
+        "mirrorPlane": {
+          "$ref": "#/definitions/mirrorPlane"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "ellipsoid"
+              ]
+            }
+          },
+          "not": {
+            "required": [
+              "mirrorPlane"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "mirrored_ellipsoids"
+              ]
+            }
+          },
+          "required": [
+            "mirrorPlane"
+          ]
+        }
+      ]
     },
     "numericalPolicy": {
       "type": "object",
@@ -923,6 +955,14 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 64
+        },
+        "mirroredMasks": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/fieldMask"
+          }
         }
       }
     },
@@ -1120,8 +1160,71 @@
             "$ref": "#/definitions/sourceBlock"
           },
           "minItems": 1
+        },
+        "mirror": {
+          "$ref": "#/definitions/mirror"
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "localTransform": {
+              "properties": {
+                "field": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "ellipsoid"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "buffers": {
+              "items": {
+                "not": {
+                  "required": [
+                    "mirroredMasks"
+                  ]
+                }
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "mirror"
+            ]
+          }
+        },
+        {
+          "required": [
+            "mirror"
+          ],
+          "properties": {
+            "localTransform": {
+              "properties": {
+                "field": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "mirrored_ellipsoids"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "buffers": {
+              "items": {
+                "required": [
+                  "mirroredMasks"
+                ]
+              }
+            }
+          }
+        }
+      ]
     },
     "operation": {
       "type": "object",
@@ -1684,6 +1787,78 @@
           }
         }
       ]
+    },
+    "mirrorPlane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "axis",
+        "coordinate"
+      ],
+      "properties": {
+        "axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ]
+        },
+        "coordinate": {
+          "type": "number"
+        }
+      }
+    },
+    "mirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reflectedCenter",
+        "reflectedCertificate"
+      ],
+      "properties": {
+        "reflectedCenter": {
+          "$ref": "#/definitions/vector3"
+        },
+        "reflectedCertificate": {
+          "$ref": "#/definitions/certificate"
+        }
+      }
+    },
+    "fieldMask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maskHash",
+        "weightHash",
+        "coreVertexCount",
+        "transitionVertexCount",
+        "pinnedVertexCount",
+        "changedPositionCount"
+      ],
+      "properties": {
+        "maskHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/contentHash"
+        },
+        "coreVertexCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionVertexCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pinnedVertexCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedPositionCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   },
   "oneOf": [

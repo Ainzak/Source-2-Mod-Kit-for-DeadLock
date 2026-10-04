@@ -1,13 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/recipe/v8",
-  "title": "S2ModKit recipe v8 with unchanged v5-v7 compatibility",
+  "$id": "https://s2modkit.local/schemas/recipe/v9",
+  "title": "S2ModKit recipe v9 with unchanged earlier compatibility",
   "oneOf": [
     {
       "$ref": "v7/recipe.schema.json"
     },
     {
       "$ref": "ellipsoid-contracts.schema.json#/definitions/recipe"
+    },
+    {
+      "$ref": "coordinated-contracts.schema.json#/definitions/recipe"
     }
   ]
 }

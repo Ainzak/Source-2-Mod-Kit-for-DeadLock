@@ -5,8 +5,16 @@ public enum EllipsoidMembership { Core, Transition, Pinned }
 public readonly record struct EllipsoidPointResult(Point3 Position, EllipsoidMembership Membership,
     double Weight, float MaximumDisplacement);
 
+public interface IEllipsoidScale
+{
+    EllipsoidJacobianCertificate Certificate { get; }
+    float DisplacementLimit { get; }
+    EllipsoidPointResult Evaluate(Point3 point);
+    TangentFrame TransformFrame(Point3 point, TangentFrame frame);
+}
+
 /// <summary>A frozen model-space field with exact endpoint classification and bounded stored-point displacement.</summary>
-public sealed class EllipsoidScale
+public sealed class EllipsoidScale : IEllipsoidScale
 {
     public Point3 Center { get; }
     public Point3 OuterRadii { get; }

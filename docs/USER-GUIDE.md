@@ -288,6 +288,8 @@ still matches the edited shape. Rendering, clothing fit and gameplay need a sepa
 Use `& $s2mod interactive --experimental` for the guided workflow, or
 `& $s2mod components list --project $project --experimental --format json` for agent discovery.
 Candidate IDs from strict discovery cannot be reused in experimental discovery.
+Current experimental discovery uses schema 4; old schema-2 experimental guided checkpoints retain
+schema-3 discovery. New experimental sessions use schema 3 and persist local-field preview identities.
 
 Scaffolding with `--experimental --intent uniform-scale` creates a whole-part recipe. With
 `--experimental --intent region-scale`, also supply `--region-axis`, `--pinned-through`,
@@ -296,6 +298,71 @@ Scaffolding with `--experimental --intent uniform-scale` creates a whole-part re
 The lower half-space stays unchanged; the transition blends to full scale above the upper threshold.
 Run the ordinary plan/build/verify/package workflow. Actual parameters may reject even when
 discovery's small eligibility probe passed. Procedural hair and cloth are not enabled by opt-in.
+
+For an available **Experimental local ellipsoid scale** action, use `--intent ellipsoid-scale`
+with explicit `--field-center X,Y,Z`, `--field-radii X,Y,Z`, `--core-fraction`, `--scale` and
+`--max-displacement`. Center and radii are model-space coordinates; core fraction sets the inner
+full-strength radius relative to the outer ellipsoid. Influence falls smoothly to zero at the outer
+boundary. The center also anchors scaling; independent pivot and translation options reject.
+The field must pass the Jacobian, displacement and all-LOD geometry gates. Nothing identifies
+head/arm/chest anatomy automatically. Generate `selection-preview` before building; guided review
+publishes this sheet and rechecks its identity when resuming. Enter `back` in field prompts to choose
+another action, or `cancel` to save a checkpoint without partial parameters.
+
+For paired shaping, use `--intent mirrored-ellipsoid-scale` with the same field arguments plus
+`--mirror-axis` and `--mirror-coordinate`. An explicit model-axis plane reflects the center;
+the outer supports must be disjoint and both sides must change geometry in every LOD. Original
+asymmetry is retained. The guided paired action saves the plane and both field masks on resume.
+
+For several ordinary buffers under one common field, first use
+`components list --project $project --experimental --coordinated --format json`. This returns
+schema-5 candidate IDs. Select exact material/lineage views; overlapping views deduplicate draw calls.
+The scaffold requires unique complete-buffer correspondence in every LOD. It cannot infer that
+selecting a head includes hair, eyeballs or accessories. A candidate's individual reject-policy
+probe may fail while an explicitly acknowledged complete union passes its separate exact probe.
+
+Save a complete typed options document (schema example, not a model-specific preset):
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "coordinated_field_options",
+  "policy": { "kind": "preserve_unverified", "version": 1 },
+  "zeroBoneBoxPolicy": { "kind": "reject", "version": 1 },
+  "zeroRenderSpherePolicy": { "kind": "reject", "version": 1 },
+  "field": {
+    "kind": "axis_ramp", "version": 1, "coordinateSpace": "model",
+    "axis": "z", "pinnedThrough": 30, "fullFrom": 50,
+    "pivot": { "x": 0, "y": 0, "z": 50 }, "uniformScale": 1.1
+  },
+  "maximumDisplacement": 16
+}
+```
+
+Choose field parameters from inspected geometry. Rejection remains the normal zero-field policy;
+separately named zero-box/paired-zero-sphere preservation is experimental and does not establish
+containment or runtime behavior. See [the options contract](../schemas/coordinated-field-options.schema.json).
+
+```powershell
+& $s2mod recipe scaffold --project $project --experimental --intent coordinated-field `
+  --component 'cmp_0123456789abcdef01234567' --component 'cmp_111111111111111111111111' `
+  --coordinated-options "$workspaceRoot\recipes\common-field-options.json" `
+  --output "$workspaceRoot\recipes\coordinated.json"
+& $s2mod selection-preview --project $project --recipe "$workspaceRoot\recipes\coordinated.json" `
+  --output-root "$workspaceRoot\previews"
+```
+
+Replace the example IDs with current schema-5 IDs. The recipe is published only after exact
+common-field planning passes; unrelated scale/pivot parameters are forbidden. The sheet shows every
+participating buffer, pinned records and excluded siblings, with original/predicted views in every
+LOD. Its summary lists exact draw-call/material coverage. This is a bind-space diagnostic, not
+proof of animations, garment fit or live culling.
+
+For the guided route, start `interactive --experimental --coordinated-options <options.json>` and
+select comma-separated component numbers. A successful exact union exposes one common-field action.
+New sessions use schema 4; resume retains the selected IDs, typed field/policies and preview identity
+and rejects changed parameters. Do not supply replacement options with `--resume`. Existing sessions
+keep their earlier meaning. Use the ordinary plan/build/verify/package lifecycle after review.
 
 ### Translate a component
 

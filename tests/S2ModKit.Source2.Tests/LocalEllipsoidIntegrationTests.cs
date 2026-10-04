@@ -9,6 +9,55 @@ namespace S2ModKit.Source2.Tests;
 public sealed class LocalEllipsoidIntegrationTests
 {
     [Fact]
+    public async Task ConfiguredEllipsoidPreviewRetainsEveryLodPointAndTriangleAndRejectsSourceDrift()
+    {
+        var path = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_MODEL");
+        var logical = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_LOGICAL_PATH");
+        var recipePath = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_RECIPE");
+        var hash = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_SHA256");
+        var codec = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_CODEC");
+        if (new[] { path, logical, recipePath, hash, codec }.Any(string.IsNullOrWhiteSpace))
+            Assert.Skip("Set the five S2MODKIT_TEST_ELLIPSOID variables for an explicit immutable source and codec.");
+        var token = TestContext.Current.CancellationToken;
+        var bytes = await File.ReadAllBytesAsync(path!, token);
+        Assert.Equal(hash, ContentHash.Compute(bytes).Value);
+        var input = new ArtifactContent(logical!, ContentHash.Compute(bytes), bytes);
+        var recipe = JsonDefaults.Deserialize<RecipeDocument>(await File.ReadAllBytesAsync(recipePath!, token), "Ellipsoid recipe");
+        var adapter = new Source2CompiledModelAdapter(codec);
+        var snapshot = await adapter.InspectAsync(input, token);
+        var plan = MutationPlanner.CreatePlan(snapshot, recipe, input, adapter);
+        var geometry = await adapter.ReadEllipsoidPreviewGeometryAsync(input, plan, token);
+        var preview = EllipsoidSelectionPreviewBuilder.Create(plan, geometry);
+        Assert.Equal(snapshot.Lods.Count, preview.Lods.Count);
+        foreach (var lod in preview.Lods)
+        {
+            Assert.Equal(lod.Buffer.VertexCount, lod.Points.Count);
+            Assert.Equal(plan.Operations[0].SelectedDrawCalls.Where(c => c.Lod == lod.Buffer.Lod).Sum(c => c.IndexCount), lod.TriangleIndices.Count);
+            Assert.Equal(lod.Buffer.CoreVertexCount, lod.Points.Count(p => p.Membership == "core"));
+            Assert.Equal(lod.Buffer.TransitionVertexCount, lod.Points.Count(p => p.Membership == "transition"));
+            Assert.Equal(lod.Buffer.PinnedVertexCount, lod.Points.Count(p => p.Membership == "pinned"));
+            Assert.NotEmpty(lod.Context);
+            Assert.All(lod.Points.Where(p => p.Membership == "pinned"), p => Assert.Equal(p.Original, p.Predicted));
+        }
+        var repeated = EllipsoidSelectionPreviewBuilder.Create(plan, await adapter.ReadEllipsoidPreviewGeometryAsync(input, plan, token));
+        Assert.Equal(preview.PreviewFingerprint, repeated.PreviewFingerprint);
+        var target = plan.Operations[0].EllipsoidTransformTarget!;
+        var buffer = target.Buffers[0];
+        var forgedLayout = target with
+        {
+            Buffers = [buffer with
+        {
+            PositionLayout = buffer.PositionLayout with { Stride = buffer.PositionLayout.Stride + 4 },
+            PackedFrameLayout = buffer.PackedFrameLayout with { Stride = buffer.PackedFrameLayout.Stride + 4 },
+        }, .. target.Buffers.Skip(1)]
+        };
+        await Assert.ThrowsAsync<S2ModKitException>(() => adapter.ReadEllipsoidPreviewGeometryAsync(input, Rehash(plan, forgedLayout), token));
+        var drifted = bytes.ToArray(); drifted[^1] ^= 1;
+        await Assert.ThrowsAsync<S2ModKitException>(() => adapter.ReadEllipsoidPreviewGeometryAsync(input with { Bytes = drifted }, plan, token));
+        Assert.Equal(hash, ContentHash.Compute(await File.ReadAllBytesAsync(path!, token)).Value);
+    }
+
+    [Fact]
     public async Task ConfiguredEllipsoidPlansWritesAndRejectsRehashedAdversarialOutputs()
     {
         var path = Environment.GetEnvironmentVariable("S2MODKIT_TEST_ELLIPSOID_MODEL");
@@ -76,6 +125,20 @@ public sealed class LocalEllipsoidIntegrationTests
         omittedPlan = omittedPlan with { Fingerprint = MutationPlanJson.ComputeExperimentalFingerprint(omittedPlan) };
         _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(omittedPlan));
         await Assert.ThrowsAsync<S2ModKitException>(() => adapter.VerifyEllipsoidTransformAsync(input, output, omittedPlan, token));
+        if (target.LocalTransform.Field.Kind == "mirrored_ellipsoids")
+        {
+            Assert.NotNull(target.Mirror);
+            Assert.All(target.Buffers, b => { Assert.Equal(2, b.MirroredMasks!.Count); Assert.All(b.MirroredMasks, m => Assert.True(m.ChangedPositionCount > 0)); });
+            var first = target.Buffers[0];
+            var forgedMask = first with { MirroredMasks = [first.MirroredMasks![0], first.MirroredMasks[1] with { MaskHash = ContentHash.Compute("forged-reflected-mask"u8) }] };
+            await Assert.ThrowsAsync<S2ModKitException>(() => adapter.VerifyEllipsoidTransformAsync(input, output,
+                Rehash(plan, target with { Buffers = [forgedMask, .. target.Buffers.Skip(1)] }), token));
+            var field = target.LocalTransform.Field;
+            var staleIntent = target.LocalTransform with { Field = field with { MirrorPlane = field.MirrorPlane! with { Coordinate = field.MirrorPlane.Coordinate - 1 } } };
+            var fieldMath = EllipsoidFieldMath.Create(staleIntent, target.DisplacementLimit);
+            var stale = target with { LocalTransform = staleIntent, Mirror = EllipsoidFieldMath.Mirror(fieldMath) };
+            await Assert.ThrowsAsync<S2ModKitException>(() => adapter.VerifyEllipsoidTransformAsync(input, output, Rehash(plan, stale), token));
+        }
         await RejectAlteredVertexWords(adapter, codec!, input, output, plan, token);
         await RejectOversizedBox(adapter, input, output, plan, token);
         await RejectOtherPayload(adapter, input, output, plan, token);

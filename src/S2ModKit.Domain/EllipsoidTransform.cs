@@ -8,7 +8,16 @@ public sealed record EllipsoidField(
     [property: JsonRequired] string CoordinateSpace,
     [property: JsonRequired] TransformVector3 Center,
     [property: JsonRequired] TransformVector3 OuterRadii,
-    [property: JsonRequired] float CoreFraction);
+    [property: JsonRequired] float CoreFraction)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EllipsoidMirrorPlane? MirrorPlane { get; init; }
+}
+
+public sealed record EllipsoidMirrorPlane([property: JsonRequired] string Axis, [property: JsonRequired] float Coordinate);
+public sealed record PlannedEllipsoidMirror(TransformVector3 ReflectedCenter, PlannedEllipsoidCertificate ReflectedCertificate);
+public sealed record EllipsoidFieldMask(ContentHash MaskHash, ContentHash WeightHash,
+    int CoreVertexCount, int TransitionVertexCount, int PinnedVertexCount, int ChangedPositionCount);
 
 public sealed record EllipsoidNumericalPolicy([property: JsonRequired] string Kind, [property: JsonRequired] int Version);
 
@@ -41,7 +50,11 @@ public sealed record PlannedEllipsoidBuffer(
     int ChangedPositionCount, int ChangedFrameCount,
     ContentHash InputPositionHash, ContentHash ExpectedPositionHash,
     ContentHash InputPackedFrameHash, ContentHash ExpectedPackedFrameHash,
-    GeometryBounds BeforeBounds, GeometryBounds ExpectedAfterBounds, float MaximumDisplacement);
+    GeometryBounds BeforeBounds, GeometryBounds ExpectedAfterBounds, float MaximumDisplacement)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<EllipsoidFieldMask>? MirroredMasks { get; init; }
+}
 
 public sealed record PlannedEllipsoidTransformTarget(
     ContentHash InputHash,
@@ -54,7 +67,11 @@ public sealed record PlannedEllipsoidTransformTarget(
     IReadOnlyList<PlannedEllipsoidBuffer> Buffers,
     IReadOnlyList<PlannedExperimentalBoxTarget> BoxTargets,
     IReadOnlyList<PlannedExperimentalPreservationTarget> PreservationTargets,
-    IReadOnlyList<PlannedTargetBlock> SourceBlocks);
+    IReadOnlyList<PlannedTargetBlock> SourceBlocks)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedEllipsoidMirror? Mirror { get; init; }
+}
 
 public sealed record EllipsoidBufferObservation(
     int Lod, int MeshOrdinal, int VertexBufferOrdinal,

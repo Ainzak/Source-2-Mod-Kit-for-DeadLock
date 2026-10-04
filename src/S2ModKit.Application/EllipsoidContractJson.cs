@@ -112,6 +112,7 @@ internal static class EllipsoidContractJson
         foreach (var property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
             var name = JsonNamingPolicy.CamelCase.ConvertName(property.Name);
+            if (name is "mirrorPlane" or "mirror" or "mirroredMasks" && !value.TryGetProperty(name, out _)) continue;
             // Selector variants retain their historical mutually exclusive optional properties.
             if (type == typeof(ComponentSelector) && name != "kind") continue;
             if (!value.TryGetProperty(name, out var child)) throw Invalid($"Required ellipsoid fact '{name}' is missing.");

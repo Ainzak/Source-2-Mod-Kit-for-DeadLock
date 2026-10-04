@@ -124,7 +124,7 @@ public sealed partial class GuidedWorkflowTests
         }
         Assert.Throws<S2ModKitException>(() => GuidedWorkflow.ValidateSession(strict with { SelectedOperationVersion = 6 }));
         Assert.Throws<S2ModKitException>(() => GuidedWorkflow.ValidateSession(experimental with { ExperimentalPolicy = new("verified", 1) }));
-        Assert.Throws<S2ModKitException>(() => JsonDefaults.Deserialize<GuidedWorkflowSession>(Encoding.UTF8.GetBytes(json.Replace("\"schemaVersion\": 2", "\"schemaVersion\": 2, \"schemaVersion\": 1", StringComparison.Ordinal)), "session"));
+        Assert.Throws<S2ModKitException>(() => JsonDefaults.Deserialize<GuidedWorkflowSession>(Encoding.UTF8.GetBytes(json.Replace("\"schemaVersion\": 3", "\"schemaVersion\": 3, \"schemaVersion\": 1", StringComparison.Ordinal)), "session"));
     }
 
     [Fact]

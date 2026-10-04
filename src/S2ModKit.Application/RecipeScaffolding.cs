@@ -15,7 +15,12 @@ public static class RecipeScaffoldContract
     public const string AffineIntent = "affine";
 
     public const string RegionScaleIntent = "region-scale";
+    public const string EllipsoidScaleIntent = "ellipsoid-scale";
+    public const string MirroredEllipsoidScaleIntent = "mirrored-ellipsoid-scale";
+    public const string CoordinatedFieldIntent = "coordinated-field";
 }
+
+public sealed record EllipsoidScaffoldOptions(RuntimeMetadataPolicy Policy, EllipsoidVisualTransform LocalTransform);
 
 public sealed record ExperimentalScaffoldOptions(RuntimeMetadataPolicy Policy, TransformPivot Pivot,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] RegionScaleSelection? Region = null);
@@ -39,7 +44,10 @@ public sealed record RecipeScaffoldRequest(
     float? MaximumCollisionDisplacement = null,
     AffineScaffoldOptions? Affine = null,
     ExperimentalScaffoldOptions? Experimental = null,
-    bool ExperimentalDiscovery = false);
+    bool ExperimentalDiscovery = false,
+    EllipsoidScaffoldOptions? Ellipsoid = null,
+    int ExperimentalDiscoverySchemaVersion = 3,
+    CoordinatedScaffoldOptions? Coordinated = null);
 
 public sealed record RecipeScaffoldResult(
     string OutputPath,
@@ -70,9 +78,32 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         var union = ComponentCandidateUnionBuilder.Create(model, candidates, discovery.SchemaVersion);
         var selectedDrawCalls = union.SelectedDrawCalls;
         var matchesByLod = CreateLodCounts(model, selectedDrawCalls);
+        if (request.Coordinated is not null || request.Intent == RecipeScaffoldContract.CoordinatedFieldIntent)
+        {
+            if (request.Coordinated is null || request.Intent != RecipeScaffoldContract.CoordinatedFieldIntent
+                || !request.ExperimentalDiscovery || discovery.SchemaVersion != 5 || discovery.ExperimentalPolicy != request.Coordinated.Policy
+                || request.Ellipsoid is not null || request.Experimental is not null || request.Affine is not null || request.ReferenceLod is not null
+                || request.UniformScale is not null || request.TranslationX is not null || request.TranslationY is not null || request.TranslationZ is not null
+                || request.MaximumCollisionDisplacement is not null || request.MaximumVertexDisplacement is not null)
+                throw Errors.InvalidRecipe("SCAFFOLD_COORDINATED_OPTIONS_INVALID", "Coordination requires explicit schema-5 opt-in and one complete typed common-field options object without unrelated parameters.", "Select current coordinated candidate IDs and declare every policy and limit.");
+            return CoordinatedSelection.CreateRecipe(input, model, union, request.Coordinated);
+        }
+        if (request.Ellipsoid is not null || request.Intent is RecipeScaffoldContract.EllipsoidScaleIntent or RecipeScaffoldContract.MirroredEllipsoidScaleIntent)
+        {
+            if (request.Ellipsoid is null || request.Intent is not (RecipeScaffoldContract.EllipsoidScaleIntent or RecipeScaffoldContract.MirroredEllipsoidScaleIntent)
+                || !request.ExperimentalDiscovery || discovery.SchemaVersion != 4 || discovery.ExperimentalPolicy != request.Ellipsoid.Policy
+                || request.Experimental is not null || request.Affine is not null || request.ReferenceLod is not null
+                || request.UniformScale is not null || request.TranslationX is not null || request.TranslationY is not null || request.TranslationZ is not null
+                || request.MaximumCollisionDisplacement is not null || request.MaximumVertexDisplacement is null
+                || candidates.Any(c => !c.Capabilities.Any(cap => cap.OperationKind == "transform_component" && cap.OperationVersion == 7 && cap.Availability == "available")))
+                throw Errors.InvalidRecipe("SCAFFOLD_ELLIPSOID_OPTIONS_INVALID", "Single-field scaffolding requires schema-4 opt-in, a successful probe and explicit field/limit without independent pivot or other transform options.", "Use ellipsoid-scale and current opted-in candidate IDs.");
+            if ((request.Intent == RecipeScaffoldContract.MirroredEllipsoidScaleIntent) != (request.Ellipsoid.LocalTransform.Field.Kind == "mirrored_ellipsoids"))
+                throw Errors.InvalidRecipe("SCAFFOLD_ELLIPSOID_OPTIONS_INVALID", "Action and field variant disagree.", "Select the corresponding explicit action.");
+            return ExperimentalComponentDiscoveryService.CreateEllipsoidRecipe(input, model, union, request.Ellipsoid, request.MaximumVertexDisplacement.Value);
+        }
         if (request.Experimental is not null)
         {
-            if (discovery.SchemaVersion != 3 || discovery.ExperimentalPolicy != request.Experimental.Policy
+            if (discovery.SchemaVersion is not (3 or 4) || discovery.ExperimentalPolicy != request.Experimental.Policy
                 || request.Intent is not (RecipeScaffoldContract.UniformScaleIntent or RecipeScaffoldContract.RegionScaleIntent)
                 || request.Affine is not null || request.MaximumCollisionDisplacement is not null
                 || request.TranslationX is not null || request.TranslationY is not null || request.TranslationZ is not null
@@ -83,7 +114,7 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
             return ExperimentalComponentDiscoveryService.CreateRecipe(input, model, union,
                 request.Experimental, request.UniformScale.Value, request.MaximumVertexDisplacement.Value);
         }
-        if ((discovery.SchemaVersion == 3 && !request.ExperimentalDiscovery) || request.Intent == RecipeScaffoldContract.RegionScaleIntent)
+        if ((discovery.SchemaVersion is 3 or 4 or 5 && !request.ExperimentalDiscovery) || request.Intent == RecipeScaffoldContract.RegionScaleIntent)
             throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPT_IN_REQUIRED", "Experimental candidates and region intent require explicit policy acknowledgement.", "Use experimental discovery/scaffolding or keep the strict workflow.");
         if (request.Intent == RecipeScaffoldContract.AffineIntent)
         {
@@ -219,7 +250,7 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         }
 
         var computedHash = ContentHash.Compute(input.Bytes.Span);
-        if (discovery.SchemaVersion is not (2 or 3)
+        if (discovery.SchemaVersion is not (2 or 3 or 4 or 5)
             || computedHash != input.ContentHash
             || input.ContentHash != model.Artifact.ContentHash
             || input.ContentHash != discovery.Model.ContentHash

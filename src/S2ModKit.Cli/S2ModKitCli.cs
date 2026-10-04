@@ -277,6 +277,7 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreateComponentsCommand(output, error));
         root.Subcommands.Add(CreateRecipeCommand(output, error));
         root.Subcommands.Add(CreatePlanCommand(output, error));
+        root.Subcommands.Add(CreateSelectionPreviewCommand(output, error));
         root.Subcommands.Add(CreateBuildCommand(output, error));
         root.Subcommands.Add(CreateVerifyCommand(output, error));
         root.Subcommands.Add(CreatePackageCommand(output, error));
@@ -325,6 +326,8 @@ public sealed partial class S2ModKitCli
         command.Options.Add(expert);
         var experimental = new Option<bool>("--experimental") { Description = "Opt in to visual-only editing with unverified culling, proxy, collision and visual-quality risks; saved in a new session." };
         command.Options.Add(experimental);
+        var coordinatedOptions = new Option<string?>("--coordinated-options") { Description = "Start a new coordinated session with typed common-field options; requires --experimental. Select comma-separated components." };
+        command.Options.Add(coordinatedOptions);
         command.SetAction((parseResult, cancellationToken) => ExecuteAsync(
             "interactive",
             json: false,
@@ -339,6 +342,7 @@ public sealed partial class S2ModKitCli
                 parseResult.GetValue(resume),
                 parseResult.GetValue(expert),
                 parseResult.GetValue(experimental),
+                parseResult.GetValue(coordinatedOptions),
                 input,
                 output,
                 cancellationToken),
@@ -442,13 +446,17 @@ public sealed partial class S2ModKitCli
         list.Options.Add(project);
         list.Options.Add(format);
         list.Options.Add(experimental);
+        var coordinated = new Option<bool>("--coordinated") { Description = "Probe coordinated multi-buffer selections under discovery schema 5; requires --experimental." };
+        list.Options.Add(coordinated);
         list.SetAction((parseResult, cancellationToken) => ExecuteAsync(
             "components.list",
             IsJson(parseResult.GetRequiredValue(format)),
             output,
             error,
-            () => parseResult.GetValue(experimental)
-                ? application.DiscoverExperimentalComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)
+            () => parseResult.GetValue(coordinated)
+                ? DiscoverCoordinatedCliAsync(parseResult.GetRequiredValue(project), parseResult.GetValue(experimental), cancellationToken)
+                : parseResult.GetValue(experimental)
+                ? application.DiscoverEllipsoidComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)
                 : application.DiscoverComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken),
             RenderComponents,
             cancellationToken));
@@ -468,7 +476,7 @@ public sealed partial class S2ModKitCli
         };
         var intent = new Option<string>("--intent")
         {
-            Description = "Operation intent: remove, uniform-scale, translate, affine, or explicitly experimental region-scale.",
+            Description = "Operation intent: remove, uniform-scale, translate, affine, or experimental region-scale/ellipsoid-scale.",
             Required = true,
         };
         intent.AcceptOnlyFromAmong(
@@ -476,7 +484,8 @@ public sealed partial class S2ModKitCli
             RecipeScaffoldContract.UniformScaleIntent,
             RecipeScaffoldContract.TranslateIntent,
             RecipeScaffoldContract.AffineIntent,
-            RecipeScaffoldContract.RegionScaleIntent);
+            RecipeScaffoldContract.RegionScaleIntent,
+            RecipeScaffoldContract.EllipsoidScaleIntent, RecipeScaffoldContract.MirroredEllipsoidScaleIntent, RecipeScaffoldContract.CoordinatedFieldIntent);
         var outputPath = RequiredStringOption("--output", "New recipe JSON path; existing files are never overwritten.");
         var scale = new Option<string?>("--scale")
         {
@@ -521,6 +530,12 @@ public sealed partial class S2ModKitCli
         var regionAxis = new Option<string?>("--region-axis") { Description = "Region model-space axis: x, y or z; requires region-scale and experimental opt-in." };
         var pinnedThrough = new Option<string?>("--pinned-through") { Description = "Keep coordinates at/below this threshold unchanged." };
         var fullFrom = new Option<string?>("--full-from") { Description = "Apply full scale at/above this threshold, with smooth transition from pinned-through." };
+        var fieldCenter = new Option<string?>("--field-center") { Description = "Explicit model-space ellipsoid center x,y,z; anchors mask and scaling." };
+        var fieldRadii = new Option<string?>("--field-radii") { Description = "Explicit positive outer ellipsoid radii x,y,z; maximum aspect ratio 8." };
+        var coreFraction = new Option<string?>("--core-fraction") { Description = "Explicit full-strength core fraction (0,1); exact Jacobian admission still required." };
+        var mirrorAxis = new Option<string?>("--mirror-axis") { Description = "Explicit model-axis mirror plane x, y or z; mirrored-ellipsoid-scale only." };
+        var mirrorCoordinate = new Option<string?>("--mirror-coordinate") { Description = "Explicit finite mirror plane coordinate; no anatomical default." };
+        var coordinatedOptions = new Option<string?>("--coordinated-options") { Description = "Typed common-field and explicit preservation policies JSON; coordinated-field intent only." };
         foreach (var option in new Option[]
                  {
                      project,
@@ -545,7 +560,8 @@ public sealed partial class S2ModKitCli
                      pivotBone,
                      frame,
                      frameBone,
-                     experimental, regionAxis, pinnedThrough, fullFrom,
+                    experimental, regionAxis, pinnedThrough, fullFrom,
+                    fieldCenter, fieldRadii, coreFraction, mirrorAxis, mirrorCoordinate, coordinatedOptions,
                  })
         {
             scaffold.Options.Add(option);
@@ -556,13 +572,13 @@ public sealed partial class S2ModKitCli
             json: true,
             output,
             error,
-            () => application.ScaffoldRecipeAsync(
+            async () => await application.ScaffoldRecipeAsync(
                 parseResult.GetRequiredValue(project),
                 new RecipeScaffoldRequest(
                     parseResult.GetValue(component) ?? [],
                     parseResult.GetRequiredValue(intent),
                     parseResult.GetRequiredValue(outputPath),
-                    ParseOptionalSingle(parseResult.GetValue(scale), "--scale"),
+                    parseResult.GetRequiredValue(intent) is RecipeScaffoldContract.EllipsoidScaleIntent or RecipeScaffoldContract.MirroredEllipsoidScaleIntent ? null : ParseOptionalSingle(parseResult.GetValue(scale), "--scale"),
                     ParseOptionalSingle(parseResult.GetValue(translateX), "--translate-x"),
                     ParseOptionalSingle(parseResult.GetValue(translateY), "--translate-y"),
                     ParseOptionalSingle(parseResult.GetValue(translateZ), "--translate-z"),
@@ -586,7 +602,11 @@ public sealed partial class S2ModKitCli
                     ParseExperimentalScaffoldOptions(parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent),
                         parseResult.GetValue(pivotPoint), ParseOptionalNonNegativeInt32(parseResult.GetValue(referenceLod), "--reference-lod"),
                         parseResult.GetValue(regionAxis), parseResult.GetValue(pinnedThrough), parseResult.GetValue(fullFrom)),
-                    ExperimentalDiscovery: parseResult.GetValue(experimental)),
+                    ExperimentalDiscovery: parseResult.GetValue(experimental),
+                    Ellipsoid: ParseEllipsoidScaffoldOptions(parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent),
+                        parseResult.GetValue(fieldCenter), parseResult.GetValue(fieldRadii), parseResult.GetValue(coreFraction), parseResult.GetValue(scale), parseResult.GetValue(maximumDisplacement), parseResult.GetValue(mirrorAxis), parseResult.GetValue(mirrorCoordinate)),
+                    ExperimentalDiscoverySchemaVersion: parseResult.GetRequiredValue(intent) == RecipeScaffoldContract.CoordinatedFieldIntent ? 5 : 4,
+                    Coordinated: await ReadCoordinatedOptionsAsync(parseResult.GetValue(coordinatedOptions), parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent), cancellationToken).ConfigureAwait(false)),
                 cancellationToken),
             renderText: null,
             cancellationToken));
@@ -923,7 +943,7 @@ public sealed partial class S2ModKitCli
             async () =>
             {
                 var document = await ReadRecipeAsync(parseResult.GetRequiredValue(recipe), cancellationToken).ConfigureAwait(false);
-                if (document.SchemaVersion is 6 or 7 or 8)
+                if (document.SchemaVersion is 6 or 7 or 8 or 9)
                     error.WriteLine("WARNING: Experimental visual-only edit. Sphere containment, occlusion and collision correspondence are unverified; player testing is required.");
                 return await application.BuildAsync(parseResult.GetRequiredValue(project), document, cancellationToken).ConfigureAwait(false);
             },

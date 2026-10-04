@@ -3,7 +3,7 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Application;
 
-public static class GuidedWorkflow
+public static partial class GuidedWorkflow
 {
     internal static void ValidateSessionShape(ReadOnlySpan<byte> json)
     {
@@ -12,10 +12,39 @@ public static class GuidedWorkflow
         if (root.ValueKind != JsonValueKind.Object) return;
         MutationPlanJson.RequireUniqueProperties(root);
         MutationPlanJson.RequireProperties(root, "schemaVersion");
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number == 2)
+        if (root.TryGetProperty("selectedOperationVersion", out var selectedVersion) && selectedVersion.ValueKind == JsonValueKind.Number
+            && selectedVersion.TryGetInt32(out var selectedNumber) && selectedNumber == 7
+            && (root.GetProperty("schemaVersion").ValueKind != JsonValueKind.Number || !root.GetProperty("schemaVersion").TryGetInt32(out var selectedSchema) || selectedSchema != 3))
+            throw Errors.InvalidRecipe("GUIDED_ELLIPSOID_VERSION_REQUIRED", "The local-field action requires guided session schema 3.", "Keep old sessions intact or start a new opted-in session.");
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number is 2 or 3 or 4)
         {
             MutationPlanJson.RequireProperties(root, "schemaVersion", "sessionId", "status", "step", "cataloguePath", "expert", "sources", "experimentalPolicy");
             MutationPlanJson.RequireProperties(root.GetProperty("experimentalPolicy"), "kind", "version");
+            if (number == 4)
+            {
+                MutationPlanJson.RequireProperties(root, "coordinatedParameters");
+                _ = CoordinatedSelection.ReadOptions(System.Text.Encoding.UTF8.GetBytes(root.GetProperty("coordinatedParameters").GetRawText()));
+                if (root.TryGetProperty("coordinatedPreview", out var commonPreview))
+                    MutationPlanJson.RequireProperties(commonPreview, "previewFingerprint", "planFingerprint", "summaryHash", "contactSheetHash", "summaryPath", "contactSheetPath");
+            }
+            else if (root.TryGetProperty("coordinatedParameters", out _) || root.TryGetProperty("selectedComponentIds", out _) || root.TryGetProperty("coordinatedPreview", out _))
+                throw InvalidState("Older sessions cannot contain coordinated facts, including null.");
+            if (number == 3)
+            {
+                if (root.TryGetProperty("ellipsoidParameters", out var local))
+                {
+                    MutationPlanJson.RequireProperties(local, "policy", "localTransform");
+                    MutationPlanJson.RequireProperties(local.GetProperty("policy"), "kind", "version");
+                    var transform = local.GetProperty("localTransform");
+                    MutationPlanJson.RequireProperties(transform, "field", "uniformScale", "numericalPolicy");
+                    MutationPlanJson.RequireProperties(transform.GetProperty("field"), "kind", "version", "coordinateSpace", "center", "outerRadii", "coreFraction");
+                    MutationPlanJson.RequireProperties(transform.GetProperty("field").GetProperty("center"), "x", "y", "z");
+                    MutationPlanJson.RequireProperties(transform.GetProperty("field").GetProperty("outerRadii"), "x", "y", "z");
+                    MutationPlanJson.RequireProperties(transform.GetProperty("numericalPolicy"), "kind", "version");
+                }
+                if (root.TryGetProperty("ellipsoidPreview", out var preview))
+                    MutationPlanJson.RequireProperties(preview, "previewFingerprint", "planFingerprint", "summaryHash", "contactSheetHash", "summaryPath", "contactSheetPath");
+            }
             if (root.TryGetProperty("experimentalParameters", out var parameters))
             {
                 MutationPlanJson.RequireProperties(parameters, "policy", "pivot");
@@ -28,6 +57,14 @@ public static class GuidedWorkflow
         }
         else if (root.TryGetProperty("experimentalPolicy", out _) || root.TryGetProperty("experimentalParameters", out _))
             throw Errors.InvalidRecipe("GUIDED_EXPERIMENTAL_OPT_IN_REQUIRED", "Legacy sessions cannot contain experimental fields, including null.", "Use a new explicitly acknowledged experimental session.");
+        if ((!root.TryGetProperty("schemaVersion", out var commonVersion) || commonVersion.ValueKind != JsonValueKind.Number || !commonVersion.TryGetInt32(out var commonNumber) || commonNumber != 4)
+            && (root.TryGetProperty("coordinatedParameters", out _) || root.TryGetProperty("selectedComponentIds", out _) || root.TryGetProperty("coordinatedPreview", out _)
+                || (root.TryGetProperty("selectedOperationVersion", out var operationVersion) && operationVersion.ValueKind == JsonValueKind.Number && operationVersion.TryGetInt32(out var operationNumber) && operationNumber == 8)
+                || (root.TryGetProperty("selectedIntent", out var commonIntent) && commonIntent.ValueKind == JsonValueKind.String && commonIntent.GetString() == RecipeScaffoldContract.CoordinatedFieldIntent)))
+            throw InvalidState("Coordinated fields and unions require session schema 4, including null.");
+        if ((!root.TryGetProperty("schemaVersion", out var localVersion) || localVersion.ValueKind != JsonValueKind.Number || !localVersion.TryGetInt32(out var localNumber) || localNumber != 3)
+            && (root.TryGetProperty("ellipsoidParameters", out _) || root.TryGetProperty("ellipsoidPreview", out _)))
+            throw Errors.InvalidRecipe("GUIDED_ELLIPSOID_VERSION_REQUIRED", "Local-field parameters and preview identities require session schema 3, including when null.", "Keep old sessions intact or start a new opted-in session.");
     }
 
     public static GuidedWorkflowSession CreateSession(
@@ -64,7 +101,7 @@ public static class GuidedWorkflow
 
         return new GuidedWorkflowSession
         {
-            SchemaVersion = experimental ? 2 : 1,
+            SchemaVersion = experimental ? 3 : 1,
             ExperimentalPolicy = experimental ? new("preserve_unverified", 1) : null,
             SessionId = $"guided-{Guid.NewGuid():N}",
             CataloguePath = cataloguePath,
@@ -76,9 +113,10 @@ public static class GuidedWorkflow
     public static void ValidateSession(GuidedWorkflowSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
-        if (session.SchemaVersion is not (1 or 2)
+        if (session.SchemaVersion is not (1 or 2 or 3 or 4)
             || (session.SchemaVersion == 1 && (session.ExperimentalPolicy is not null || session.ExperimentalParameters is not null || session.SelectedOperationVersion is 5 or 6))
-            || (session.SchemaVersion == 2 && session.ExperimentalPolicy is not { Kind: "preserve_unverified", Version: 1 })
+            || (session.SchemaVersion is 2 or 3 or 4 && session.ExperimentalPolicy is not { Kind: "preserve_unverified", Version: 1 })
+            || (session.SchemaVersion != 3 && (session.EllipsoidParameters is not null || session.EllipsoidPreview is not null || session.SelectedOperationVersion == 7))
             || (session.ExperimentalParameters is { } options && (options.Policy != session.ExperimentalPolicy
                 || session.SelectedOperationVersion is not (5 or 6)
                 || options.Pivot.Kind != "explicit_point" || options.Pivot.ReferenceLod is not null
@@ -105,6 +143,9 @@ public static class GuidedWorkflow
                 "The guided session does not satisfy its versioned interaction contract.",
                 "Start a new session or restore an intact session file.");
         }
+
+        ValidateEllipsoidSession(session);
+        ValidateCoordinatedSession(session);
 
 
         if ((session.Status == GuidedWorkflowContract.CompleteStatus) != (session.Step == GuidedWorkflowContract.CompleteStep))
@@ -241,7 +282,7 @@ public static class GuidedWorkflow
         var result = new List<GuidedComponentChoice>();
         foreach (var candidate in discovery.Candidates)
         {
-            var actions = CreateActions(candidate.Capabilities, discovery.SchemaVersion == 3 && discovery.ExperimentalPolicy is { Kind: "preserve_unverified", Version: 1 });
+            var actions = CreateActions(candidate.Capabilities, discovery.SchemaVersion is 3 or 4 && discovery.ExperimentalPolicy is { Kind: "preserve_unverified", Version: 1 }, discovery.SchemaVersion == 4);
             if (actions.Count == 0)
             {
                 continue;
@@ -308,6 +349,8 @@ public static class GuidedWorkflow
                 .SelectMany(operation => operation.GeometryTargets)
                 .Sum(target => target.SelectedVertexCount)
                 + operations.SelectMany(operation => operation.ExperimentalTransformTarget?.GeometryTargets ?? []).Sum(target => target.SelectedVertexCount)
+                + operations.SelectMany(operation => operation.EllipsoidTransformTarget?.Buffers ?? []).Sum(target => target.VertexCount)
+                + operations.SelectMany(operation => operation.CoordinatedTransformTarget?.Buffers ?? []).Sum(target => target.VertexCount)
                 + operations
                     .Where(operation => operation.CoupledTransformTarget is not null)
                     .Sum(operation => operation.CoupledTransformTarget!.Visual.VertexCount),
@@ -401,7 +444,7 @@ public static class GuidedWorkflow
 
     private static List<GuidedActionChoice> CreateActions(
         IReadOnlyList<ComponentCapability> capabilities,
-        bool experimental)
+        bool experimental, bool ellipsoid)
     {
         var actions = new List<GuidedActionChoice>();
         foreach (var capability in capabilities
@@ -474,11 +517,16 @@ public static class GuidedWorkflow
 
         if (experimental)
         {
-            foreach (var capability in capabilities.Where(c => c.OperationKind == "transform_component" && c.OperationVersion is 5 or 6 && c.Availability == "available"))
+            foreach (var capability in capabilities.Where(c => c.OperationKind == "transform_component" && c.OperationVersion is 5 or 6 && c.Availability == "available").DistinctBy(c => c.OperationVersion))
                 actions.Add(new($"transform_component@{capability.OperationVersion}:experimental",
                     capability.OperationVersion == 5 ? "Experimental whole-part scale" : "Experimental region scale",
                     capability.OperationVersion == 5 ? RecipeScaffoldContract.UniformScaleIntent : RecipeScaffoldContract.RegionScaleIntent,
                     "transform_component", capability.OperationVersion, true, false, false));
+        }
+        if (ellipsoid && experimental && capabilities.Any(c => c.OperationKind == "transform_component" && c.OperationVersion == 7 && c.Availability == "available"))
+        {
+            actions.Add(new("transform_component@7:ellipsoid", "Experimental local ellipsoid scale", RecipeScaffoldContract.EllipsoidScaleIntent, "transform_component", 7, true, false, false));
+            actions.Add(new("transform_component@7:mirrored-ellipsoids", "Experimental disjoint mirrored ellipsoids (exact parameters must pass planning)", RecipeScaffoldContract.MirroredEllipsoidScaleIntent, "transform_component", 7, true, false, false));
         }
         return actions;
     }
