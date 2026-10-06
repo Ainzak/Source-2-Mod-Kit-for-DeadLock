@@ -188,6 +188,8 @@ public sealed record TransformPlanningResult(
     public PlannedEllipsoidTransformTarget? EllipsoidTransformTarget { get; init; }
 
     public PlannedCoordinatedTransformTarget? CoordinatedTransformTarget { get; init; }
+
+    public PlannedDirectionalTransformTarget? DirectionalTransformTarget { get; init; }
 }
 
 public sealed record AffineSelectionBoundsEvidence(
@@ -280,6 +282,15 @@ public interface IS2ModKitApplication
 
     Task<CoordinatedSelectionPreview> PreviewCoordinatedSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken token = default) =>
         throw Errors.Unsupported("COORDINATED_PREVIEW_UNAVAILABLE", "Coordinated preview is not configured.", "Configure a compatible adapter.");
+
+    Task<DirectionalSelectionPreview> PreviewDirectionalSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken token = default) =>
+        throw Errors.Unsupported("DIRECTIONAL_PREVIEW_UNAVAILABLE", "Directional surface preview is not configured.", "Configure a compatible adapter.");
+
+    Task<ComponentDiscoveryResultV2> DiscoverDirectionalComponentsAsync(string projectRoot, CancellationToken token = default) =>
+        throw Errors.Unsupported("DIRECTIONAL_DISCOVERY_UNAVAILABLE", "Directional discovery is not configured.", "Configure a compatible adapter.");
+
+    Task<DirectionalAuthoringSource> InspectDirectionalSelectionAsync(string projectRoot, IReadOnlyList<string> componentIds, CancellationToken token = default) =>
+        throw Errors.Unsupported("DIRECTIONAL_AUTHORING_READER_REQUIRED", "Directional authoring inspection is not configured.", "Configure a compatible source reader.");
 
     Task<ComponentDiscoveryResultV2> DiscoverEllipsoidComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
         throw Errors.Unsupported("ELLIPSOID_DISCOVERY_UNAVAILABLE", "This application cannot probe local fields.", "Use a configured single-field planner.");

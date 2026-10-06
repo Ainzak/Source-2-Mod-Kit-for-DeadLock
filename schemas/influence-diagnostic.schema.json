@@ -1,0 +1,516 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Read-only Source 2 influence diagnostic v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "resourcePath",
+    "inputHash",
+    "codec",
+    "adapterVersion",
+    "mutationPermission",
+    "dependencyClosureStatus",
+    "fieldScope",
+    "presentLods",
+    "rootBones",
+    "dependencies",
+    "meshes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "source2_influence_diagnostic"
+      ]
+    },
+    "resourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "codec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "apiProfile",
+        "platform",
+        "binaryHash",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binaryHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "adapterVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mutationPermission": {
+      "enum": [
+        false
+      ]
+    },
+    "dependencyClosureStatus": {
+      "enum": [
+        "not_verified"
+      ]
+    },
+    "fieldScope": {
+      "enum": [
+        "no_field",
+        "hypothetical_all_reported_buffers_positions_only"
+      ]
+    },
+    "fieldOptionsHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "presentLods": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "rootBones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/rootBone"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/dependency"
+      }
+    },
+    "meshes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/mesh"
+      }
+    }
+  },
+  "definitions": {
+    "rootBone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "name",
+        "isProceduralCloth"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isProceduralCloth": {
+          "type": "boolean"
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "status"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "payloadHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "mesh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "lodMask",
+        "status",
+        "remap",
+        "buffers"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lodMask": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "reported",
+            "unsupported"
+          ]
+        },
+        "failure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remapHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "remap": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "buffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/buffer"
+          }
+        },
+        "sourceLabel": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "buffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bufferOrdinal",
+        "vertexResourceBlockIndex",
+        "vertexCount",
+        "decodedHash",
+        "sourceBounds",
+        "drawCallIds",
+        "indexedVertices",
+        "completeIndexedCoverage",
+        "characterizedPackedFrames",
+        "proceduralVertices",
+        "observedGateReasons",
+        "admissionStatus",
+        "bones",
+        "materials",
+        "indexBuffers"
+      ],
+      "properties": {
+        "bufferOrdinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertexResourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decodedHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sourceBounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "min",
+            "max"
+          ],
+          "properties": {
+            "min": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            "max": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "drawCallIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "indexedVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completeIndexedCoverage": {
+          "type": "boolean"
+        },
+        "characterizedPackedFrames": {
+          "type": "boolean"
+        },
+        "proceduralVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observedGateReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "admissionStatus": {
+          "enum": [
+            "not_assessed_full_planner_required"
+          ]
+        },
+        "fieldEffects": {
+          "$ref": "#/definitions/effects"
+        },
+        "bones": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/bone"
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "indexBuffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/indexBuffer"
+          }
+        }
+      }
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fullVertices",
+        "transitionVertices",
+        "pinnedVertices",
+        "changedPositionVertices",
+        "unchangedPositionVertices",
+        "changedProceduralVertices",
+        "maximumDisplacement",
+        "frameEffectsStatus"
+      ],
+      "properties": {
+        "fullVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitionVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pinnedVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedPositionVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchangedPositionVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedProceduralVertices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "frameEffectsStatus": {
+          "enum": [
+            "not_assessed"
+          ]
+        }
+      }
+    },
+    "bone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "renderBoneIndex",
+        "renderBoneName",
+        "rootBoneIndex",
+        "rootBoneName",
+        "isProceduralCloth",
+        "inverseBindHash",
+        "contributorCount",
+        "contributorSetHash"
+      ],
+      "properties": {
+        "renderBoneIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "renderBoneName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootBoneIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rootBoneName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isProceduralCloth": {
+          "type": "boolean"
+        },
+        "inverseBindHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "contributorSetHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "changedPositionContributors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pinnedContributors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchangedPositionContributors": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "indexBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "resourceBlockIndex",
+        "indexCount",
+        "decodedHash"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decodedHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

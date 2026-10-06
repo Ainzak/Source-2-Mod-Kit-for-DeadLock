@@ -18,6 +18,7 @@ public static class RecipeScaffoldContract
     public const string EllipsoidScaleIntent = "ellipsoid-scale";
     public const string MirroredEllipsoidScaleIntent = "mirrored-ellipsoid-scale";
     public const string CoordinatedFieldIntent = "coordinated-field";
+    public const string DirectionalFieldIntent = "directional-field";
 }
 
 public sealed record EllipsoidScaffoldOptions(RuntimeMetadataPolicy Policy, EllipsoidVisualTransform LocalTransform);
@@ -47,7 +48,8 @@ public sealed record RecipeScaffoldRequest(
     bool ExperimentalDiscovery = false,
     EllipsoidScaffoldOptions? Ellipsoid = null,
     int ExperimentalDiscoverySchemaVersion = 3,
-    CoordinatedScaffoldOptions? Coordinated = null);
+    CoordinatedScaffoldOptions? Coordinated = null,
+    DirectionalScaffoldOptions? Directional = null);
 
 public sealed record RecipeScaffoldResult(
     string OutputPath,
@@ -78,6 +80,16 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         var union = ComponentCandidateUnionBuilder.Create(model, candidates, discovery.SchemaVersion);
         var selectedDrawCalls = union.SelectedDrawCalls;
         var matchesByLod = CreateLodCounts(model, selectedDrawCalls);
+        if (request.Directional is not null || request.Intent == RecipeScaffoldContract.DirectionalFieldIntent)
+        {
+            if (request.Directional is null || request.Intent != RecipeScaffoldContract.DirectionalFieldIntent
+                || !request.ExperimentalDiscovery || discovery.SchemaVersion != 6 || discovery.ExperimentalPolicy != request.Directional.Policy
+                || request.Coordinated is not null || request.Ellipsoid is not null || request.Experimental is not null || request.Affine is not null || request.ReferenceLod is not null
+                || request.UniformScale is not null || request.TranslationX is not null || request.TranslationY is not null || request.TranslationZ is not null
+                || request.MaximumCollisionDisplacement is not null || request.MaximumVertexDisplacement is not null)
+                throw Errors.InvalidRecipe("SCAFFOLD_DIRECTIONAL_OPTIONS_INVALID", "Directionality requires schema-6 opt-in and one complete source-bound options object without unrelated parameters.", "Use current directional candidate IDs and explicit field/protection options.");
+            return DirectionalAuthoring.CreateRecipe(input, model, union, request.Directional);
+        }
         if (request.Coordinated is not null || request.Intent == RecipeScaffoldContract.CoordinatedFieldIntent)
         {
             if (request.Coordinated is null || request.Intent != RecipeScaffoldContract.CoordinatedFieldIntent
@@ -114,6 +126,8 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
             return ExperimentalComponentDiscoveryService.CreateRecipe(input, model, union,
                 request.Experimental, request.UniformScale.Value, request.MaximumVertexDisplacement.Value);
         }
+        if (discovery.SchemaVersion == 6)
+            throw Errors.InvalidRecipe("SCAFFOLD_DIRECTIONAL_OPTIONS_INVALID", "Schema-6 discovery is reserved for directional authoring.", "Use the matching directional-field intent and options.");
         if ((discovery.SchemaVersion is 3 or 4 or 5 && !request.ExperimentalDiscovery) || request.Intent == RecipeScaffoldContract.RegionScaleIntent)
             throw Errors.InvalidRecipe("SCAFFOLD_EXPERIMENTAL_OPT_IN_REQUIRED", "Experimental candidates and region intent require explicit policy acknowledgement.", "Use experimental discovery/scaffolding or keep the strict workflow.");
         if (request.Intent == RecipeScaffoldContract.AffineIntent)
@@ -250,7 +264,7 @@ public sealed partial class ComponentRecipeScaffolder(IComponentCapabilityAnalyz
         }
 
         var computedHash = ContentHash.Compute(input.Bytes.Span);
-        if (discovery.SchemaVersion is not (2 or 3 or 4 or 5)
+        if (discovery.SchemaVersion is not (2 or 3 or 4 or 5 or 6)
             || computedHash != input.ContentHash
             || input.ContentHash != model.Artifact.ContentHash
             || input.ContentHash != discovery.Model.ContentHash

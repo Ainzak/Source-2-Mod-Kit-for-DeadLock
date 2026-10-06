@@ -161,6 +161,14 @@ public sealed partial class CliContractTests
         public Task<ComponentDiscoveryResultV2> DiscoverCoordinatedComponentsAsync(string projectRoot, CancellationToken token = default) =>
             Task.FromResult(TestDiscovery with { SchemaVersion = 5, ExperimentalPolicy = new("preserve_unverified", 1) });
 
+        public Task<ComponentDiscoveryResultV2> DiscoverDirectionalComponentsAsync(string projectRoot, CancellationToken token = default) =>
+            Task.FromResult(TestDiscovery with
+            {
+                SchemaVersion = 6,
+                ExperimentalPolicy = new("preserve_unverified", 1),
+                Candidates = TestDiscovery.Candidates.Select(c => c with { Capabilities = [new("transform_component", 9, "unsupported", [new("DIRECTIONAL_OPTIONS_REQUIRED", "Synthetic structural mapping.")], [])] }).ToArray()
+            });
+
         public Task<CoordinatedSelectionProbe> ProbeCoordinatedSelectionAsync(string projectRoot, IReadOnlyList<string> ids, CoordinatedScaffoldOptions options, CancellationToken token = default) =>
             Task.FromResult(new CoordinatedSelectionProbe(TestDiscovery.DiscoveryFingerprint, ids,
                 [new("first", [new(0, ["dc_0123456789abcdef01234567"], 3)]), new("second", [new(0, ["dc_111111111111111111111111"], 3)])],

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://s2modkit.local/schemas/component-discovery.schema.json",
-  "title": "S2ModKit component discovery v5 with strict v2/v3/v4 compatibility",
+  "title": "S2ModKit directional discovery v6 with strict v2-v5 compatibility",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,8 @@
         2,
         3,
         4,
-        5
+        5,
+        6
       ]
     },
     "model": {
@@ -331,7 +332,7 @@
     },
     "capabilities": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 1,
       "items": {
         "$ref": "#/definitions/capability"
       }
@@ -361,7 +362,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ]
         },
         "availability": {
@@ -487,7 +489,8 @@
                           ]
                         }
                       }
-                    }
+                    },
+                    "minItems": 2
                   }
                 }
               }
@@ -525,7 +528,8 @@
                           ]
                         }
                       }
-                    }
+                    },
+                    "minItems": 2
                   }
                 }
               }
@@ -556,7 +560,8 @@
                           ]
                         }
                       }
-                    }
+                    },
+                    "minItems": 2
                   }
                 }
               }
@@ -572,11 +577,47 @@
               "enum": [
                 5
               ]
+            },
+            "candidates": {
+              "items": {
+                "properties": {
+                  "capabilities": {
+                    "items": {
+                      "properties": {
+                        "operationVersion": {
+                          "enum": [
+                            1,
+                            2,
+                            4,
+                            5,
+                            6,
+                            7,
+                            8
+                          ]
+                        }
+                      }
+                    },
+                    "minItems": 2
+                  }
+                }
+              }
             }
           },
           "required": [
             "experimentalPolicy"
           ]
+        },
+        {
+          "required": [
+            "experimentalPolicy"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "enum": [
+                6
+              ]
+            }
+          }
         }
       ]
     }

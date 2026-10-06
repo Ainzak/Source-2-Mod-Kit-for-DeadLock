@@ -77,6 +77,9 @@ public sealed record TransformComponentOperation : RecipeOperation
     public CoordinatedVisualTransform? CoordinatedTransform { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DirectionalVisualTransform? DirectionalTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ZeroBoneBoxPolicy? ZeroBoneBoxPolicy { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

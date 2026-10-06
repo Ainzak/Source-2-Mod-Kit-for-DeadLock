@@ -7,13 +7,15 @@ public sealed partial class ModelVerifier
     private static VerificationResult VerifyCoordinatedSnapshot(ModelSnapshot before, ModelSnapshot after, MutationPlan plan)
     {
         var operation = plan.Operations.Single();
-        var target = operation.CoordinatedTransformTarget!;
+        var sourceBlocks = operation.DirectionalTransformTarget?.SourceBlocks ?? operation.CoordinatedTransformTarget!.SourceBlocks;
+        var buffers = operation.DirectionalTransformTarget?.Buffers ?? operation.CoordinatedTransformTarget!.Buffers;
+        var prefix = operation.DirectionalTransformTarget is null ? "coordinated" : "directional";
         var boundaries = new List<BoundaryEvidence>();
         void Check(string name, bool passed) => boundaries.Add(new(name, passed ? "passed" : "failed",
             passed ? "Snapshot postcondition verified; resource-level box/preservation audit is separately required." : "Experimental snapshot postcondition failed."));
-        Check("coordinated_source_inventory", before.Artifact.ContentHash == plan.InputHash
-            && target.SourceBlocks.Count == before.Artifact.Blocks.Count
-            && target.SourceBlocks.All(b => before.Artifact.Blocks.Any(a => a.Index == b.Index && a.Type == b.Type && a.ContentHash == b.InputHash)));
+        Check($"{prefix}_source_inventory", before.Artifact.ContentHash == plan.InputHash
+            && sourceBlocks.Count == before.Artifact.Blocks.Count
+            && sourceBlocks.All(b => before.Artifact.Blocks.Any(a => a.Index == b.Index && a.Type == b.Type && a.ContentHash == b.InputHash)));
         Check("all_draw_calls_preserved", DictionariesEqual(Multiset(Flatten(before)), Multiset(Flatten(after))));
         Check("lod_inventory_preserved", before.Lods.Select(lod => lod.Level).Order().SequenceEqual(after.Lods.Select(lod => lod.Level).Order()));
         var original = before.Artifact.Blocks.ToDictionary(block => (block.Index, block.Type));
@@ -24,14 +26,14 @@ public sealed partial class ModelVerifier
         Check("target_block_fingerprints", mutable.All(item => original.TryGetValue(item.Key, out var block) && block.ContentHash == item.Value.InputHash));
         // Retained authored boxes may require no word changes; their MDAT remains an allowed
         // target but need not change. Every selected MVTX must have a nonempty position effect.
-        Check("selected_vertex_blocks_changed", inventory && target.Buffers.All(item =>
+        Check("selected_vertex_blocks_changed", inventory && buffers.All(item =>
             original.TryGetValue((item.VertexResourceBlockIndex, "MVTX"), out var source)
             && output.TryGetValue((item.VertexResourceBlockIndex, "MVTX"), out var current) && source.ContentHash != current.ContentHash));
         Check("non_target_blocks_byte_identical", inventory && original.Where(item => !mutable.ContainsKey(item.Key))
             .All(item => output[item.Key].ContentHash == item.Value.ContentHash));
         var meshes = after.Lods.SelectMany(lod => lod.Meshes.Select(mesh => ((lod.Level, mesh.MeshOrdinal), mesh))).ToDictionary();
         var oldMeshes = before.Lods.SelectMany(lod => lod.Meshes.Select(mesh => ((lod.Level, mesh.MeshOrdinal), mesh))).ToDictionary();
-        var geometryMatches = target.Buffers.All(item =>
+        var geometryMatches = buffers.All(item =>
         {
             if (!oldMeshes.TryGetValue((item.Lod, item.MeshOrdinal), out var oldMesh)
                 || !meshes.TryGetValue((item.Lod, item.MeshOrdinal), out var newMesh)
@@ -51,7 +53,7 @@ public sealed partial class ModelVerifier
                 && oldIndex.DecodedHash == item.DecodedIndexBufferHash && newGeometry.IndexBuffers[item.IndexBufferOrdinal] == oldIndex
                 && oldGeometry.Codec == item.Codec && newGeometry.Codec == item.Codec;
         });
-        Check("coordinated_snapshot_postconditions", geometryMatches);
+        Check($"{prefix}_snapshot_postconditions", geometryMatches);
         return new(boundaries.All(boundary => boundary.Status == "passed"), boundaries, []);
     }
 

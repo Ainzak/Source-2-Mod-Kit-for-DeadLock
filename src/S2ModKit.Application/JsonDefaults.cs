@@ -27,7 +27,7 @@ public static class JsonDefaults
 
             var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
                 ?? throw Errors.InvalidRecipe("JSON_NULL_DOCUMENT", $"{description} cannot be null.", "Provide a JSON object matching the published schema.");
-            if (result is RecipeDocument { SchemaVersion: 8 or 9 } recipe)
+            if (result is RecipeDocument { SchemaVersion: 8 or 9 or 10 } recipe)
             {
                 // Shape dispatch already forbids a serialized legacy transform, including
                 // null. Remove only the old CLR initializer revived by its absence.
@@ -36,13 +36,15 @@ public static class JsonDefaults
                     Operations = recipe.Operations.Select(operation => operation is TransformComponentOperation transform
                     ? transform with { Transform = null! } : operation).ToArray()
                 };
-                if (recipe.SchemaVersion == 9) CoordinatedContractValidator.ValidateRecipe(recipe);
+                if (recipe.SchemaVersion == 10) DirectionalContractValidator.ValidateRecipe(recipe);
+                else if (recipe.SchemaVersion == 9) CoordinatedContractValidator.ValidateRecipe(recipe);
                 else EllipsoidContractValidator.ValidateRecipe(recipe);
                 result = (T)(object)recipe;
             }
             if (result is EvidenceReport evidence)
             {
-                if (evidence.SchemaVersion == 10) CoordinatedContractValidator.ValidateEvidence(evidence);
+                if (evidence.SchemaVersion == 11) DirectionalContractValidator.ValidateEvidence(evidence);
+                else if (evidence.SchemaVersion == 10) CoordinatedContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
                 else ExperimentalEvidenceValidator.Validate(evidence);
             }
@@ -58,15 +60,38 @@ public static class JsonDefaults
         }
     }
 
-    public static byte[] SerializeToUtf8<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, Options);
+    public static byte[] SerializeToUtf8<T>(T value)
+    {
+        ValidateDirectionalWrite(value);
+        return JsonSerializer.SerializeToUtf8Bytes(value, Options);
+    }
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value)
+    {
+        ValidateDirectionalWrite(value);
+        return JsonSerializer.Serialize(value, Options);
+    }
+
+    private static void ValidateDirectionalWrite<T>(T value)
+    {
+        if (value is RecipeDocument oldRecipe && oldRecipe.SchemaVersion != 10
+            && oldRecipe.Operations?.OfType<TransformComponentOperation>().Any(op => op.Version == 9 || op.DirectionalTransform is not null) == true)
+            throw DirectionalContractJson.Invalid("Directional intent cannot be written in an old recipe.");
+        if (value is MutationPlan oldPlan && oldPlan.SchemaVersion != 6 && oldPlan.Operations?.Any(op => op is { Version: 9 } || op?.DirectionalTransformTarget is not null) == true)
+            throw DirectionalContractJson.Invalid("Directional targets cannot be written in an old plan.");
+        if (value is EvidenceReport oldReport && oldReport.SchemaVersion != 11 && oldReport.Operations?.Any(op => op is { Version: 9 } || op?.DirectionalTransform is not null) == true)
+            throw DirectionalContractJson.Invalid("Directional evidence cannot be written in an old report.");
+        if (value is RecipeDocument { SchemaVersion: 10 } recipe) DirectionalContractValidator.ValidateRecipe(recipe);
+        if (value is MutationPlan { SchemaVersion: 6 } plan) DirectionalContractValidator.ValidatePlan(plan);
+        if (value is EvidenceReport { SchemaVersion: 11 } report) DirectionalContractValidator.ValidateEvidence(report);
+    }
 
     private static void ValidateExperimentalRecipeShape(ReadOnlySpan<byte> json)
     {
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (DirectionalContractJson.RecipeShape(root)) return;
         if (CoordinatedContractJson.RecipeShape(root)) return;
         if (EllipsoidContractJson.RecipeShape(root)) return;
         var versions = root.EnumerateObject().Where(property => property.Name == "schemaVersion").ToArray();

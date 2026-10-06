@@ -123,7 +123,8 @@ public sealed partial class Source2CompiledModelAdapter
         TransformPlanningRequest request,
         ParsedModel parsed,
         SelectedDrawCall[] selected,
-        bool preserveAuthoredEnvelopes)
+        bool preserveAuthoredEnvelopes,
+        bool completeOrdinaryBuffer = false)
     {
         if (preserveAuthoredEnvelopes && request.Operation.Version is not (5 or 6 or 7))
         {
@@ -258,6 +259,15 @@ public sealed partial class Source2CompiledModelAdapter
                 "AFFINE_LAYOUT_UNSUPPORTED",
                 $"Affine selection kind '{request.Operation.Granularity}' is unsupported.",
                 "Use draw_call_vertices or connected_component_vertices.");
+        }
+
+        // The new complete-buffer profile owns unindexed records too. Legacy selections keep
+        // their indexed-only admission. Every draw call using the pair must be explicitly owned.
+        if (completeOrdinaryBuffer)
+        {
+            if (geometry.DrawCalls.Any(call => call.Snapshot.VertexBufferOrdinal == selectedOrdinal && !selectedIds.Contains(call.Snapshot.DrawCallId)))
+                throw Errors.Unsupported("AFFINE_MULTI_BUFFER_OWNERSHIP_UNSUPPORTED", "A complete buffer has unselected draw calls.", "Select every draw call using this buffer.");
+            selectedVertices = Enumerable.Range(0, vertices.Snapshot.VertexCount).ToArray();
         }
 
         if (selectedVertices.Length == 0)

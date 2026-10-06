@@ -18,6 +18,8 @@ public sealed partial class Source2CompiledModelAdapter
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.SchemaVersion == 6 || plan.Operations.Any(o => o.Version == 9 || o.DirectionalTransformTarget is not null))
+            return !HasIncompleteMdatCoverage(model) && !SelectsSharedLodMesh(model, plan) && CanRewriteDirectional(model, plan);
         if (plan.SchemaVersion == 5 || plan.Operations.Any(o => o.Version == 8 || o.CoordinatedTransformTarget is not null))
             return !HasIncompleteMdatCoverage(model) && !SelectsSharedLodMesh(model, plan) && CanRewriteCoordinated(model, plan);
         if (plan.SchemaVersion == 4 || plan.Operations.Any(o => o.Version == 7 || o.EllipsoidTransformTarget is not null))
@@ -109,6 +111,11 @@ public sealed partial class Source2CompiledModelAdapter
         if (!CanRewrite(model, plan))
         {
             throw Errors.Unsupported("REWRITE_CAPABILITY_UNAVAILABLE", "The mutation plan does not match a supported Source 2 rewrite profile.", "Re-inspect the compiled model and create a supported, single-kind mutation plan.");
+        }
+
+        if (IsDirectionalPlan(plan))
+        {
+            return Task.FromResult(RewriteDirectional(input, model, plan, cancellationToken));
         }
 
         if (IsCoordinatedPlan(plan))

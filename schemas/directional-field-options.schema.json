@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/directional-field-options/v1",
+  "title": "Explicit source-bound directional field options v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "inputHash",
+    "policy",
+    "zeroBoneBoxPolicy",
+    "zeroRenderSpherePolicy",
+    "field",
+    "protection",
+    "maximumDisplacement"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "directional_field_options"
+      ]
+    },
+    "inputHash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "ellipsoid-contracts.schema.json#/definitions/runtimeMetadataPolicy"
+    },
+    "zeroBoneBoxPolicy": {
+      "$ref": "directional-contracts.schema.json#/definitions/zeroBoneBoxPolicy"
+    },
+    "zeroRenderSpherePolicy": {
+      "$ref": "directional-contracts.schema.json#/definitions/zeroRenderSpherePolicy"
+    },
+    "field": {
+      "$ref": "directional-contracts.schema.json#/definitions/directionalEllipsoidField"
+    },
+    "protection": {
+      "$ref": "directional-contracts.schema.json#/definitions/directionalProtection"
+    },
+    "maximumDisplacement": {
+      "exclusiveMinimum": 0,
+      "maximum": 64,
+      "type": "number"
+    }
+  }
+}

@@ -34,6 +34,9 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CoordinatedTransformEvidence? CoordinatedTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DirectionalTransformEvidence? DirectionalTransform { get; init; }
 }
 
 public sealed record ExperimentalBoxEvidence(

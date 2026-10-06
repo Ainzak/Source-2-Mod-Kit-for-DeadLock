@@ -272,12 +272,14 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreateCatalogueCommand(output, error));
         root.Subcommands.Add(CreateCompatibilityCommand(output, error));
         root.Subcommands.Add(CreateBoundsCommand(output, error));
+        root.Subcommands.Add(CreateInfluencesCommand(output, error));
         root.Subcommands.Add(CreateProjectCommand(output, error));
         root.Subcommands.Add(CreateInspectCommand(output, error));
         root.Subcommands.Add(CreateComponentsCommand(output, error));
         root.Subcommands.Add(CreateRecipeCommand(output, error));
         root.Subcommands.Add(CreatePlanCommand(output, error));
         root.Subcommands.Add(CreateSelectionPreviewCommand(output, error));
+        root.Subcommands.Add(CreateDirectionalCommand(output, error));
         root.Subcommands.Add(CreateBuildCommand(output, error));
         root.Subcommands.Add(CreateVerifyCommand(output, error));
         root.Subcommands.Add(CreatePackageCommand(output, error));
@@ -448,12 +450,16 @@ public sealed partial class S2ModKitCli
         list.Options.Add(experimental);
         var coordinated = new Option<bool>("--coordinated") { Description = "Probe coordinated multi-buffer selections under discovery schema 5; requires --experimental." };
         list.Options.Add(coordinated);
+        var directional = new Option<bool>("--directional") { Description = "Discover structural mappings under schema 6; requires --experimental. Field/protection admission follows scaffolding." };
+        list.Options.Add(directional);
         list.SetAction((parseResult, cancellationToken) => ExecuteAsync(
             "components.list",
             IsJson(parseResult.GetRequiredValue(format)),
             output,
             error,
-            () => parseResult.GetValue(coordinated)
+            () => parseResult.GetValue(directional)
+                ? DiscoverDirectionalCliAsync(parseResult.GetRequiredValue(project), parseResult.GetValue(experimental), parseResult.GetValue(coordinated), cancellationToken)
+                : parseResult.GetValue(coordinated)
                 ? DiscoverCoordinatedCliAsync(parseResult.GetRequiredValue(project), parseResult.GetValue(experimental), cancellationToken)
                 : parseResult.GetValue(experimental)
                 ? application.DiscoverEllipsoidComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)
@@ -485,7 +491,7 @@ public sealed partial class S2ModKitCli
             RecipeScaffoldContract.TranslateIntent,
             RecipeScaffoldContract.AffineIntent,
             RecipeScaffoldContract.RegionScaleIntent,
-            RecipeScaffoldContract.EllipsoidScaleIntent, RecipeScaffoldContract.MirroredEllipsoidScaleIntent, RecipeScaffoldContract.CoordinatedFieldIntent);
+            RecipeScaffoldContract.EllipsoidScaleIntent, RecipeScaffoldContract.MirroredEllipsoidScaleIntent, RecipeScaffoldContract.CoordinatedFieldIntent, RecipeScaffoldContract.DirectionalFieldIntent);
         var outputPath = RequiredStringOption("--output", "New recipe JSON path; existing files are never overwritten.");
         var scale = new Option<string?>("--scale")
         {
@@ -536,6 +542,7 @@ public sealed partial class S2ModKitCli
         var mirrorAxis = new Option<string?>("--mirror-axis") { Description = "Explicit model-axis mirror plane x, y or z; mirrored-ellipsoid-scale only." };
         var mirrorCoordinate = new Option<string?>("--mirror-coordinate") { Description = "Explicit finite mirror plane coordinate; no anatomical default." };
         var coordinatedOptions = new Option<string?>("--coordinated-options") { Description = "Typed common-field and explicit preservation policies JSON; coordinated-field intent only." };
+        var directionalOptions = new Option<string?>("--directional-options") { Description = "Typed source-bound per-axis field and keep-fixed assertions JSON; directional-field intent only." };
         foreach (var option in new Option[]
                  {
                      project,
@@ -561,7 +568,7 @@ public sealed partial class S2ModKitCli
                      frame,
                      frameBone,
                     experimental, regionAxis, pinnedThrough, fullFrom,
-                    fieldCenter, fieldRadii, coreFraction, mirrorAxis, mirrorCoordinate, coordinatedOptions,
+                    fieldCenter, fieldRadii, coreFraction, mirrorAxis, mirrorCoordinate, coordinatedOptions, directionalOptions,
                  })
         {
             scaffold.Options.Add(option);
@@ -572,7 +579,7 @@ public sealed partial class S2ModKitCli
             json: true,
             output,
             error,
-            async () => await application.ScaffoldRecipeAsync(
+            async () => await ScaffoldCliAsync(
                 parseResult.GetRequiredValue(project),
                 new RecipeScaffoldRequest(
                     parseResult.GetValue(component) ?? [],
@@ -605,8 +612,9 @@ public sealed partial class S2ModKitCli
                     ExperimentalDiscovery: parseResult.GetValue(experimental),
                     Ellipsoid: ParseEllipsoidScaffoldOptions(parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent),
                         parseResult.GetValue(fieldCenter), parseResult.GetValue(fieldRadii), parseResult.GetValue(coreFraction), parseResult.GetValue(scale), parseResult.GetValue(maximumDisplacement), parseResult.GetValue(mirrorAxis), parseResult.GetValue(mirrorCoordinate)),
-                    ExperimentalDiscoverySchemaVersion: parseResult.GetRequiredValue(intent) == RecipeScaffoldContract.CoordinatedFieldIntent ? 5 : 4,
-                    Coordinated: await ReadCoordinatedOptionsAsync(parseResult.GetValue(coordinatedOptions), parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent), cancellationToken).ConfigureAwait(false)),
+                    ExperimentalDiscoverySchemaVersion: parseResult.GetRequiredValue(intent) == RecipeScaffoldContract.DirectionalFieldIntent ? 6 : parseResult.GetRequiredValue(intent) == RecipeScaffoldContract.CoordinatedFieldIntent ? 5 : 4,
+                    Coordinated: await ReadCoordinatedOptionsAsync(parseResult.GetValue(coordinatedOptions), parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent), cancellationToken).ConfigureAwait(false),
+                    Directional: await ReadDirectionalOptionsAsync(parseResult.GetValue(directionalOptions), parseResult.GetValue(experimental), parseResult.GetRequiredValue(intent), cancellationToken).ConfigureAwait(false)),
                 cancellationToken),
             renderText: null,
             cancellationToken));

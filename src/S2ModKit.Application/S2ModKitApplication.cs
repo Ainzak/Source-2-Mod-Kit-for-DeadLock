@@ -110,9 +110,11 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var (_, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
-        if (request.ExperimentalDiscoverySchemaVersion is not (3 or 4 or 5))
+        if (request.ExperimentalDiscoverySchemaVersion is not (3 or 4 or 5 or 6))
             throw Errors.InvalidRecipe("SCAFFOLD_DISCOVERY_VERSION_INVALID", "Unknown experimental discovery identity version.", "Use schema 3 for historical sessions or schema 4 for local fields.");
-        var discovery = request.Coordinated is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 5)
+        var discovery = request.Directional is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 6)
+            ? await DirectionalAuthoring.DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
+            : request.Coordinated is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 5)
             ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverCoordinatedAsync(input, model, cancellationToken).ConfigureAwait(false)
             : request.Ellipsoid is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 4)
             ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false)
@@ -125,7 +127,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var canonicalJson = JsonDefaults.SerializeToUtf8(recipe);
         var reparsed = JsonDefaults.Deserialize<RecipeDocument>(canonicalJson, "Scaffolded recipe");
         RecipeValidator.Validate(reparsed);
-        if (request.Intent == RecipeScaffoldContract.AffineIntent || request.Experimental is not null || request.Ellipsoid is not null || request.Coordinated is not null)
+        if (request.Intent == RecipeScaffoldContract.AffineIntent || request.Experimental is not null || request.Ellipsoid is not null || request.Coordinated is not null || request.Directional is not null)
         {
             _ = CreatePlan(input, model, reparsed, dependencies);
         }
@@ -195,6 +197,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var before = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
         var plan = CreatePlan(input, before, recipe, dependencies);
         await workspace.SavePlanAsync(projectRoot, plan, cancellationToken).ConfigureAwait(false);
+        if (plan.SchemaVersion == 6 && rewriter is not IDirectionalTransformVerifier)
+            throw Errors.Unsupported("DIRECTIONAL_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent directional resource verifier.", "Keep the plan; no build or package was published.");
 
         if (!rewriter.CanRewrite(before, plan))
         {
@@ -215,6 +219,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var coordinatedVerification = await VerifyCoordinatedAsync(input,
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
+        var directionalVerification = await VerifyDirectionalAsync(input,
+            new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = new List<BoundaryEvidence>
         {
@@ -225,6 +231,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         if (experimentalVerification is not null) boundaries.AddRange(experimentalVerification.Boundaries);
         if (ellipsoidVerification is not null) boundaries.AddRange(ellipsoidVerification.Boundaries);
         if (coordinatedVerification is not null) boundaries.AddRange(coordinatedVerification.Boundaries);
+        if (directionalVerification is not null) boundaries.AddRange(directionalVerification.Boundaries);
         boundaries.Add(externalBoundary);
         boundaries.Add(new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed."));
 
@@ -235,7 +242,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         }
 
         var buildId = $"{plan.Fingerprint.Value[..16]}-{computedOutputHash.Value[..12]}";
-        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification);
+        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification);
         var publication = new BuildPublication(buildId, plan, candidate, reports.RenderJson(evidence), reports.RenderMarkdown(evidence));
         var published = await workspace.PublishBuildAsync(projectRoot, publication, cancellationToken).ConfigureAwait(false);
         var publishedEvidence = JsonDefaults.Deserialize<EvidenceReport>(Encoding.UTF8.GetBytes(published.EvidenceJson), "Published build evidence");
@@ -256,11 +263,13 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var experimentalVerification = await VerifyExperimentalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var ellipsoidVerification = await VerifyEllipsoidAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var coordinatedVerification = await VerifyCoordinatedAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
+        var directionalVerification = await VerifyDirectionalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var candidate = new RewriteCandidate(candidateContent.LogicalPath, candidateContent.Bytes, after);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = internalVerification.Boundaries.Concat(experimentalVerification?.Boundaries ?? [])
             .Concat(ellipsoidVerification?.Boundaries ?? [])
             .Concat(coordinatedVerification?.Boundaries ?? [])
+            .Concat(directionalVerification?.Boundaries ?? [])
             .Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
 
         if (!internalVerification.IsValid || externalBoundary.Status == "failed")
@@ -269,7 +278,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         }
 
         var reportId = $"{buildId}-verify";
-        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification);
+        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification);
         await workspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VerifyRunResult(published, evidence);
     }
@@ -327,6 +336,15 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         return await verifier.VerifyCoordinatedTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<DirectionalTransformVerification?> VerifyDirectionalAsync(
+        ArtifactContent input, ArtifactContent output, MutationPlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.SchemaVersion != 6) return null;
+        if (rewriter is not IDirectionalTransformVerifier verifier)
+            throw Errors.Unsupported("DIRECTIONAL_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent directional resource verifier.", "Do not publish this build.");
+        return await verifier.VerifyDirectionalTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
+    }
+
     private void RequireInspector(ArtifactContent input)
     {
         if (!inspector.CanInspect(input))
@@ -349,7 +367,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         IReadOnlyList<string> warnings,
         ExperimentalTransformVerification? experimentalVerification = null,
         EllipsoidTransformVerification? ellipsoidVerification = null,
-        CoordinatedTransformVerification? coordinatedVerification = null)
+        CoordinatedTransformVerification? coordinatedVerification = null,
+        DirectionalTransformVerification? directionalVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -441,13 +460,20 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
                     throw Errors.Verification("COORDINATED_RESULT_DRIFT", "Observed evidence does not cover every coordinated target exactly.", "Do not publish this output.");
             }
         }
+        if (plan.SchemaVersion == 6)
+        {
+            if (after is not null && directionalVerification is null)
+                throw Errors.Verification("DIRECTIONAL_VERIFICATION_UNAVAILABLE", "Directional publication requires independent resource observations.", "Reject this output.");
+            operationWarnings.Add("Experimental directional edit: static geometry, protection and box policy are checked separately from untested preserved consumers, garment/pose fit, bodygroup activation and live behavior.");
+            if (after is null) boundaries = boundaries.Concat(DirectionalContractValidator.PlannedBoundaries().Where(b => b.Name != "runtime")).ToArray();
+        }
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var report = new EvidenceReport
         {
-            SchemaVersion = plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
+            SchemaVersion = plan.SchemaVersion == 6 ? 11 : plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -460,7 +486,13 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
                 .ToArray(),
             Output = output is null ? null : new ArtifactEvidence(output.LogicalPath, output.ContentHash, output.Bytes.Length, "generated", $"build:{output.ContentHash}", "sha256_and_semantic_reopen"),
             PlanFingerprint = plan.Fingerprint,
-            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification, coordinatedVerification)).ToArray(),
+            Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification, coordinatedVerification) with
+            {
+                DirectionalTransform = operation.DirectionalTransformTarget is { } directional ? new(directional,
+                    new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), directionalVerification?.Observed,
+                    directionalVerification?.Boxes ?? directional.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
+                    directionalVerification?.PreservedMetadata ?? directional.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
+            }).ToArray(),
             Boundaries = boundaries,
             Blocks = CreateBlockEvidence(before, after, plan),
             ToolVersions = toolVersions,
@@ -488,7 +520,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             operation.OperationId,
             operation.Kind,
             operation.Version,
-            operation.CoordinatedTransformTarget is not null
+            operation.CoordinatedTransformTarget is not null || operation.DirectionalTransformTarget is not null
                 ? operation.SelectedDrawCalls.Select(item => item.DrawCallId).Order(StringComparer.Ordinal).ToArray()
                 : operation.SelectedDrawCalls.Select(item => item.DrawCallId).ToArray(),
             operation.SelectedDrawCalls.Select(item => item.ResourcePath).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())

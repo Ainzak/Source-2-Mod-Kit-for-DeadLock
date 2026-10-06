@@ -11,11 +11,11 @@ internal static class EllipsoidDiscoveryJson
         var root = document.RootElement;
         MutationPlanJson.RequireUniqueProperties(root);
         MutationPlanJson.RequireProperties(root, "schemaVersion", "model", "discoveryFingerprint", "analyzer", "candidates", "lineageDiagnostics", "extensions");
-        if (root.GetProperty("schemaVersion").ValueKind != JsonValueKind.Number || !root.GetProperty("schemaVersion").TryGetInt32(out var version) || version is not (2 or 3 or 4 or 5))
+        if (root.GetProperty("schemaVersion").ValueKind != JsonValueKind.Number || !root.GetProperty("schemaVersion").TryGetInt32(out var version) || version is not (2 or 3 or 4 or 5 or 6))
             throw Invalid("Unknown discovery schema version.");
-        if (version is 3 or 4 or 5) MutationPlanJson.RequireProperties(root, "experimentalPolicy");
+        if (version is 3 or 4 or 5 or 6) MutationPlanJson.RequireProperties(root, "experimentalPolicy");
         else if (root.TryGetProperty("experimentalPolicy", out _)) throw Invalid("Strict discovery cannot claim experimental acknowledgement.");
-        if (version is not (4 or 5)) return;
+        if (version is not (4 or 5 or 6)) return;
         MutationPlanJson.RequireProperties(root.GetProperty("model"), "logicalPath", "contentHash", "size");
         MutationPlanJson.RequireProperties(root.GetProperty("analyzer"), "name", "version", "componentVersions");
         MutationPlanJson.RequireProperties(root.GetProperty("experimentalPolicy"), "kind", "version");
@@ -33,12 +33,12 @@ internal static class EllipsoidDiscoveryJson
 
     internal static void Validate(ComponentDiscoveryResultV2 result)
     {
-        if (result.SchemaVersion is not (2 or 3 or 4 or 5) || result.Candidates is null
-            || (result.SchemaVersion is 3 or 4 or 5 && result.ExperimentalPolicy is not { Kind: "preserve_unverified", Version: 1 })
+        if (result.SchemaVersion is not (2 or 3 or 4 or 5 or 6) || result.Candidates is null
+            || (result.SchemaVersion is 3 or 4 or 5 or 6 && result.ExperimentalPolicy is not { Kind: "preserve_unverified", Version: 1 })
             || (result.SchemaVersion == 2 && result.ExperimentalPolicy is not null)
             || result.Candidates.Any(c => c is null || c.Capabilities is null || c.Capabilities.Any(cap => cap is null
-                || cap.OperationVersion is not (1 or 2 or 4 or 5 or 6 or 7 or 8)
-                || (result.SchemaVersion == 2 && cap.OperationVersion > 4) || (result.SchemaVersion == 3 && cap.OperationVersion > 6) || (result.SchemaVersion == 4 && cap.OperationVersion > 7))))
+                || cap.OperationVersion is not (1 or 2 or 4 or 5 or 6 or 7 or 8 or 9)
+                || (result.SchemaVersion == 2 && cap.OperationVersion > 4) || (result.SchemaVersion == 3 && cap.OperationVersion > 6) || (result.SchemaVersion == 4 && cap.OperationVersion > 7) || (result.SchemaVersion == 5 && cap.OperationVersion > 8))))
             throw Invalid("Discovery capabilities do not match their versioned opt-in contract.");
     }
 

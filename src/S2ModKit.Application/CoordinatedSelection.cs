@@ -49,6 +49,9 @@ public static class CoordinatedSelection
         _ = new CoordinatedFieldMath(options.Field, options.MaximumDisplacement);
     }
     public static IReadOnlyList<CoordinatedMember> ResolveMembers(ModelSnapshot model, ComponentCandidateUnion union)
+        => ResolveMembers(model, union, 2);
+
+    internal static IReadOnlyList<CoordinatedMember> ResolveMembers(ModelSnapshot model, ComponentCandidateUnion union, int minimumMembers)
     {
         var selected = union.SelectedDrawCalls.Select(c => c.DrawCallId).ToHashSet(StringComparer.Ordinal);
         var maps = new List<(string Key, CoordinatedMemberLod Lod)>();
@@ -87,7 +90,7 @@ public static class CoordinatedSelection
                 throw Invalid("COORDINATED_MEMBER_LOD_INCOMPLETE", "Whole-buffer material membership changes or is absent across present LODs.");
             return new CoordinatedMember("member-" + ContentHash.Compute(System.Text.Encoding.UTF8.GetBytes(g.Key)).Value[..24], lods);
         }).OrderBy(m => m.MemberId, StringComparer.Ordinal).ToArray();
-        if (members.Length is < 2 or > 16) throw Invalid("COORDINATED_MEMBER_COUNT_INVALID", "Coordination requires 2 through 16 complete all-LOD ordinary members.");
+        if (members.Length < minimumMembers || members.Length > 16) throw Invalid("COORDINATED_MEMBER_COUNT_INVALID", minimumMembers == 2 ? "Coordination requires 2 through 16 complete all-LOD ordinary members." : "Directionality requires 1 through 16 complete all-LOD ordinary members.");
         return members;
     }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/evidence/v10",
-  "title": "S2ModKit evidence v10 with unchanged earlier compatibility",
+  "$id": "https://s2modkit.local/schemas/evidence/v11",
+  "title": "S2ModKit evidence v11 with unchanged earlier compatibility",
   "definitions": {
     "contentHash": {
       "$ref": "v8/evidence.schema.json#/definitions/contentHash"
@@ -139,6 +139,9 @@
     },
     {
       "$ref": "coordinated-contracts.schema.json#/definitions/evidence"
+    },
+    {
+      "$ref": "directional-contracts.schema.json#/definitions/evidence"
     }
   ]
 }

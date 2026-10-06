@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/directional-selection-preview/v1",
+  "title": "Directional bind-space surface comparison v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "projectionProfile", "proofLevel", "inputHash", "planFingerprint", "targetFingerprint", "previewFingerprint", "axisFactors", "pivot", "outerRadii", "coreFraction", "cameras", "lods", "buffers", "contactSheetHash", "limitations"],
+  "properties": {
+    "schemaVersion": { "enum": [1] },
+    "kind": { "enum": ["directional_surface_comparison"] },
+    "projectionProfile": { "enum": ["directional_surface_comparison@1"] },
+    "proofLevel": { "enum": ["bind_space_prediction"] },
+    "inputHash": { "$ref": "#/definitions/hash" },
+    "planFingerprint": { "$ref": "#/definitions/hash" },
+    "targetFingerprint": { "$ref": "#/definitions/hash" },
+    "previewFingerprint": { "$ref": "#/definitions/hash" },
+    "axisFactors": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" },
+    "pivot": { "$ref": "directional-contracts.schema.json#/definitions/directionalPivotEvidence" },
+    "outerRadii": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" },
+    "coreFraction": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+    "cameras": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/definitions/camera" } },
+    "lods": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/definitions/measurement" } },
+    "buffers": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/buffer" } },
+    "contactSheetHash": { "$ref": "#/definitions/hash" },
+    "limitations": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "count": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "extent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minHorizontal", "maxHorizontal", "minVertical", "maxVertical"],
+      "properties": {
+        "minHorizontal": { "type": "number" }, "maxHorizontal": { "type": "number" },
+        "minVertical": { "type": "number" }, "maxVertical": { "type": "number" }
+      }
+    },
+    "camera": {
+      "type": "object", "additionalProperties": false,
+      "required": ["horizontalAxis", "verticalAxis", "depthAxis", "full", "focus"],
+      "properties": {
+        "horizontalAxis": { "enum": ["X", "Y", "Z"] }, "verticalAxis": { "enum": ["X", "Y", "Z"] }, "depthAxis": { "enum": ["X", "Y", "Z"] },
+        "full": { "$ref": "#/definitions/extent" }, "focus": { "$ref": "#/definitions/extent" }
+      }
+    },
+    "measurement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lod", "selectedCount", "excludedCount", "changedCount", "pinnedCount", "protectedCount", "maximumDisplacement", "modelDiagonal", "maximumDisplacementOverModelDiagonal", "selectedSpanBefore", "selectedSpanAfter", "changedRegionSpanBefore", "changedRegionSpanAfter"],
+      "properties": {
+        "lod": { "type": "integer", "minimum": 0 },
+        "selectedCount": { "$ref": "#/definitions/count" }, "excludedCount": { "$ref": "#/definitions/count" },
+        "changedCount": { "$ref": "#/definitions/count" }, "pinnedCount": { "$ref": "#/definitions/count" }, "protectedCount": { "$ref": "#/definitions/count" },
+        "maximumDisplacement": { "type": "number", "exclusiveMinimum": 0, "maximum": 64 },
+        "modelDiagonal": { "type": "number", "exclusiveMinimum": 0 },
+        "maximumDisplacementOverModelDiagonal": { "type": "number", "exclusiveMinimum": 0 },
+        "selectedSpanBefore": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" },
+        "selectedSpanAfter": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" },
+        "changedRegionSpanBefore": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" },
+        "changedRegionSpanAfter": { "$ref": "directional-contracts.schema.json#/definitions/transformVector3" }
+      }
+    },
+    "buffer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "memberId", "drawCallIds", "triangleCount", "protectedCount", "protectedIndexHash"],
+      "properties": {
+        "source": { "$ref": "directional-contracts.schema.json#/definitions/directionalContextBuffer" },
+        "memberId": { "type": ["string", "null"] },
+        "drawCallIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "triangleCount": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "protectedCount": { "$ref": "#/definitions/count" }, "protectedIndexHash": { "$ref": "#/definitions/hash" }
+      }
+    }
+  }
+}

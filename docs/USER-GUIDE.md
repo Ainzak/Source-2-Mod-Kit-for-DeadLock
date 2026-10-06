@@ -10,6 +10,12 @@ possible.
 
 ## Before you begin
 
+Advanced directional body editing is currently an agent workflow. An agent chooses exact source
+components, authors XYZ factors and keep-fixed assertions, and uses `directional review` to show
+a matched source/predicted comparison before building. The feature has no new interactive menu.
+It does not automatically select a hand, chest or clothing, and offline verification does not
+establish live appearance or animated fit. [Agent authoring](AI-USAGE.md#agent-rules) describes the route.
+
 Use a verified Release build of the CLI and keep project data under an ignored workspace. Do not
 place game assets, generated VPKs, or reports in Git.
 

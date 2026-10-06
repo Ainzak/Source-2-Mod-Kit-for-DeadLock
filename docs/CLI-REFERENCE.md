@@ -30,7 +30,7 @@ spellings below are the stable English contract.
 
 | Group | Leaf commands |
 |---|---|
-| Diagnostics | `doctor`, `bounds diagnose` |
+| Diagnostics | `doctor`, `bounds diagnose`, `influences diagnose` |
 | Guided workflow | `interactive` |
 | Hero catalogue | `catalog heroes list`, `catalog resolve` |
 | Compatibility | `compatibility scan` |
@@ -61,6 +61,29 @@ the compiled input is read-only. This diagnostic does not change transform eligi
 | `--output-root` | Yes | Directory for JSON and Markdown diagnostic reports. |
 | `--format` | No | `text` or `json`; default `text`. |
 | `--help` | No | Print help. |
+
+### `s2mod influences diagnose`
+
+Writes a content-addressed version-1 influence diagnostic JSON report from an immutable compiled
+model. It records per-LOD buffer/index identities, source labels/materials, complete indexed
+coverage, every nonzero skinning contributor, render-to-root remaps, procedural flags and observed
+existing gate reasons. Unsupported mesh rows retain a reason and no partially assessed buffer facts.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--input` | Yes | Immutable compiled `.vmdl_c` input file. |
+| `--resource-path` | Yes | Original logical `.vmdl_c` path. |
+| `--output-root` | Yes | Configured directory for an immutable diagnostic JSON report. |
+| `--field-options` | No | Existing version-1 common-field options JSON, for a hypothetical position-only probe of every reported buffer. |
+| `--format` | No | Compact publication summary in `text` or `json`; default `text`. |
+| `--help` | No | Print help. |
+
+The optional probe distinguishes field membership, changed/unchanged position words and influenced
+procedural contributors. Pinned and unchanged are distinct: a full-strength pivot can remain fixed.
+Frames, simulation family/rest/constraint semantics and complete dependency closure remain
+unassessed. The probe selects no mutation members and grants no permission to edit a rejected
+buffer. Use exact planning for eligibility. The schema is `schemas/influence-diagnostic.schema.json`.
+Matching reports are reused; conflicting output is preserved and rejected. Inputs are never rewritten.
 
 ### `s2mod interactive`
 
@@ -186,6 +209,11 @@ buffer profile is decoded. These IDs can drive `transform_component@3` inside a 
 
 ### `s2mod components list`
 
+`--experimental --directional` selects discovery schema 6 with source-bound component IDs.
+It reports structural mapping only: `DIRECTIONAL_OPTIONS_REQUIRED` does not mean an arbitrary
+field is admitted. `--coordinated` and `--directional` are mutually exclusive. Default discovery
+and historical experimental routes retain their versions.
+
 `--experimental` explicitly requests discovery schema 4, adding planner-probed whole-part,
 region and local ellipsoid scale choices. A probe establishes storage eligibility; explicit
 field parameters still require exact planning. It does not identify anatomy.
@@ -209,6 +237,13 @@ reports `transform_component@2` and remains uniform-only.
 | `--help` | No | Print help. |
 
 ### `s2mod recipe scaffold`
+
+`--intent directional-field --experimental --directional-options <options.json>` uses current
+schema-6 `--component` IDs to resolve complete ordinary members and emit canonical recipe 10.
+The closed `directional-field-options.schema.json` requires `inputHash`, explicit preserve/reject
+policies, the per-axis field, keep-fixed assertions and displacement cap. Scaffolding runs the
+exact source planner before writing a new recipe. Do not combine separate affine/local-field
+flags with this intent; every field value is in the typed options document.
 
 `--intent mirrored-ellipsoid-scale` uses the same explicit field parameters with required
 `--mirror-axis x|y|z` and `--mirror-coordinate <number>`. The reflected center must be exactly
@@ -301,6 +336,9 @@ and are deduplicated. No label infers anatomy, hair, eyeballs, clothing or attac
 The canonical schema-9 recipe is published only after exact common-field planning passes.
 
 ### `s2mod selection-preview`
+The concise agent route is `directional review`; the existing selection-preview response is unchanged.
+
+
 
 ```powershell
 s2mod selection-preview --project H:\S2ModKit\projects\example --recipe H:\S2ModKit\recipes\field.json --output-root H:\S2ModKit\diagnostics
@@ -309,7 +347,7 @@ s2mod selection-preview --project H:\S2ModKit\projects\example --recipe H:\S2Mod
 | Option | Required | Meaning |
 |---|---:|---|
 | `--project` | Yes | Project containing immutable imported input and its complete dependency graph. |
-| `--recipe` | Yes | Explicit acknowledged local-field schema 8 (`transform_component@7`) or coordinated schema 9 (`transform_component@8`). |
+| `--recipe` | Yes | Explicit acknowledged local-field schema 8 (`transform_component@7`), coordinated schema 9 (`transform_component@8`) or directional schema 10 (`transform_component@9`). |
 | `--output-root` | Yes | Configurable ignored directory for diagnostic artifacts. |
 | `--help` | No | Print help. |
 
@@ -323,6 +361,17 @@ summary lists exact members and excluded siblings with draw-call IDs, material p
 source labels. Guided coordinated selection uses the same typed options document and preview,
 then persists the exact union and artifact identity for resume. There is no Blender or interactive viewport dependency.
 
+Directional schema-10 recipes produce a separate `directional_surface_comparison@1` artifact and
+closed schema-1 summary (`directional-selection-preview.schema.json`). Every LOD gets matched
+original/predicted shaded selection surfaces over complete excluded silhouettes, with a full outline
+and a labelled focus crop. Cameras and scale are shared across both states and all LODs. Protected
+records are green; alternative authored views appear together rather than simulating activation or
+physical occlusion. The summary reports XYZ factors, changed/pinned/protected counts, maximum
+stored displacement, complete-source AABB diagonal and their ratio, plus before/after spans for
+the same changed records and the complete selection. These measures do not define a perceptibility
+threshold or prove animation/garment fit. The route requires an existing explicit recipe;
+directional discovery/scaffolding use the separate agent route above. No new interactive menu is added.
+
 The command plans from immutable source without saving a plan, building or editing a resource.
 Matching existing artifacts are reused; conflicting or incomplete artifacts reject without
 overwriting. Incomplete geometry or a preview exceeding eight LODs, one million points (including
@@ -330,6 +379,26 @@ context), three million triangle indices or the 64 MiB SVG character budget reje
 publishing a partial preview. These are bind-space predictions, not texture, animation, hair,
 clothing-fit, collision or runtime qualification. Use an ignored root: sheets contain source geometry.
 
+
+### `s2mod directional inspect`
+
+Use `--help` to print the command options.
+
+`s2mod directional inspect --project <project> --component <schema-6-id> --experimental --output-root <ignored-root>`
+returns one compact summary and a hash-bound source-report path. Repeat `--component` for a union.
+The report contains complete selected positions, canonical members, selected/excluded context and
+explicit source-root bone assertion candidates. Choosing a bone still requires inspecting its
+meaning and passing exact field/protection planning. Unavailable complete contributor closures
+are labelled; partial closures are never substituted. No field, recipe or model is generated.
+
+### `s2mod directional review`
+
+Use `--help` to print the command options.
+
+`s2mod directional review --project <project> --recipe <schema-10.json> --experimental --output-root <ignored-root>`
+plans the exact recipe and publishes the same immutable matched surface comparison as
+selection-preview. One summary reports factors, member/protection counts and all-LOD effects,
+plus `previewPath` and `proofPath`. This is a bind-space prediction; runtime behavior is untested.
 
 ### `s2mod plan`
 
