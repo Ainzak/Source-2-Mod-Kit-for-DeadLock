@@ -6,7 +6,9 @@ Status: current pre-alpha production boundary.
 Compatibility is determined from inspected structure, not a hero allowlist. A named hero below is
 qualification evidence for a reusable profile; it does not enable a character-specific branch.
 
-The packaged catalogue targets Steam build 25689475. Earlier player observations below apply to
+The candidate packaged catalogue revision 2026-10-07.1 pins the October 7 directory identity.
+Its resource qualification labels are reset to unqualified; locator verification is not a model
+mutation qualification. Earlier player observations below apply to
 their tested model revisions, not automatically to this game update. Current offline checks cover
 Apollo's sword, Haze's left gun (scale and removal), Pocket's suitcase, Holliday's separate and worn
 hats, and Grey Talon's eyes. The owner also tested experimental head/region deformation and Mina's
