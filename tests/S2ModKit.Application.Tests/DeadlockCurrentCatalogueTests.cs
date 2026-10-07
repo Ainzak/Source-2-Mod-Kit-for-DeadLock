@@ -6,9 +6,9 @@ namespace S2ModKit.Application.Tests;
 
 public sealed class DeadlockCurrentCatalogueTests
 {
-    private const string Revision = "2026-10-03.1";
+    private const string Revision = "2026-10-07.1";
     private static readonly ContentHash PinnedDirectoryHash =
-        new("512d8f8ff8feadaea92282d1658000c0e115c03d50d3f3d7cc339c96d8e2b589");
+        new("76bc769d1c56e995bb535e4684c33646b55cc62d7a9198be5b0d075baf09f6b6");
 
     private static readonly (string HeroId, string DisplayName, string Alias, string LogicalPath, int SourceHeroId)[] AnnouncedHeroes =
     [
@@ -18,11 +18,6 @@ public sealed class DeadlockCurrentCatalogueTests
         ("rat-king", "Rat King", "ratking", "models/heroes_wip/ratking/ratking.vmdl_c", 84),
         ("solomon", "Solomon", "chessmaster", "models/heroes_wip/chessmaster/chessmaster.vmdl_c", 85),
         ("violet", "Violet", "artist", "models/heroes_wip/artist/artist.vmdl_c", 86),
-    ];
-
-    private static readonly string[] OfflineStaticResourceIds =
-    [
-        "apollo.primary", "grey-talon.primary", "haze.primary", "holliday.hat", "holliday.primary", "mina.primary", "pocket.primary",
     ];
 
     private static readonly string[] PreviouslyPublishedResourceIds =
@@ -82,7 +77,7 @@ public sealed class DeadlockCurrentCatalogueTests
             Assert.Equal(HeroCatalogueContract.PrimaryModelRole, resource.Role);
             Assert.Equal(logicalPath, resource.LogicalPath);
             Assert.False(resource.Optional);
-            Assert.Equal(HeroCatalogueContract.ReadOnlyQualified, resource.QualificationStatus);
+            Assert.Equal(HeroCatalogueContract.Unqualified, resource.QualificationStatus);
 
             if (alias.Length == 0)
             {
@@ -119,23 +114,8 @@ public sealed class DeadlockCurrentCatalogueTests
         var document = LoadCatalogue();
         var resources = document.Heroes.SelectMany(hero => hero.Resources).ToArray();
 
-        Assert.Equal(
-            OfflineStaticResourceIds,
-            resources.Where(resource => resource.QualificationStatus == HeroCatalogueContract.OfflineStatic)
-                .Select(resource => resource.ResourceId)
-                .OrderBy(resourceId => resourceId, StringComparer.Ordinal)
-                .ToArray());
-        Assert.DoesNotContain(HeroCatalogueContract.RuntimeQualified, resources.Select(resource => resource.QualificationStatus));
-
-        Assert.Equal(
-            HeroCatalogueContract.Unqualified,
-            Assert.Single(resources, resource => resource.ResourceId == "priest.primary").QualificationStatus);
-        Assert.Equal(
-            HeroCatalogueContract.ReadOnlyQualified,
-            Assert.Single(resources, resource => resource.ResourceId == "graves.primary").QualificationStatus);
-        Assert.Equal(
-            HeroCatalogueContract.OfflineStatic,
-            Assert.Single(resources, resource => resource.ResourceId == "holliday.primary").QualificationStatus);
+        Assert.All(resources, resource =>
+            Assert.Equal(HeroCatalogueContract.Unqualified, resource.QualificationStatus));
     }
 
     [Fact]
