@@ -80,6 +80,15 @@ public sealed record TransformComponentOperation : RecipeOperation
     public DirectionalVisualTransform? DirectionalTransform { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PairedDirectionalVisualTransform? PairedTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SourceTrianglePolicy? SourceTrianglePolicy { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProceduralInputPolicy? ProceduralInputPolicy { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ZeroBoneBoxPolicy? ZeroBoneBoxPolicy { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

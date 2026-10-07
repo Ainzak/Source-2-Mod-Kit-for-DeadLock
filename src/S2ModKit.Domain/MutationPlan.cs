@@ -49,6 +49,9 @@ public sealed record PlannedOperation(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PlannedDirectionalTransformTarget? DirectionalTransformTarget { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedPairedTransformTarget? PairedTransformTarget { get; init; }
 }
 
 public sealed record GeometryBounds(

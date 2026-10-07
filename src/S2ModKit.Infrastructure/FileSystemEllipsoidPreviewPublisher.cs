@@ -16,6 +16,12 @@ public static class FileSystemEllipsoidPreviewPublisher
     public static async Task<EllipsoidPreviewPublication> PublishDirectionalAsync(string outputRoot, EllipsoidPreviewArtifacts artifacts, CancellationToken cancellationToken = default)
         => await PublishCoreAsync(outputRoot, artifacts, "directional", cancellationToken).ConfigureAwait(false);
 
+    public static async Task<EllipsoidPreviewPublication> PublishPairedAsync(string outputRoot, EllipsoidPreviewArtifacts artifacts, CancellationToken cancellationToken = default)
+    {
+        _ = PairedPreviewSummaryJson.Read(artifacts.SummaryJson.Span);
+        return await PublishCoreAsync(outputRoot, artifacts, "paired", cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<EllipsoidPreviewPublication> PublishCoreAsync(string outputRoot, EllipsoidPreviewArtifacts artifacts, string prefix, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputRoot);

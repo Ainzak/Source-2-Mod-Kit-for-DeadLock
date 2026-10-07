@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/recipe/v10",
-  "title": "S2ModKit recipe v10 with unchanged earlier compatibility",
+  "$id": "https://s2modkit.local/schemas/recipe/v11",
+  "title": "S2ModKit recipe v11 with unchanged earlier compatibility",
   "oneOf": [
     {
       "$ref": "v7/recipe.schema.json"
@@ -14,6 +14,9 @@
     },
     {
       "$ref": "directional-contracts.schema.json#/definitions/recipe"
+    },
+    {
+      "$ref": "paired-contracts.schema.json#/definitions/recipe"
     }
   ]
 }

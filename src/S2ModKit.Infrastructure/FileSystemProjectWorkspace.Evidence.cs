@@ -12,8 +12,10 @@ public sealed partial class FileSystemProjectWorkspace
     {
         EnsureSafeSegment(reportId, "report id");
         var root = Path.GetFullPath(projectRoot);
-        await WriteReplaceAtomicAsync(ResolveInside(root, $"reports/{reportId}.json"), Encoding.UTF8.GetBytes(json), cancellationToken).ConfigureAwait(false);
-        await WriteReplaceAtomicAsync(ResolveInside(root, $"reports/{reportId}.md"), Encoding.UTF8.GetBytes(markdown), cancellationToken).ConfigureAwait(false);
+        var jsonBytes = Encoding.UTF8.GetBytes(json); var markdownBytes = Encoding.UTF8.GetBytes(markdown);
+        ValidateModelEvidenceSize(jsonBytes, markdownBytes);
+        await WriteReplaceAtomicAsync(ResolveInside(root, $"reports/{reportId}.json"), jsonBytes, cancellationToken).ConfigureAwait(false);
+        await WriteReplaceAtomicAsync(ResolveInside(root, $"reports/{reportId}.md"), markdownBytes, cancellationToken).ConfigureAwait(false);
     }
     private static async Task<(string Json, string Markdown)> LoadPublishedEvidenceAsync(
         string projectRoot,
@@ -41,9 +43,10 @@ public sealed partial class FileSystemProjectWorkspace
         }
 
         var size = new FileInfo(path).Length;
-        if (size > MaximumEvidenceBytes)
+        var jsonFile = path.EndsWith(".json", StringComparison.Ordinal);
+        if (size > (jsonFile ? MaximumPairedEvidenceBytes : MaximumEvidenceBytes))
         {
-            throw Errors.Verification("BUILD_EVIDENCE_SIZE_UNSUPPORTED", $"Published evidence file '{path}' exceeds the 16 MiB verification limit.", "Do not use the build; inspect the workspace for corruption.");
+            throw EvidenceSizeInvalid();
         }
 
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
@@ -51,7 +54,24 @@ public sealed partial class FileSystemProjectWorkspace
         {
             throw Errors.Verification("BUILD_EVIDENCE_HASH_DRIFT", $"Published evidence file '{path}' no longer matches its manifest hash.", "Do not use the build; restore its immutable evidence or rebuild from verified inputs.");
         }
+        if (size > MaximumEvidenceBytes) RequireLargePairedEvidence(bytes);
 
         return bytes;
     }
+
+    private static void ValidateModelEvidenceSize(byte[] json, byte[] markdown)
+    {
+        if (json.LongLength > MaximumPairedEvidenceBytes || markdown.LongLength > MaximumEvidenceBytes) throw EvidenceSizeInvalid();
+        if (json.LongLength > MaximumEvidenceBytes) RequireLargePairedEvidence(json);
+    }
+
+    private static void RequireLargePairedEvidence(byte[] json)
+    {
+        var report = JsonDefaults.Deserialize<EvidenceReport>(json, "Large paired evidence");
+        if (report.SchemaVersion != 12) throw EvidenceSizeInvalid();
+    }
+
+    private static S2ModKitException EvidenceSizeInvalid() => Errors.Verification("BUILD_EVIDENCE_SIZE_UNSUPPORTED",
+        "Model evidence exceeds its publication limit: 64 MiB for validated schema-12 JSON; 16 MiB for other evidence.",
+        "Keep complete evidence within the applicable bounded contract; do not truncate observations.");
 }

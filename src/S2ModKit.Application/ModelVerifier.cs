@@ -10,6 +10,11 @@ public sealed partial class ModelVerifier
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.SchemaVersion == 7 || plan.Operations.Any(operation => operation.Version == 10 || operation.PairedTransformTarget is not null))
+        {
+            _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));
+            return VerifyCoordinatedSnapshot(before, after, plan);
+        }
         if (plan.SchemaVersion == 6 || plan.Operations.Any(operation => operation.Version == 9 || operation.DirectionalTransformTarget is not null))
         {
             _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));

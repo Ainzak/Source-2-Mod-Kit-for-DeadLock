@@ -18,6 +18,7 @@ public sealed partial class S2ModKitCli
     private readonly IS2ModKitApplication application;
     private readonly IVpkPackagingApplication? packagingApplication;
     private readonly IAddonManagementApplication? addonApplication;
+    private readonly ICurrentSourceInstallationApplication? currentSourceInstallation;
     private readonly IResourceCatalogInventoryFactory? catalogueInventoryFactory;
     private readonly ICompatibilityScanner? compatibilityScanner;
     private readonly ICompatibilityReportPublisher? compatibilityReportPublisher;
@@ -77,10 +78,12 @@ public sealed partial class S2ModKitCli
         string geometryCodecStatus = "not_configured",
         IResourceCatalogInventoryFactory? catalogueInventoryFactory = null,
         ICompatibilityScanner? compatibilityScanner = null,
-        ICompatibilityReportPublisher? compatibilityReportPublisher = null)
+        ICompatibilityReportPublisher? compatibilityReportPublisher = null,
+        ICurrentSourceInstallationApplication? currentSourceInstallation = null)
         : this(application, packagingApplication, adapterName, adapterVersion, externalVerifierAvailable, geometryCodecStatus, catalogueInventoryFactory, compatibilityScanner, compatibilityReportPublisher)
     {
         this.addonApplication = addonApplication ?? throw new ArgumentNullException(nameof(addonApplication));
+        this.currentSourceInstallation = currentSourceInstallation;
     }
 
     private S2ModKitCli(
@@ -93,11 +96,13 @@ public sealed partial class S2ModKitCli
         string geometryCodecStatus,
         IResourceCatalogInventoryFactory catalogueInventoryFactory,
         ICompatibilityScanner compatibilityScanner,
-        ICompatibilityReportPublisher compatibilityReportPublisher)
+        ICompatibilityReportPublisher compatibilityReportPublisher,
+        ICurrentSourceInstallationApplication currentSourceInstallation)
     {
         this.application = application;
         this.packagingApplication = packagingApplication;
         this.addonApplication = addonApplication;
+        this.currentSourceInstallation = currentSourceInstallation;
         this.adapterName = adapterName;
         this.adapterVersion = adapterVersion;
         productVersion = typeof(S2ModKitCli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
@@ -156,7 +161,10 @@ public sealed partial class S2ModKitCli
             adapter.GeometryCodecCapability.Status,
             new VpkResourceCatalogFactory(),
             new CompatibilityScanner(adapter, adapter),
-            new FileSystemCompatibilityReportPublisher());
+            new FileSystemCompatibilityReportPublisher(),
+            new CurrentSourceInstallationApplication(workspace, workspace,
+                new CatalogCurrentSourceReader(new VpkResourceCatalogFactory()),
+                new CurrentSourceCandidateVerifier(application, packaging), addons, new SystemClock()));
     }
 
     private static (IExternalVerifier Verifier, string Status) CreateExternalVerifier()
@@ -280,6 +288,7 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreatePlanCommand(output, error));
         root.Subcommands.Add(CreateSelectionPreviewCommand(output, error));
         root.Subcommands.Add(CreateDirectionalCommand(output, error));
+        root.Subcommands.Add(CreatePairedCommand(output, error));
         root.Subcommands.Add(CreateBuildCommand(output, error));
         root.Subcommands.Add(CreateVerifyCommand(output, error));
         root.Subcommands.Add(CreatePackageCommand(output, error));
@@ -699,6 +708,7 @@ public sealed partial class S2ModKitCli
 
         command.Subcommands.Add(inventory);
         command.Subcommands.Add(install);
+        command.Subcommands.Add(CreateCurrentSourceInstallCommand(output, error));
         command.Subcommands.Add(verify);
         command.Subcommands.Add(rollback);
         return command;

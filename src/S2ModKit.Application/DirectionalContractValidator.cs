@@ -137,14 +137,11 @@ public static partial class DirectionalContractValidator
         }
         if (t.Buffers.Count != t.DirectionalTransform.Members.Sum(m => m.Lods.Count) || !float.IsFinite(t.MaximumDisplacement)
             || t.MaximumDisplacement != t.Buffers.Max(b => b.MaximumDisplacement)) throw Invalid("Member coverage or displacement drift.");
-        ValidateWordAudits(t);
-        ValidateContext(t, sources);
-        ValidateProtection(t);
-        ValidateBoxes(t, sources);
+        ValidateStorage(ProtectedBufferStorage.From(t));
         if (t.TargetFingerprint != MutationPlanJson.ComputeDirectionalTargetFingerprint(t)) throw Invalid("Directional target fingerprint drift.");
     }
 
-    private static void ValidateBuffer(PlannedCoordinatedBuffer b, float limit, bool uniform)
+    internal static void ValidateBuffer(PlannedCoordinatedBuffer b, float limit, bool uniform)
     {
         if (b.Lod < 0 || b.MeshOrdinal < 0 || b.ResourceBlockIndex < 0 || b.VertexBufferOrdinal < 0 || b.IndexBufferOrdinal < 0
             || b.VertexResourceBlockIndex < 0 || b.IndexResourceBlockIndex < 0 || b.VertexCount <= 0 || b.OwnershipPolicy != "exclusive" || !Portable(b.ResourcePath)
@@ -163,7 +160,16 @@ public static partial class DirectionalContractValidator
             || b.InputPositionHash == b.ExpectedPositionHash || b.InputDecodedVertexBufferHash == b.ExpectedDecodedVertexBufferHash) throw Invalid("Invalid directional buffer layouts, codec, effect or hashes.");
     }
 
-    private static void ValidateWordAudits(PlannedDirectionalTransformTarget t)
+    internal static void ValidateStorage(ProtectedBufferStorage t)
+    {
+        var sources = t.SourceBlocks.ToDictionary(b => b.Index);
+        ValidateWordAudits(t);
+        ValidateContext(t, sources);
+        ValidateProtection(t);
+        ValidateBoxes(t, sources);
+    }
+
+    private static void ValidateWordAudits(ProtectedBufferStorage t)
     {
         if (t.WordAudits is null || t.WordAudits.Any(w => w is null) || t.WordAudits.Count != t.Buffers.Count) throw Invalid("Missing per-buffer word audits.");
         for (var i = 0; i < t.Buffers.Count; i++)

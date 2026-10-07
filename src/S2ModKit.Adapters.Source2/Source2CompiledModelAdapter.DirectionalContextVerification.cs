@@ -8,7 +8,7 @@ namespace S2ModKit.Adapters.Source2;
 public sealed partial class Source2CompiledModelAdapter
 {
     private static DirectionalSourceBuffer[] ReadDirectionalVerificationContext(ArtifactContent input, ParsedModel before, ParsedModel after,
-        Model model, IReadOnlyList<CoordinatedResolvedBuffer> members)
+        Model model, IReadOnlyList<CoordinatedResolvedBuffer> members, bool pairedPreservation = false)
     {
         var selection = members.ToDictionary(m => (m.Profile.Mesh.MeshOrdinal, m.Profile.Vertices.Snapshot.Ordinal), m => m.MemberId);
         var masks = ExperimentalArray(model.Data, "m_refMeshGroupMasks");
@@ -22,7 +22,9 @@ public sealed partial class Source2CompiledModelAdapter
             var actual = current.GeometryAnalysis ?? throw DirectionalDrift("Output context geometry is absent.");
             if (geometry.VertexBuffers.Count != geometry.IndexBuffers.Count || geometry.VertexBuffers.Count != actual.VertexBuffers.Count || HasMorphData(mesh.Block.Data))
                 throw DirectionalDrift("Context storage/contributor layout is incomplete.");
-            var metadata = Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "independent directional context");
+            var metadata = pairedPreservation
+                ? Source2TransformMetadataAnalyzer.AnalyzePairedPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "independent paired context")
+                : Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "independent directional context");
             var remap = model.GetRemapTable(mesh.MeshOrdinal);
             if (remap is null || remap.Any(i => i < 0 || i >= model.Skeleton.Bones.Length) || metadata.BoneBounds.Any(b => b.BoneIndex >= remap.Length))
                 throw DirectionalDrift("Complete root/render contributor mapping is absent.");

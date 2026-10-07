@@ -4,6 +4,32 @@ S2ModKit is designed so an AI agent can inspect and plan a change without guessi
 identities. The non-interactive commands are the automation contract; `interactive` is a convenient
 human-guided front end.
 
+Paired directional intent has strict operation-10 / recipe-11 / plan-7 / evidence-12 contracts
+and a separate `paired_directional_field_options@1` artifact. Explicit recipe-11 intent can now be
+source-planned with `plan`, producing a schema-7 plan and planned schema-12 evidence. The adapter
+independently reconstructs compiled source/output before `build` publishes a workspace model and
+`verify --build <id>` saves observed schema-12 evidence. Snapshot success alone is insufficient.
+Complete schema-12 JSON is compact and bounded at 64 MiB; older model evidence and Markdown retain
+their 16 MiB workspace limits. Offline checks preserve serialized procedural inputs; simulation,
+culling and garment/pose fit remain unqualified. One exact Wraith chest candidate has accepted
+owner appearance feedback after receipt rollback; this does not qualify other models or optional
+pose/LOD/collision checks. Installation requires separate authorization.
+Use `paired discover --project <project> --experimental` for schema-7 structural mappings.
+`paired inspect --component <current-id> --output-root <ignored-root> --experimental` returns exact
+current members, source positions/context and source-backed bone assertion choices. Copy members
+into closed pair options and choose both fields/protection explicitly. `paired scaffold --options
+<options> --output <new-recipe> --component <current-id> --experimental` invokes the exact source
+planner before atomic recipe publication. Stale hash/member mappings and occupied output fail.
+`paired review --recipe <recipe> --output-root <ignored-root> --experimental` returns one preview
+and mechanical proof link. Every command also requires `--project`; results are JSON envelopes.
+Matched front/side/top views show full context, a common region and each partner separately.
+Local spans and signed-axis reaches from the authored pivots measure identical changed records;
+zero-span percentages are explicit null. Core scale factors do not describe whole-part growth.
+Then use ordinary `plan`, `build`, `verify` and `package create-minimal --require-external`.
+Discovery mapping alone is unsupported until authored options pass exact planning; labels never
+infer anatomy or active bodygroups. Interactive parity, optimization and automatic anatomy remain
+backlog work. Existing single-directional commands below retain their contracts.
+
 Experimental editing is explicit: use `components list --experimental`, then scaffold with the
 same discovery context and acknowledged `--experimental` policy. Never silently switch from a
 strict rejection. Whole-part and axis-ramp region scaling preserve unresolved runtime metadata;
@@ -51,6 +77,10 @@ closure or mutation permission. Exact input-bound planning remains required. See
    overwrite an imported input or an active addon.
 6. A successful offline verify is not live-game evidence. Installation requires explicit user
    authorization, and the agent must preserve and report the printed rollback command.
+   For a current-source minimal-package checkpoint, use `addons install-current` with the reviewed
+   package SHA-256 and explicit current `--base-vpk`. It blocks on model/dependency/read/linkage
+   failures in the same workflow before addon writes. A separately saved passed preflight is never
+   an install gate. Source changes need import/reauthoring/rebuild/reverify, never substituted hashes.
 7. Keep Valve and user-supplied game assets outside the repository and never commit them.
 
 ## Quiet wrapper

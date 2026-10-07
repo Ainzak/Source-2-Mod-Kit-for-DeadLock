@@ -141,6 +141,11 @@ public sealed partial class CliContractTests
             new HelpContract(["selection-preview"], "s2mod selection-preview"),
             new HelpContract(["directional", "inspect"], "s2mod directional inspect"),
             new HelpContract(["directional", "review"], "s2mod directional review"),
+            new HelpContract(["paired", "discover"], "s2mod paired discover"),
+            new HelpContract(["paired", "inspect"], "s2mod paired inspect"),
+            new HelpContract(["paired", "scaffold"], "s2mod paired scaffold"),
+            new HelpContract(["paired", "review"], "s2mod paired review"),
+
             new HelpContract(["build"], "s2mod build"),
             new HelpContract(["verify"], "s2mod verify"),
             new HelpContract(["package", "create"], "s2mod package create"),

@@ -1,6 +1,6 @@
 # S2ModKit compatibility matrix
 
-Updated: 2026-10-04.
+Updated: 2026-10-07.
 Status: current pre-alpha production boundary.
 
 Compatibility is determined from inspected structure, not a hero allowlist. A named hero below is
@@ -30,7 +30,9 @@ umbrella, then rolled back. These observations do not qualify other models or al
 | `transform_component@6`, bounded axis-ramp region scale | Experimental, explicit opt-in | Grey Talon region player observation | Pins a half-space and updates transition shading. Crude head shape and buried hair remain observed limitations; not automatic anatomy or sculpting. |
 | `transform_component@7`, single ellipsoid or disjoint mirrored pair | Experimental, offline qualified | Abrams face single/mirrored fields; Mina umbrella handle/canopy fields | Smooth local scaling in one complete ordinary buffer per LOD; exact pinned words, differential transition frames and independent reopen. Mina's mirrored canopy player test showed no clear change, possibly a smaller-looking umbrella, and was rolled back; it does not qualify the intended appearance. Mirroring retains asymmetry; broader field parameters can fail triangle or certificate checks. |
 | `transform_component@8`, common field across ordinary buffers | Experimental, offline qualified; bounded owner appearance report | Abrams face/head-detail/teeth, three members across four LODs | Atomic common-field geometry and complete shared box closure. Owner accepts the enlarged head and neck; the report arrived after rollback and is not an active-bound formal runtime record. Animation, LOD transitions, garment fit and preserved zero-field consumers remain unqualified. |
-| `transform_component@9`, protected directional ellipsoid | Source planning, atomic writing, independent reopen, verified workspace builds and read-only surface comparisons | Synthetic fixtures and one hash-pinned body source | Complete ordinary ownership, prescribed position/frame words, protection, source coincidences, combined contributors/boxes and unchanged data are independently checked. Explicit recipes support all-LOD surface/silhouette previews with fixed camera/scale and relative effect measurements; discovery/scaffolding remain pending. Packaging and live behavior are unqualified in this checkpoint. |
+| `transform_component@9`, protected directional ellipsoid | Source planning, atomic writing, independent reopen, verified workspace builds and read-only surface comparisons | Synthetic fixtures and one hash-pinned body source | Complete ordinary ownership, prescribed position/frame words, protection, source coincidences, combined contributors/boxes and unchanged data are independently checked. Source-backed discovery/scaffolding and matched all-LOD comparisons are available; one Bebop forearm package has bounded owner appearance feedback after rollback. Optional animation/LOD/culling/collision checks remain unqualified. |
+| `transform_component@10`, disjoint protected directional pair with explicit compatibility preservation | Experimental, offline qualified; bounded owner appearance report | Wraith chest and a separate arm structural case across three LODs | Exact source-backed members, independent compiled reconstruction and matched regional measurements. Owner accepts the installed chest increase after rollback; the arm case is offline only. Preserves source-coincidence partitions and serialized procedural inputs without proving simulation independence. Sphere/proxy/PHYS coherence, pose/garment fit and LOD transitions remain unqualified. |
+| Guarded current-source installation | Supported for verified minimal packages | Wraith current model/dependency preflight, exact active hash and verified receipt rollback; synthetic stale/linkage failures | Reopens the actual model and every imported dependency from the current game archive twice and independently verifies candidate/package/linkage. Saved preflight success cannot authorize a later installation. Explicit installation authorization remains required. |
 | Current-roster coverage | Measured offline | 39 active and five experimental heroes, 45 resource locators | 44 resources pass strict discovery; Priest remains inspection-only. Experimental probes add 26 selections across 15 resources; 43 resources have some transform before and after opt-in. A probe is not a completed build or a player test. |
 | Non-empty external mesh resource handles | Unsupported | Structural synthetic tests | Requires a future explicitly reviewed resource-resolution and rewrite profile. |
 | Arbitrary topology, weight, and morph edits | Unsupported | — | No typed mutation or allowed-change contract. |
@@ -59,14 +61,16 @@ inspection-only.
 | Contract | Current writer | Retained compatibility |
 |---|---:|---|
 | Project manifest | 2 | Version 1 schema/reader retained. |
-| Recipe | 10 explicit; 9 scaffolded workflow | Versions 1–9 retain their meanings. Explicit schema-10 directional recipes support plan/build/reverify; discovery/scaffolding remains pending. |
-| Mutation plan | 6 | Legacy and versions 2–5 retain their meanings. Schema 6 freezes source-backed directional proof/protection/context and final-state metadata facts; independent reopen is mandatory before build publication. |
-| Build evidence | 11 | Versions 1–10 retain their meanings. Schema 11 distinguishes planned facts from independent observed build/reverify facts. Consumer obligations remain untested. |
+| Recipe | 11 paired; 10 directional; earlier workflows retained | Versions 1–10 retain their meanings. Source-backed paired scaffolding emits recipe 11 only after exact planning. |
+| Mutation plan | 7 | Legacy and versions 2–6 retain their meanings. Schema 7 freezes paired proof, exact member/context/protection and combined final-state facts; independent reconstruction is mandatory before build publication. |
+| Build evidence | 12 | Versions 1–11 retain their meanings. Schema 12 distinguishes planned paired facts from independently observed build/reverify facts. Procedural consumer obligations remain unqualified. |
 | Package evidence | 2 | Version 1 replace-source packages remain readable. |
-| Component discovery | 2 default; 4 local opt-in; 5 coordinated opt-in | Earlier versions remain readable; opted-in identities and exact probes are separately bound. |
+| Component discovery | 2 default; 4 local; 5 coordinated; 6 directional; 7 paired opt-in | Earlier versions remain readable; pair mappings remain unsupported until explicit options pass exact source planning. |
 | Guided session | 1 default; 3 local opt-in; 4 coordinated opt-in | Earlier versions retain their meanings. Schema 4 freezes exact selected IDs, common-field options and preview identity. Existing sessions never silently upgrade. |
 | Installation receipt | 1 | Current. |
-| Runtime observation | 1 | Current. |
+| Runtime observation | 1 | Active-bound recording only; direct after-rollback owner feedback is separately labelled. |
+| Current-source preflight report | 1 | Closed diagnostic only; install repeats current archive checks. |
+| Paired field options / comparison | 1 / 1 | Closed exact source bindings and matched regional observations. |
 | Hero catalogue | 1 | New additive navigation contract; no earlier persisted versions. |
 
 ## Reading the status

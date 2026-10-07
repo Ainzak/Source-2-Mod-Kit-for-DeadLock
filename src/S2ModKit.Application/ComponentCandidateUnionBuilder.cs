@@ -12,7 +12,7 @@ public static class ComponentCandidateUnionBuilder
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(candidates);
-        if (schemaVersion is not (2 or 3 or 4 or 5 or 6)) throw new ArgumentException("Unknown candidate identity version.", nameof(schemaVersion));
+        if (schemaVersion is not (2 or 3 or 4 or 5 or 6 or 7)) throw new ArgumentException("Unknown candidate identity version.", nameof(schemaVersion));
         if (candidates.Count == 0 || candidates.Any(candidate => candidate is null))
         {
             throw UnionError(

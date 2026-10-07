@@ -7,6 +7,8 @@ namespace S2ModKit.Application.Tests;
 public sealed partial class SchemaContractTests
 {
     [Theory]
+    [InlineData("paired-selection-preview.schema.json")]
+    [InlineData("v6/component-discovery.schema.json")]
     [InlineData("project.schema.json")]
     [InlineData("recipe.schema.json")]
     [InlineData("component-discovery.schema.json")]

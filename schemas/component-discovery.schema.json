@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://s2modkit.local/schemas/component-discovery.schema.json",
-  "title": "S2ModKit directional discovery v6 with strict v2-v5 compatibility",
+  "title": "S2ModKit paired discovery v7 with strict v2-v6 compatibility",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,7 +20,8 @@
         3,
         4,
         5,
-        6
+        6,
+        7
       ]
     },
     "model": {
@@ -363,7 +364,8 @@
             6,
             7,
             8,
-            9
+            9,
+            10
           ]
         },
         "availability": {
@@ -618,8 +620,111 @@
               ]
             }
           }
+        },
+        {
+          "required": [
+            "experimentalPolicy"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "enum": [
+                7
+              ]
+            },
+            "candidates": {
+              "items": {
+                "properties": {
+                  "capabilities": {
+                    "minItems": 1,
+                    "maxItems": 1
+                  }
+                }
+              }
+            }
+          }
         }
       ]
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              6
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "capabilities": {
+                  "items": {
+                    "properties": {
+                      "operationVersion": {
+                        "enum": [
+                          1,
+                          2,
+                          4,
+                          5,
+                          6,
+                          7,
+                          8,
+                          9
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              7
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "capabilities": {
+                  "items": {
+                    "properties": {
+                      "operationVersion": {
+                        "enum": [
+                          10
+                        ]
+                      },
+                      "operationKind": {
+                        "enum": [
+                          "transform_component"
+                        ]
+                      },
+                      "availability": {
+                        "enum": [
+                          "unsupported"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

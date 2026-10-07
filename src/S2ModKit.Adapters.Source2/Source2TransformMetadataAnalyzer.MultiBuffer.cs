@@ -24,12 +24,22 @@ internal static partial class Source2TransformMetadataAnalyzer
         Source2GeometryAnalysis geometry,
         string context) => AnalyzeRootBufferInventory(embeddedMeshDescriptor, meshData, geometry, context, preserveAuthoredEnvelopes: true);
 
+    // Separate compatibility fact reader. Existing visual/directional writers never call this
+    // entry point; complete signed-index characterization alone grants no mutation permission.
+    public static Source2WholeMeshTransformAnalysis AnalyzePairedPreservationBuffers(
+        KVObject embeddedMeshDescriptor,
+        KVObject meshData,
+        Source2GeometryAnalysis geometry,
+        string context) => AnalyzeRootBufferInventory(embeddedMeshDescriptor, meshData, geometry, context,
+            preserveAuthoredEnvelopes: true, allowSignedFourIndices: true);
+
     private static Source2WholeMeshTransformAnalysis AnalyzeRootBufferInventory(
         KVObject embeddedMeshDescriptor,
         KVObject meshData,
         Source2GeometryAnalysis geometry,
         string context,
-        bool preserveAuthoredEnvelopes)
+        bool preserveAuthoredEnvelopes,
+        bool allowSignedFourIndices = false)
     {
         ArgumentNullException.ThrowIfNull(embeddedMeshDescriptor);
         ArgumentNullException.ThrowIfNull(meshData);
@@ -79,13 +89,13 @@ internal static partial class Source2TransformMetadataAnalyzer
             var blendIndices = TryLayoutField(layout, "BLENDINDICES", context)
                 ?? throw new InvalidDataException($"{context} buffer {bufferOrdinal} has no BLENDINDICES field.");
             var indexFormat = RequireUInt32(blendIndices, "m_Format", context);
-            if (indexFormat is not (R8G8B8A8Uint or 12u or 4u))
+            if (indexFormat is not (R8G8B8A8Uint or 12u or 4u) && !(allowSignedFourIndices && indexFormat == 14u))
             {
                 throw new InvalidDataException($"{context} buffer {bufferOrdinal} BLENDINDICES format {indexFormat} is unsupported.");
             }
 
             ValidatePackedPerVertexField(blendIndices, "BLENDINDICES", indexFormat, context);
-            var indexWidth = indexFormat switch { 4u => 16, 12u => 8, _ => PackedAttributeSize };
+            var indexWidth = indexFormat switch { 4u => 16, 12u or 14u => 8, _ => PackedAttributeSize };
             var indexOffset = RequireInt32(blendIndices, "m_nOffset", context);
             if (indexOffset < 0 || indexOffset > buffer.Snapshot.Stride - indexWidth)
             {
@@ -99,6 +109,7 @@ internal static partial class Source2TransformMetadataAnalyzer
             {
                 weightFormat = RequireUInt32(blendWeights, "m_Format", context);
                 if ((indexFormat == R8G8B8A8Uint && weightFormat != R8G8B8A8Unorm)
+                    || (indexFormat == 14u && weightFormat != R8G8B8A8Unorm)
                     || (indexFormat is 12u or 4u && weightFormat != 11u))
                 {
                     throw new InvalidDataException($"{context} buffer {bufferOrdinal} BLENDINDICES/BLENDWEIGHT formats {indexFormat}/{weightFormat} are unsupported together.");
@@ -167,9 +178,12 @@ internal static partial class Source2TransformMetadataAnalyzer
                     weightSum = checked(weightSum + weight);
                     if (weight != 0)
                     {
-                        var boneIndex = indexFormat == 4u
-                            ? BinaryPrimitives.ReadUInt16LittleEndian(indices.Slice(influence * sizeof(ushort)))
-                            : indices[influence];
+                        int boneIndex = indexFormat switch
+                        {
+                            4u => BinaryPrimitives.ReadUInt16LittleEndian(indices.Slice(influence * sizeof(ushort))),
+                            14u => BinaryPrimitives.ReadInt16LittleEndian(indices.Slice(influence * sizeof(short))),
+                            _ => indices[influence]
+                        };
                         AddInfluence(boneIndex, globalVertex, bones, influencedIndices, verticesByBone, context);
                     }
                 }

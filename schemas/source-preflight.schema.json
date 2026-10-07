@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.dev/schemas/source-preflight.schema.json",
+  "title": "Current relevant-source preflight snapshot version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "reportId", "status", "scope", "observedUtc", "projectId", "buildId", "planFingerprint", "packageId", "packageHash", "entryHash", "modelVerificationHash", "packageVerificationHash", "expected", "initial", "handoff"],
+  "properties": {
+    "schemaVersion": {"type": "integer", "const": 1, "enum": [1]},
+    "reportId": {"type": "string", "pattern": "^source-preflight-.+$"},
+    "status": {"type": "string", "const": "passed", "enum": ["passed"]},
+    "scope": {"type": "string", "const": "relevant_source_snapshot", "enum": ["relevant_source_snapshot"]},
+    "observedUtc": {"type": "string", "format": "date-time"},
+    "projectId": {"$ref": "#/definitions/text"},
+    "buildId": {"$ref": "#/definitions/text"},
+    "planFingerprint": {"$ref": "#/definitions/hash"},
+    "packageId": {"$ref": "#/definitions/text"},
+    "packageHash": {"$ref": "#/definitions/hash"},
+    "entryHash": {"$ref": "#/definitions/hash"},
+    "modelVerificationHash": {"$ref": "#/definitions/hash"},
+    "packageVerificationHash": {"$ref": "#/definitions/hash"},
+    "expected": {"type": "array", "minItems": 1, "maxItems": 65536, "items": {"$ref": "#/definitions/resource"}},
+    "initial": {"type": "array", "minItems": 1, "maxItems": 65536, "items": {"$ref": "#/definitions/observation"}},
+    "handoff": {"type": "array", "minItems": 1, "maxItems": 65536, "items": {"$ref": "#/definitions/observation"}}
+  },
+  "definitions": {
+    "text": {"type": "string", "minLength": 1},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "resource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logicalPath", "role", "contentHash", "size"],
+      "properties": {
+        "logicalPath": {"type": "string", "minLength": 1, "pattern": "^[^\\\\:]+$"},
+        "role": {"type": "string", "enum": ["model", "dependency"]},
+        "contentHash": {"$ref": "#/definitions/hash"},
+        "size": {"type": "integer", "minimum": 1}
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["resource", "sourceKind", "sourceIdentity", "catalogIdentity", "verificationMode"],
+      "properties": {
+        "resource": {"$ref": "#/definitions/resource"},
+        "sourceKind": {"$ref": "#/definitions/text"},
+        "sourceIdentity": {"$ref": "#/definitions/text"},
+        "catalogIdentity": {"$ref": "#/definitions/text"},
+        "verificationMode": {"$ref": "#/definitions/text"}
+      }
+    }
+  }
+}

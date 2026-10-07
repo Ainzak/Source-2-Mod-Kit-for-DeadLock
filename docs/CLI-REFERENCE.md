@@ -7,6 +7,18 @@ option changes, the test requires this document to change in the same commit.
 Run `s2mod <command> --help` for the host-localized help layout. Command descriptions and option
 spellings below are the stable English contract.
 
+Persisted paired directional contracts support operation 10 / recipe 11 / plan 7 / evidence 12
+and closed `paired_directional_field_options@1` intent. `plan` accepts explicit recipe-11 intent
+against the qualified source profile, saves schema-7 plans and returns planned schema-12 evidence
+with `--format json`.
+`build --project <path> --recipe <path>` independently reparses compiled source/output before
+publishing a workspace model; `verify --project <path> --build <id>` repeats that audit and saves
+observed schema-12 evidence. Missing independent verification still rejects with
+`PAIRED_VERIFICATION_UNAVAILABLE`; snapshot success alone cannot authorize publication. Schema-12
+JSON uses compact serialization within its 64 MiB budget; other model evidence and Markdown retain
+their 16 MiB workspace limits. Procedural simulation, culling, garment/pose and runtime remain
+untested. Paired directional discovery/scaffolding/review commands are not implemented. The mirrored ellipsoid workflow documented below retains its existing meaning.
+
 ## Output and exit codes
 
 - `doctor`, `bounds diagnose`, `catalog heroes list`, `catalog resolve`, `compatibility scan`, `inspect`,
@@ -37,7 +49,7 @@ spellings below are the stable English contract.
 | Projects | `project create`, `project create-vpk` |
 | Inspection and authoring | `inspect`, `components list`, `recipe scaffold`, `plan`, `selection-preview` |
 | Candidate lifecycle | `build`, `verify`, `package create`, `package create-minimal`, `package verify` |
-| Managed addon lifecycle | `addons inventory`, `addons install`, `addons verify-active`, `addons rollback`, `runtime record` |
+| Managed addon lifecycle | `addons inventory`, `addons install`, `addons install-current`, `addons verify-active`, `addons rollback`, `runtime record` |
 
 ### `s2mod doctor`
 
@@ -400,6 +412,62 @@ plans the exact recipe and publishes the same immutable matched surface comparis
 selection-preview. One summary reports factors, member/protection counts and all-LOD effects,
 plus `previewPath` and `proofPath`. This is a bind-space prediction; runtime behavior is untested.
 
+### `s2mod paired discover`
+
+Agent-first JSON structural discovery (`component-discovery@7`). Labels select exact buffers,
+not anatomy. Mapping alone is unsupported until authored fields pass the exact planner.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--project` | Yes | Immutable imported project root. |
+| `--experimental` | Yes | Acknowledge unqualified runtime consumers. |
+| `--help` | No | Print help. |
+
+### `s2mod paired inspect`
+
+Publishes complete current members, source positions/context and root-bone assertions for
+explicit author choices. Copy the reported members into closed pair options; never edit draw IDs.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--project` | Yes | Immutable project root. |
+| `--component` | Yes | Current schema-7 candidate ID; repeat for a deduplicated union. |
+| `--output-root` | Yes | Configured ignored source-report root. |
+| `--experimental` | Yes | Explicit acknowledgement. |
+| `--help` | No | Print help. |
+
+### `s2mod paired scaffold`
+
+Binds current discovery/members to `paired_directional_field_options@1`, runs the exact
+source planner, then writes one canonical recipe atomically. Existing output is refused.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--project` | Yes | Immutable project root. |
+| `--component` | Yes | Current schema-7 candidate ID; repeat for an exact union. |
+| `--options` | Yes | Complete source-bound options JSON, at most 1 MiB. |
+| `--output` | Yes | New recipe path. |
+| `--experimental` | Yes | Explicit acknowledgement. |
+| `--help` | No | Print help. |
+
+### `s2mod paired review`
+
+Runs the same planner and publishes one matched all-LOD surface comparison and closed summary.
+Front/side/top show source and prediction at equal camera/scale, the common region and each
+partner separately. Local spans and positive/negative axis reaches from authored pivots measure
+identical changed records; zero spans give explicit
+null percentages. Protection and procedural context stay fixed. These are bind-space positions;
+packed-frame counts are planned, and animation, garment fit and runtime remain untested.
+Use the normal build/verify/minimal-package commands after review. Interactive parity is deferred.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--project` | Yes | Immutable project root. |
+| `--recipe` | Yes | Canonical schema-11 paired recipe. |
+| `--output-root` | Yes | Configured ignored comparison root. |
+| `--experimental` | Yes | Explicit acknowledgement. |
+| `--help` | No | Print help. |
+
 ### `s2mod plan`
 
 Resolves a recipe against immutable current input without producing model bytes.
@@ -489,6 +557,29 @@ Explicitly installs a package into a safe empty addon slot and creates a receipt
 | `--package` | Yes | Published package ID. |
 | `--slot` | No | `auto` (default) or an explicit two-digit empty slot. |
 | `--help` | No | Print help. |
+
+### `s2mod addons install-current`
+
+The agent/player checkpoint route for a reviewed minimal package. It hashes the current model and
+every imported dependency, reverifies the model and package, then rereads source at the same
+workflow's install handoff. Missing/drifted source, failed reads, stale linkage or verification failure
+stop before managed addon writes. Equal relevant bytes may proceed under changed archive provenance.
+The version-1 `source-preflight.schema.json` report records both observations and verified linkage;
+a saved report cannot authorize a later install. This is a bounded snapshot, not an update lock.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--addons-root` | Yes | Explicit addon destination. |
+| `--project` | Yes | Immutable project root. |
+| `--package` | Yes | Reviewed minimal package ID. |
+| `--expected-package-hash` | Yes | SHA-256 of that reviewed package. |
+| `--base-vpk` | Yes | Current archive containing the model and every imported dependency. |
+| `--slot` | No | `auto` (default) or an explicit empty slot. |
+
+Model verification and required external package verification must succeed. Explicit owner install
+authorization remains required. The JSON result contains `installation` and `preflight`; obtain the
+receipt from `result.installation.receipt`. Receipt, hash, load-order, DMM and rollback rules are
+unchanged. The earlier `addons install` route retains its existing behavior and document meaning.
 
 ### `s2mod addons verify-active`
 

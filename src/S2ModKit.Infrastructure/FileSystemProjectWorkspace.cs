@@ -10,6 +10,7 @@ public sealed partial class FileSystemProjectWorkspace : IProjectWorkspace, IVpk
 {
     private const long MaxInMemoryArtifactBytes = 512L * 1024 * 1024;
     private const long MaximumEvidenceBytes = 16L * 1024 * 1024;
+    private const long MaximumPairedEvidenceBytes = 64L * 1024 * 1024;
 
     public async Task<ProjectManifest> PublishProjectAsync(
         ProjectPublicationRequest request,

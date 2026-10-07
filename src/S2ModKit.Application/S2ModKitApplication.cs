@@ -192,6 +192,12 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
 
     public async Task<BuildRunResult> BuildAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default)
     {
+        if (recipe.SchemaVersion == 11 || recipe.Operations.Any(o => o.Version == 10))
+        {
+            PairedContractValidator.ValidateRecipe(recipe);
+            if (rewriter is not IPairedTransformVerifier)
+                throw Errors.Unsupported("PAIRED_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent paired resource verifier.", "Keep the source-bound plan; no build is published.");
+        }
         var (project, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var before = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
@@ -221,6 +227,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var directionalVerification = await VerifyDirectionalAsync(input,
             new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
+        var pairedVerification = await VerifyPairedAsync(input,
+            new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = new List<BoundaryEvidence>
         {
@@ -232,6 +240,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         if (ellipsoidVerification is not null) boundaries.AddRange(ellipsoidVerification.Boundaries);
         if (coordinatedVerification is not null) boundaries.AddRange(coordinatedVerification.Boundaries);
         if (directionalVerification is not null) boundaries.AddRange(directionalVerification.Boundaries);
+        if (pairedVerification is not null) boundaries.AddRange(pairedVerification.Boundaries);
         boundaries.Add(externalBoundary);
         boundaries.Add(new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed."));
 
@@ -242,8 +251,9 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         }
 
         var buildId = $"{plan.Fingerprint.Value[..16]}-{computedOutputHash.Value[..12]}";
-        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification);
+        var evidence = CreateEvidence(project, "build", buildId, input, dependencies, new ArtifactContent(candidate.LogicalPath, computedOutputHash, candidate.Content), before, candidate.Snapshot, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification, pairedVerification);
         var publication = new BuildPublication(buildId, plan, candidate, reports.RenderJson(evidence), reports.RenderMarkdown(evidence));
+        cancellationToken.ThrowIfCancellationRequested();
         var published = await workspace.PublishBuildAsync(projectRoot, publication, cancellationToken).ConfigureAwait(false);
         var publishedEvidence = JsonDefaults.Deserialize<EvidenceReport>(Encoding.UTF8.GetBytes(published.EvidenceJson), "Published build evidence");
         return new BuildRunResult(published.Build, publishedEvidence);
@@ -254,6 +264,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var (project, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         var (published, candidateContent) = await workspace.LoadBuildAsync(projectRoot, buildId, cancellationToken).ConfigureAwait(false);
         var plan = await workspace.LoadPlanAsync(projectRoot, published.PlanFingerprint, cancellationToken).ConfigureAwait(false);
+        if (plan.SchemaVersion == 7 && rewriter is not IPairedTransformVerifier)
+            throw Errors.Unsupported("PAIRED_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent paired resource verifier.", "Do not publish observations from snapshots alone.");
         ValidatePlanInputs(plan, input, dependencies);
         RequireInspector(input);
         RequireInspector(candidateContent);
@@ -265,11 +277,13 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var coordinatedVerification = await VerifyCoordinatedAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var directionalVerification = await VerifyDirectionalAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var candidate = new RewriteCandidate(candidateContent.LogicalPath, candidateContent.Bytes, after);
+        var pairedVerification = await VerifyPairedAsync(input, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         var externalBoundary = await externalVerifier.VerifyAsync(candidate, cancellationToken).ConfigureAwait(false);
         var boundaries = internalVerification.Boundaries.Concat(experimentalVerification?.Boundaries ?? [])
             .Concat(ellipsoidVerification?.Boundaries ?? [])
             .Concat(coordinatedVerification?.Boundaries ?? [])
             .Concat(directionalVerification?.Boundaries ?? [])
+            .Concat(pairedVerification?.Boundaries ?? [])
             .Concat([externalBoundary, new BoundaryEvidence("runtime", "untested", "No live Deadlock runtime validation was performed.")]).ToArray();
 
         if (!internalVerification.IsValid || externalBoundary.Status == "failed")
@@ -278,7 +292,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         }
 
         var reportId = $"{buildId}-verify";
-        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification);
+        var evidence = CreateEvidence(project, "verify", reportId, input, dependencies, candidateContent, before, after, plan, boundaries, internalVerification.Warnings, experimentalVerification, ellipsoidVerification, coordinatedVerification, directionalVerification, pairedVerification);
+        cancellationToken.ThrowIfCancellationRequested();
         await workspace.SaveEvidenceAsync(projectRoot, reportId, reports.RenderJson(evidence), reports.RenderMarkdown(evidence), cancellationToken).ConfigureAwait(false);
         return new VerifyRunResult(published, evidence);
     }
@@ -345,6 +360,15 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         return await verifier.VerifyDirectionalTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<PairedTransformVerification?> VerifyPairedAsync(
+        ArtifactContent input, ArtifactContent output, MutationPlan plan, CancellationToken cancellationToken)
+    {
+        if (plan.SchemaVersion != 7) return null;
+        if (rewriter is not IPairedTransformVerifier verifier)
+            throw Errors.Unsupported("PAIRED_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent paired resource verifier.", "Do not publish this build.");
+        return await verifier.VerifyPairedTransformAsync(input, output, plan, cancellationToken).ConfigureAwait(false);
+    }
+
     private void RequireInspector(ArtifactContent input)
     {
         if (!inspector.CanInspect(input))
@@ -368,7 +392,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         ExperimentalTransformVerification? experimentalVerification = null,
         EllipsoidTransformVerification? ellipsoidVerification = null,
         CoordinatedTransformVerification? coordinatedVerification = null,
-        DirectionalTransformVerification? directionalVerification = null)
+        DirectionalTransformVerification? directionalVerification = null,
+        PairedTransformVerification? pairedVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -467,13 +492,20 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             operationWarnings.Add("Experimental directional edit: static geometry, protection and box policy are checked separately from untested preserved consumers, garment/pose fit, bodygroup activation and live behavior.");
             if (after is null) boundaries = boundaries.Concat(DirectionalContractValidator.PlannedBoundaries().Where(b => b.Name != "runtime")).ToArray();
         }
+        if (plan.SchemaVersion == 7)
+        {
+            if (after is not null && pairedVerification is null)
+                throw Errors.Verification("PAIRED_VERIFICATION_UNAVAILABLE", "Paired publication requires independent resource observations.", "Do not publish output.");
+            operationWarnings.Add("Experimental paired edit preserves serialized procedural inputs; source-face harmlessness, simulation outputs, culling, garment/pose and runtime remain untested.");
+            if (after is null) boundaries = boundaries.Concat(PairedContractValidator.PlannedBoundaries().Where(b => b.Name != "runtime")).ToArray();
+        }
         var evidenceWarnings = warnings.Concat(operationWarnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var report = new EvidenceReport
         {
-            SchemaVersion = plan.SchemaVersion == 6 ? 11 : plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
+            SchemaVersion = plan.SchemaVersion == 7 ? 12 : plan.SchemaVersion == 6 ? 11 : plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -488,6 +520,10 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             PlanFingerprint = plan.Fingerprint,
             Operations = plan.Operations.Select(operation => CreateOperationEvidence(operation, after, experimentalVerification, ellipsoidVerification, coordinatedVerification) with
             {
+                PairedTransform = operation.PairedTransformTarget is { } paired ? new(paired,
+                    new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), pairedVerification?.Observed,
+                    pairedVerification?.Boxes ?? paired.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
+                    pairedVerification?.PreservedMetadata ?? paired.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
                 DirectionalTransform = operation.DirectionalTransformTarget is { } directional ? new(directional,
                     new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), directionalVerification?.Observed,
                     directionalVerification?.Boxes ?? directional.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
@@ -520,7 +556,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
             operation.OperationId,
             operation.Kind,
             operation.Version,
-            operation.CoordinatedTransformTarget is not null || operation.DirectionalTransformTarget is not null
+            operation.PairedTransformTarget is not null || operation.CoordinatedTransformTarget is not null || operation.DirectionalTransformTarget is not null
                 ? operation.SelectedDrawCalls.Select(item => item.DrawCallId).Order(StringComparer.Ordinal).ToArray()
                 : operation.SelectedDrawCalls.Select(item => item.DrawCallId).ToArray(),
             operation.SelectedDrawCalls.Select(item => item.ResourcePath).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())

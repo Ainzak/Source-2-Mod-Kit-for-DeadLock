@@ -37,6 +37,9 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DirectionalTransformEvidence? DirectionalTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PairedDirectionalTransformEvidence? PairedTransform { get; init; }
 }
 
 public sealed record ExperimentalBoxEvidence(

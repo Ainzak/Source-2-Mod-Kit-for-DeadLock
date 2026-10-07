@@ -5,9 +5,25 @@ using S2ModKit.Domain;
 
 namespace S2ModKit.Adapters.Source2;
 
-public sealed partial class Source2CompiledModelAdapter : IDirectionalAuthoringSourceReader
+public sealed partial class Source2CompiledModelAdapter : IDirectionalAuthoringSourceReader, IPairedAuthoringSourceReader
 {
     public Task<DirectionalAuthoringSource> ReadDirectionalAuthoringSourceAsync(ArtifactContent input, IReadOnlyList<CoordinatedMember> members, CancellationToken token = default)
+        => ReadDirectionalAuthoringFacts(() => ReadDirectionalAuthoringSourceCore(input, members, token));
+
+    public Task<DirectionalAuthoringSource> ReadPairedAuthoringSourceAsync(ArtifactContent input, IReadOnlyList<CoordinatedMember> members, CancellationToken token = default)
+        => ReadDirectionalAuthoringFacts(() => ReadDirectionalAuthoringSourceCore(input, members, token, pairedPreservation: true));
+
+    internal static T ReadDirectionalAuthoringFacts<T>(Func<T> read)
+    {
+        try { return read(); }
+        catch (InvalidDataException exception)
+        {
+            throw new S2ModKitException(DirectionalFailure("EXPERIMENTAL_LAYOUT_UNSUPPORTED",
+                $"Source authoring requires characterized complete geometry and skinning: {exception.Message}").Error, exception);
+        }
+    }
+
+    private Task<DirectionalAuthoringSource> ReadDirectionalAuthoringSourceCore(ArtifactContent input, IReadOnlyList<CoordinatedMember> members, CancellationToken token, bool pairedPreservation = false)
     {
         token.ThrowIfCancellationRequested();
         if (ContentHash.Compute(input.Bytes.Span) != input.ContentHash || members.Count is < 1 or > 16)
@@ -35,15 +51,17 @@ public sealed partial class Source2CompiledModelAdapter : IDirectionalAuthoringS
                     RuntimeMetadataPolicy = new("preserve_unverified", 1),
                     ExpectedVerticesByLod = member.Lods.ToDictionary(l => l.Lod.ToString(CultureInfo.InvariantCulture), l => l.ExpectedVertices)
                 };
-                var profile = CreateRootBufferProfile(new(input, parsed.Snapshot, reader, calls), parsed, calls, preserveAuthoredEnvelopes: true, completeOrdinaryBuffer: true);
-                ValidateExperimentalVertexStreams(profile);
+                var profile = CreateRootBufferProfile(new(input, parsed.Snapshot, reader, calls), parsed, calls, preserveAuthoredEnvelopes: true, completeOrdinaryBuffer: true, pairedPreservation: pairedPreservation);
+                ValidateExperimentalVertexStreams(profile, pairedPreservation);
                 selected.Add(new(member.MemberId, profile));
             }
         if (selected.Select(m => m.Profile.Vertices.Snapshot.ResourceBlockIndex).Distinct().Count() != selected.Count)
             throw DirectionalFailure("DIRECTIONAL_AUTHORING_SOURCE_INVALID", "Selected member storage overlaps.");
         var ordered = selected.OrderBy(m => m.Profile.Mesh.Lod).ThenBy(m => m.Profile.Mesh.MeshOrdinal).ThenBy(m => m.Profile.Vertices.Snapshot.Ordinal).ToArray();
-        var (model, _, _) = ResolveExperimentalRootMetadata(parsed, ordered.Select(m => m.Profile).ToArray());
-        var context = ReadDirectionalVerificationContext(input, parsed, parsed, model, ordered);
+        var model = pairedPreservation
+            ? parsed.Resource.Blocks.OfType<ValveResourceFormat.ResourceTypes.Model>().Single()
+            : ResolveExperimentalRootMetadata(parsed, ordered.Select(m => m.Profile).ToArray()).Model;
+        var context = ReadDirectionalVerificationContext(input, parsed, parsed, model, ordered, pairedPreservation);
         var skeletonHash = KvSemanticHasher.ComputeComplete(ExperimentalCollection(model.Data, "m_modelSkeleton"));
         var bones = new List<DirectionalAuthoringBone>();
         for (var i = 0; i < model.Skeleton.Bones.Length; i++)

@@ -9,7 +9,7 @@ public sealed partial class Source2CompiledModelAdapter
     private static (List<PlannedExperimentalBoxTarget> Boxes, List<DirectionalBoxClosure> Closures,
         List<PlannedExperimentalPreservationTarget> Preserved) PlanDirectionalMetadata(ArtifactContent input, ParsedModel parsed,
         IReadOnlyList<CoordinatedResolvedBuffer> members, Dictionary<(int Mesh, int Buffer), DirectionalWordCalculation> calculations,
-        IReadOnlyList<DirectionalSourceBuffer> context)
+        IReadOnlyList<DirectionalSourceBuffer> context, bool changedContributorsOnly = false)
     {
         var boxes = new List<PlannedExperimentalBoxTarget>(); var closures = new List<DirectionalBoxClosure>();
         var preserved = new List<PlannedExperimentalPreservationTarget>();
@@ -20,7 +20,9 @@ public sealed partial class Source2CompiledModelAdapter
             foreach (var member in group)
                 calculations[(member.Profile.Mesh.MeshOrdinal, member.Profile.Vertices.Snapshot.Ordinal)].Points.CopyTo(final, member.Profile.BufferBaseOffset);
             AddBox(PlanExperimentalSceneBox(input, first, final), Enumerable.Range(0, final.Length).ToArray());
-            var selected = group.SelectMany(m => m.Profile.SelectedVertices.Select(i => i + m.Profile.BufferBaseOffset)).ToHashSet();
+            var selected = group.SelectMany(m => (changedContributorsOnly
+                ? calculations[(m.Profile.Mesh.MeshOrdinal, m.Profile.Vertices.Snapshot.Ordinal)].ChangedPositions.Concat(calculations[(m.Profile.Mesh.MeshOrdinal, m.Profile.Vertices.Snapshot.Ordinal)].ChangedFrames).Distinct()
+                : m.Profile.SelectedVertices).Select(i => i + m.Profile.BufferBaseOffset)).ToHashSet();
             var affected = first.Metadata.BoneBounds.Where(b => b.InfluencedVertices.Any(selected.Contains)).ToArray();
             if (affected.Length == 0) throw DirectionalFailure("EXPERIMENTAL_SKINNING_UNSUPPORTED", "Complete affected bone closure is absent.");
             foreach (var bone in affected) AddBox(PlanExperimentalBoneBox(input, first, bone, final), bone.InfluencedVertices);

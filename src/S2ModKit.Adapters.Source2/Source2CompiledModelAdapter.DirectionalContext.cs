@@ -14,7 +14,7 @@ public sealed partial class Source2CompiledModelAdapter
         IReadOnlyDictionary<int, int[]> RootContributors);
 
     private static DirectionalSourceBuffer[] ResolveDirectionalContext(ArtifactContent input, ParsedModel parsed, Model model,
-        IReadOnlyList<CoordinatedResolvedBuffer> members, Dictionary<(int Mesh, int Buffer), DirectionalWordCalculation> calculations)
+        IReadOnlyList<CoordinatedResolvedBuffer> members, Dictionary<(int Mesh, int Buffer), DirectionalWordCalculation> calculations, bool pairedPreservation = false)
     {
         var selected = members.ToDictionary(m => (m.Profile.Mesh.MeshOrdinal, m.Profile.Vertices.Snapshot.Ordinal));
         var masks = ExperimentalArray(model.Data, "m_refMeshGroupMasks");
@@ -27,7 +27,9 @@ public sealed partial class Source2CompiledModelAdapter
             var geometry = mesh.GeometryAnalysis;
             if (geometry is null || geometry.VertexBuffers.Count != geometry.IndexBuffers.Count || HasMorphData(mesh.Block.Data))
                 throw DirectionalFailure("DIRECTIONAL_COINCIDENT_CONTEXT_INCOMPLETE", "Every represented context buffer needs characterized geometry and contributors.");
-            var metadata = Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "directional source context");
+            var metadata = pairedPreservation
+                ? Source2TransformMetadataAnalyzer.AnalyzePairedPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "paired source context")
+                : Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "directional source context");
             var remap = model.GetRemapTable(mesh.MeshOrdinal);
             if (remap is null || remap.Any(i => i < 0 || i >= model.Skeleton.Bones.Length) || metadata.BoneBounds.Any(b => b.BoneIndex >= remap.Length))
                 throw DirectionalFailure("EXPERIMENTAL_BONE_REMAP_UNSUPPORTED", "Complete source render/root remaps are required for excluded contributors too.");

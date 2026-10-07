@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/evidence/v11",
+  "title": "S2ModKit evidence v11 with unchanged earlier compatibility",
+  "definitions": {
+    "contentHash": {
+      "$ref": "../v8/evidence.schema.json#/definitions/contentHash"
+    },
+    "removeOperationEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/removeOperationEvidence"
+    },
+    "transformOperationEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/transformOperationEvidence"
+    },
+    "coupledTransformOperationEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/coupledTransformOperationEvidence"
+    },
+    "affineTransformOperationEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/affineTransformOperationEvidence"
+    },
+    "affineTransform": {
+      "$ref": "../v8/evidence.schema.json#/definitions/affineTransform"
+    },
+    "resolvedPivot": {
+      "$ref": "../v8/evidence.schema.json#/definitions/resolvedPivot"
+    },
+    "resolvedFrame": {
+      "$ref": "../v8/evidence.schema.json#/definitions/resolvedFrame"
+    },
+    "rotation": {
+      "$ref": "../v8/evidence.schema.json#/definitions/rotation"
+    },
+    "matrix3": {
+      "$ref": "../v8/evidence.schema.json#/definitions/matrix3"
+    },
+    "affineGeometryChange": {
+      "$ref": "../v8/evidence.schema.json#/definitions/affineGeometryChange"
+    },
+    "coupledTransform": {
+      "$ref": "../v8/evidence.schema.json#/definitions/coupledTransform"
+    },
+    "coupledTransformHalf": {
+      "$ref": "../v8/evidence.schema.json#/definitions/coupledTransformHalf"
+    },
+    "drawCallIds": {
+      "$ref": "../v8/evidence.schema.json#/definitions/drawCallIds"
+    },
+    "resourcePaths": {
+      "$ref": "../v8/evidence.schema.json#/definitions/resourcePaths"
+    },
+    "geometryChange": {
+      "$ref": "../v8/evidence.schema.json#/definitions/geometryChange"
+    },
+    "vector3": {
+      "$ref": "../v8/evidence.schema.json#/definitions/vector3"
+    },
+    "bounds": {
+      "$ref": "../v8/evidence.schema.json#/definitions/bounds"
+    },
+    "codecIdentity": {
+      "$ref": "../v8/evidence.schema.json#/definitions/codecIdentity"
+    },
+    "artifactEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/artifactEvidence"
+    },
+    "boundaryEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/boundaryEvidence"
+    },
+    "resourceBlockEvidence": {
+      "$ref": "../v8/evidence.schema.json#/definitions/resourceBlockEvidence"
+    },
+    "runtimeMetadataPolicy": {
+      "$ref": "../v8/evidence.schema.json#/definitions/runtimeMetadataPolicy"
+    },
+    "experimentalGrowth": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalGrowth"
+    },
+    "experimentalBoxTarget": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalBoxTarget"
+    },
+    "experimentalPreservationTarget": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalPreservationTarget"
+    },
+    "experimentalBoxPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalBoxPlanned"
+    },
+    "experimentalPreservationPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalPreservationPlanned"
+    },
+    "experimentalTransformPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalTransformPlanned"
+    },
+    "experimentalOperationPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalOperationPlanned"
+    },
+    "experimentalBoxPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalBoxPassed"
+    },
+    "experimentalPreservationPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalPreservationPassed"
+    },
+    "experimentalTransformPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalTransformPassed"
+    },
+    "experimentalOperationPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/experimentalOperationPassed"
+    },
+    "regionSelection": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionSelection"
+    },
+    "regionBuffer": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionBuffer"
+    },
+    "regionScale": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionScale"
+    },
+    "regionGeometry": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionGeometry"
+    },
+    "regionTransformPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionTransformPlanned"
+    },
+    "regionOperationPlanned": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionOperationPlanned"
+    },
+    "regionTransformPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionTransformPassed"
+    },
+    "regionOperationPassed": {
+      "$ref": "../v8/evidence.schema.json#/definitions/regionOperationPassed"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "../v8/evidence.schema.json"
+    },
+    {
+      "$ref": "../ellipsoid-contracts.schema.json#/definitions/evidence"
+    },
+    {
+      "$ref": "../coordinated-contracts.schema.json#/definitions/evidence"
+    },
+    {
+      "$ref": "../directional-contracts.schema.json#/definitions/evidence"
+    }
+  ]
+}

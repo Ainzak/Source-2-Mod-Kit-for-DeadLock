@@ -7,6 +7,7 @@ namespace S2ModKit.Application;
 public static class JsonDefaults
 {
     public static JsonSerializerOptions Options { get; } = CreateOptions();
+    private static JsonSerializerOptions PairedEvidenceOptions { get; } = new(Options) { WriteIndented = false };
 
     public static T Deserialize<T>(ReadOnlySpan<byte> utf8Json, string description)
     {
@@ -27,7 +28,7 @@ public static class JsonDefaults
 
             var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
                 ?? throw Errors.InvalidRecipe("JSON_NULL_DOCUMENT", $"{description} cannot be null.", "Provide a JSON object matching the published schema.");
-            if (result is RecipeDocument { SchemaVersion: 8 or 9 or 10 } recipe)
+            if (result is RecipeDocument { SchemaVersion: 8 or 9 or 10 or 11 } recipe)
             {
                 // Shape dispatch already forbids a serialized legacy transform, including
                 // null. Remove only the old CLR initializer revived by its absence.
@@ -36,14 +37,16 @@ public static class JsonDefaults
                     Operations = recipe.Operations.Select(operation => operation is TransformComponentOperation transform
                     ? transform with { Transform = null! } : operation).ToArray()
                 };
-                if (recipe.SchemaVersion == 10) DirectionalContractValidator.ValidateRecipe(recipe);
+                if (recipe.SchemaVersion == 11) PairedContractValidator.ValidateRecipe(recipe);
+                else if (recipe.SchemaVersion == 10) DirectionalContractValidator.ValidateRecipe(recipe);
                 else if (recipe.SchemaVersion == 9) CoordinatedContractValidator.ValidateRecipe(recipe);
                 else EllipsoidContractValidator.ValidateRecipe(recipe);
                 result = (T)(object)recipe;
             }
             if (result is EvidenceReport evidence)
             {
-                if (evidence.SchemaVersion == 11) DirectionalContractValidator.ValidateEvidence(evidence);
+                if (evidence.SchemaVersion == 12) PairedContractValidator.ValidateEvidence(evidence);
+                else if (evidence.SchemaVersion == 11) DirectionalContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 10) CoordinatedContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
                 else ExperimentalEvidenceValidator.Validate(evidence);
@@ -63,17 +66,32 @@ public static class JsonDefaults
     public static byte[] SerializeToUtf8<T>(T value)
     {
         ValidateDirectionalWrite(value);
-        return JsonSerializer.SerializeToUtf8Bytes(value, Options);
+        var json = JsonSerializer.SerializeToUtf8Bytes(value, value is EvidenceReport { SchemaVersion: 12 } ? PairedEvidenceOptions : Options);
+        if (PairedContractJson.IsPairedArtifact(value)) PairedContractJson.RequireBudget(json.Length);
+        return json;
     }
 
     public static string Serialize<T>(T value)
     {
         ValidateDirectionalWrite(value);
-        return JsonSerializer.Serialize(value, Options);
+        var json = JsonSerializer.Serialize(value, value is EvidenceReport { SchemaVersion: 12 } ? PairedEvidenceOptions : Options);
+        if (PairedContractJson.IsPairedArtifact(value)) PairedContractJson.RequireBudget(System.Text.Encoding.UTF8.GetByteCount(json));
+        return json;
     }
 
     private static void ValidateDirectionalWrite<T>(T value)
     {
+        if (value is PairedFieldOptions options) _ = PairedFieldOptionsJson.ToRecipe(options);
+        if (value is RecipeDocument pairedRecipe && pairedRecipe.SchemaVersion != 11
+            && pairedRecipe.Operations?.OfType<TransformComponentOperation>().Any(op => op.Version == 10 || op.PairedTransform is not null || op.SourceTrianglePolicy is not null || op.ProceduralInputPolicy is not null) == true)
+            throw PairedContractJson.Invalid("Paired intent/policies cannot be written in an old recipe.");
+        if (value is MutationPlan pairedPlan && pairedPlan.SchemaVersion != 7 && pairedPlan.Operations?.Any(op => op is { Version: 10 } || op?.PairedTransformTarget is not null) == true)
+            throw PairedContractJson.Invalid("Paired targets cannot be written in an old plan.");
+        if (value is EvidenceReport pairedReport && pairedReport.SchemaVersion != 12 && pairedReport.Operations?.Any(op => op is { Version: 10 } || op?.PairedTransform is not null) == true)
+            throw PairedContractJson.Invalid("Paired evidence cannot be written in an old report.");
+        if (value is RecipeDocument { SchemaVersion: 11 } newRecipe) PairedContractValidator.ValidateRecipe(newRecipe);
+        if (value is MutationPlan { SchemaVersion: 7 } newPlan) PairedContractValidator.ValidatePlan(newPlan);
+        if (value is EvidenceReport { SchemaVersion: 12 } newReport) PairedContractValidator.ValidateEvidence(newReport);
         if (value is RecipeDocument oldRecipe && oldRecipe.SchemaVersion != 10
             && oldRecipe.Operations?.OfType<TransformComponentOperation>().Any(op => op.Version == 9 || op.DirectionalTransform is not null) == true)
             throw DirectionalContractJson.Invalid("Directional intent cannot be written in an old recipe.");
@@ -91,6 +109,7 @@ public static class JsonDefaults
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (PairedContractJson.RecipeShape(root, json.Length)) return;
         if (DirectionalContractJson.RecipeShape(root)) return;
         if (CoordinatedContractJson.RecipeShape(root)) return;
         if (EllipsoidContractJson.RecipeShape(root)) return;

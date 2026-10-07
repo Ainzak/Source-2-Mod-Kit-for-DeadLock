@@ -17,6 +17,8 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
 - Opt into experimental complete-buffer scaling or axis-ramp region scaling on eligible parts.
 - Shape an eligible buffer with a local ellipsoid or disjoint mirrored pair, or apply one common
   field atomically to several eligible ordinary buffers.
+- Author experimental protected directional fields or disjoint pairs with source-backed agent
+  commands and matched region/silhouette previews across every LOD.
 - Preview selected and excluded geometry across every LOD before building.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
@@ -32,7 +34,9 @@ sphere containment, occlusion proxies or collision correspondence. It is not ana
 hair, clothing and animation may not follow an enlarged part. See the compatibility matrix before
 using an experimental edit.
 
-Local, mirrored and coordinated actions are available in the source checkout. Downloadable v0.2.0
+Local, mirrored, coordinated and protected directional/paired actions are available in the source
+checkout. Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md); interactive
+menus do not expose every operation. Downloadable v0.2.0
 includes the earlier whole-buffer and axis-ramp actions. See [the user guide](docs/USER-GUIDE.md)
 for explicit field parameters, coordinated options and the guided workflow.
 

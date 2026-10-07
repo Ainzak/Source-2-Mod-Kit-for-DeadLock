@@ -7,9 +7,9 @@ public sealed partial class ModelVerifier
     private static VerificationResult VerifyCoordinatedSnapshot(ModelSnapshot before, ModelSnapshot after, MutationPlan plan)
     {
         var operation = plan.Operations.Single();
-        var sourceBlocks = operation.DirectionalTransformTarget?.SourceBlocks ?? operation.CoordinatedTransformTarget!.SourceBlocks;
-        var buffers = operation.DirectionalTransformTarget?.Buffers ?? operation.CoordinatedTransformTarget!.Buffers;
-        var prefix = operation.DirectionalTransformTarget is null ? "coordinated" : "directional";
+        var sourceBlocks = operation.PairedTransformTarget?.SourceBlocks ?? operation.DirectionalTransformTarget?.SourceBlocks ?? operation.CoordinatedTransformTarget!.SourceBlocks;
+        var buffers = operation.PairedTransformTarget?.Buffers ?? operation.DirectionalTransformTarget?.Buffers ?? operation.CoordinatedTransformTarget!.Buffers;
+        var prefix = operation.PairedTransformTarget is not null ? "paired" : operation.DirectionalTransformTarget is null ? "coordinated" : "directional";
         var boundaries = new List<BoundaryEvidence>();
         void Check(string name, bool passed) => boundaries.Add(new(name, passed ? "passed" : "failed",
             passed ? "Snapshot postcondition verified; resource-level box/preservation audit is separately required." : "Experimental snapshot postcondition failed."));

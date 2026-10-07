@@ -51,7 +51,7 @@ public sealed partial class Source2CompiledModelAdapter
         }
     }
 
-    private static void ValidateExperimentalVertexStreams(Source2AffineProfile profile)
+    private static void ValidateExperimentalVertexStreams(Source2AffineProfile profile, bool pairedPreservation = false)
     {
         var descriptors = ExperimentalArray(profile.Mesh.Descriptor, "m_vertexBuffers");
         foreach (var descriptor in descriptors.Values)
@@ -78,6 +78,7 @@ public sealed partial class Source2CompiledModelAdapter
                     ("COLOR", 28u) => 4,
                     ("BLENDINDICES", 30u) => 4,
                     ("BLENDINDICES", 12u) => 8,
+                    ("BLENDINDICES", 14u) when pairedPreservation => 8,
                     ("BLENDINDICES", 4u) => 16,
                     ("BLENDWEIGHT", 28u) => 4,
                     ("BLENDWEIGHT", 11u) => 8,

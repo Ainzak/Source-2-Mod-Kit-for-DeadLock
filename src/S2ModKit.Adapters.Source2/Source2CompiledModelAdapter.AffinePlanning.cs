@@ -124,7 +124,7 @@ public sealed partial class Source2CompiledModelAdapter
         ParsedModel parsed,
         SelectedDrawCall[] selected,
         bool preserveAuthoredEnvelopes,
-        bool completeOrdinaryBuffer = false)
+        bool completeOrdinaryBuffer = false, bool pairedPreservation = false)
     {
         if (preserveAuthoredEnvelopes && request.Operation.Version is not (5 or 6 or 7))
         {
@@ -192,7 +192,10 @@ public sealed partial class Source2CompiledModelAdapter
         }
 
         var isMultiBuffer = geometry.VertexBuffers.Count > 1;
-        var metadata = preserveAuthoredEnvelopes
+        if (pairedPreservation && (!preserveAuthoredEnvelopes || !completeOrdinaryBuffer)) throw new InvalidDataException("Paired preservation requires the complete explicit profile.");
+        var metadata = pairedPreservation
+            ? Source2TransformMetadataAnalyzer.AnalyzePairedPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry, "paired complete source")
+            : preserveAuthoredEnvelopes
             ? Source2TransformMetadataAnalyzer.AnalyzeVisualPreservationBuffers(mesh.Descriptor, mesh.Block.Data, geometry,
                 $"embedded mesh {mesh.MeshOrdinal.ToString(CultureInfo.InvariantCulture)}")
             : isMultiBuffer

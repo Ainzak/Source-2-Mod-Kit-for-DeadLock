@@ -11,6 +11,8 @@ public static class MutationPlanJson
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) throw Invalid("A mutation plan must be an object.");
+        if (EllipsoidContractJson.HasVersion(root, 7)) return PairedContractJson.ReadPlan(root, json);
+        EllipsoidContractJson.RejectOperationProperty(root, "pairedTransformTarget");
         if (EllipsoidContractJson.HasVersion(root, 6)) return DirectionalContractJson.ReadPlan(root, json);
         EllipsoidContractJson.RejectOperationProperty(root, "directionalTransformTarget");
         if (EllipsoidContractJson.HasVersion(root, 5)) return CoordinatedContractJson.ReadPlan(root, json);
@@ -82,7 +84,7 @@ public static class MutationPlanJson
     /// <summary>All serialized semantic facts enter a canonical property-ordered digest; the digest itself does not.</summary>
     public static ContentHash ComputeExperimentalFingerprint(MutationPlan plan)
     {
-        if (plan.SchemaVersion is not (2 or 3 or 4 or 5 or 6)) throw Invalid("Only experimental plan versions 2 through 6 use this fingerprint.");
+        if (plan.SchemaVersion is not (2 or 3 or 4 or 5 or 6 or 7)) throw Invalid("Only experimental plan versions 2 through 7 use this fingerprint.");
         var facts = JsonSerializer.SerializeToElement(new { plan.SchemaVersion, plan.RecipeId, plan.InputHash, plan.Inputs, plan.Operations }, JsonDefaults.Options);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, facts);
@@ -96,6 +98,9 @@ public static class MutationPlanJson
         => ComputeVisualTargetFingerprint(target);
 
     public static ContentHash ComputeDirectionalTargetFingerprint(PlannedDirectionalTransformTarget target)
+        => ComputeVisualTargetFingerprint(target);
+
+    public static ContentHash ComputePairedTargetFingerprint(PlannedPairedTransformTarget target)
         => ComputeVisualTargetFingerprint(target);
 
     public static ContentHash ComputeDirectionalFactsHash<T>(T value)

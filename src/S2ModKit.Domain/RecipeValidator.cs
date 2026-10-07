@@ -11,12 +11,14 @@ public static partial class RecipeValidator
     {
         ArgumentNullException.ThrowIfNull(recipe);
 
-        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10))
+        if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11))
         {
-            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 10 are supported.", "Migrate the recipe to a published schema version.");
+            throw Errors.InvalidRecipe("SCHEMA_VERSION_UNSUPPORTED", "Only recipe schemaVersion 1 through 11 are supported.", "Migrate the recipe to a published schema version.");
         }
 
         ValidateIdentifier(recipe.RecipeId, "recipeId");
+        if (recipe.SchemaVersion == 11 && recipe.Operations is not [TransformComponentOperation { Version: 10 }])
+            throw PairedInvalid("Schema 11 requires exactly one transform_component@10 pair.");
         if (recipe.Extensions is null)
         {
             throw Errors.InvalidRecipe("EXTENSIONS_INVALID", "Recipe extensions must be an object.", "Use an empty object when no extensions are required.");
@@ -83,6 +85,8 @@ public static partial class RecipeValidator
             }
 
             ValidateOperation(operation);
+            if (operation is TransformComponentOperation { Version: 10 } && recipe.SchemaVersion != 11)
+                throw PairedInvalid("Paired transforms require recipe schema 11.");
             if (operation is TransformComponentOperation { Version: 9 } && recipe.SchemaVersion != 10)
                 throw DirectionalInvalid("Directional transforms require recipe schema 10.");
             if (operation is TransformComponentOperation { Version: 8 } && recipe.SchemaVersion != 9)
@@ -141,11 +145,13 @@ public static partial class RecipeValidator
 
     private static void ValidateTransformComponent(TransformComponentOperation operation)
     {
+        if (operation.Version != 10 && (operation.PairedTransform is not null || operation.SourceTrianglePolicy is not null || operation.ProceduralInputPolicy is not null))
+            throw PairedInvalid("Earlier operations cannot contain paired intent or compatibility policies.");
         if (operation.Version != 9 && operation.DirectionalTransform is not null)
             throw DirectionalInvalid("Earlier operations cannot contain directional intent.");
         if (operation.Version == 9 && operation.CoordinatedTransform is not null)
             throw DirectionalInvalid("Directional operations cannot contain coordinated intent.");
-        if (operation.Version is not (8 or 9) && (operation.CoordinatedTransform is not null || operation.ZeroBoneBoxPolicy is not null || operation.ZeroRenderSpherePolicy is not null))
+        if (operation.Version is not (8 or 9 or 10) && (operation.CoordinatedTransform is not null || operation.ZeroBoneBoxPolicy is not null || operation.ZeroRenderSpherePolicy is not null))
             throw CoordinatedInvalid("Earlier operations cannot contain coordinated intent or zero-field policies.");
         if (operation.Version != 7 && operation.LocalTransform is not null)
             throw EllipsoidInvalid("Earlier operations cannot contain localTransform.");
@@ -161,6 +167,7 @@ public static partial class RecipeValidator
             7 => operation.Granularity == "ellipsoid_vertices",
             8 => operation.Granularity == "coordinated_buffer_vertices",
             9 => operation.Granularity == "directional_buffer_vertices",
+            10 => operation.Granularity == "paired_directional_buffer_vertices",
             _ => false,
         };
         if (!validGranularity)
@@ -181,6 +188,12 @@ public static partial class RecipeValidator
             throw Errors.InvalidRecipe("OWNERSHIP_POLICY_UNSUPPORTED", "transform_component@1 requires exclusive vertex ownership.", "Set ownershipPolicy to exclusive.");
         }
 
+
+        if (operation.Version == 10)
+        {
+            ValidatePairedTransform(operation);
+            return;
+        }
 
         if (operation.Version == 9)
         {

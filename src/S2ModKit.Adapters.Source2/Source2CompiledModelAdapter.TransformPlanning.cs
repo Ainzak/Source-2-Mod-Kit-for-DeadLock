@@ -88,6 +88,9 @@ public sealed partial class Source2CompiledModelAdapter
             throw new ArgumentException("A complete transform planning request is required.", nameof(request));
         }
 
+        if (request.Operation.Version == 10 || request.Operation.PairedTransform is not null)
+            PairedContractValidator.ValidateRecipe(new() { SchemaVersion = 11, RecipeId = "paired", InputHash = request.Input.ContentHash, Operations = [request.Operation] });
+
         if (request.Operation.Version == 9 || request.Operation.DirectionalTransform is not null)
             DirectionalContractValidator.ValidateRecipe(new() { SchemaVersion = 10, RecipeId = "directional", InputHash = request.Input.ContentHash, Operations = [request.Operation] });
 
@@ -104,6 +107,8 @@ public sealed partial class Source2CompiledModelAdapter
         {
             throw Errors.Selection("TRANSFORM_SELECTION_INVALID", "The transform selection is empty or contains duplicate draw-call identities.", "Regenerate a non-empty canonical selection.");
         }
+
+        if (request.Operation.Version == 10) return PlanPairedTransform(request, parsed);
 
         if (request.Operation.Version == 9)
         {

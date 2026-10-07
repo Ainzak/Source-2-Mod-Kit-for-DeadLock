@@ -190,6 +190,8 @@ public sealed record TransformPlanningResult(
     public PlannedCoordinatedTransformTarget? CoordinatedTransformTarget { get; init; }
 
     public PlannedDirectionalTransformTarget? DirectionalTransformTarget { get; init; }
+
+    public PlannedPairedTransformTarget? PairedTransformTarget { get; init; }
 }
 
 public sealed record AffineSelectionBoundsEvidence(
@@ -285,6 +287,15 @@ public interface IS2ModKitApplication
 
     Task<DirectionalSelectionPreview> PreviewDirectionalSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken token = default) =>
         throw Errors.Unsupported("DIRECTIONAL_PREVIEW_UNAVAILABLE", "Directional surface preview is not configured.", "Configure a compatible adapter.");
+
+    Task<ComponentDiscoveryResultV2> DiscoverPairedComponentsAsync(string projectRoot, CancellationToken token = default) =>
+        throw Errors.Unsupported("PAIRED_DISCOVERY_UNAVAILABLE", "Paired discovery is unavailable.", "Configure a compatible adapter.");
+    Task<DirectionalAuthoringSource> InspectPairedSelectionAsync(string projectRoot, IReadOnlyList<string> componentIds, CancellationToken token = default) =>
+        throw Errors.Unsupported("PAIRED_AUTHORING_READER_REQUIRED", "Paired source inspection is unavailable.", "Configure a compatible adapter.");
+    Task<RecipeScaffoldResult> ScaffoldPairedRecipeAsync(string projectRoot, IReadOnlyList<string> componentIds, PairedFieldOptions options, string outputPath, CancellationToken token = default) =>
+        throw Errors.Unsupported("PAIRED_SCAFFOLD_UNAVAILABLE", "Paired scaffolding is unavailable.", "Configure a compatible adapter.");
+    Task<PairedSelectionPreview> PreviewPairedSelectionAsync(string projectRoot, RecipeDocument recipe, CancellationToken token = default) =>
+        throw Errors.Unsupported("PAIRED_PREVIEW_READER_REQUIRED", "Paired preview is unavailable.", "Configure a compatible adapter.");
 
     Task<ComponentDiscoveryResultV2> DiscoverDirectionalComponentsAsync(string projectRoot, CancellationToken token = default) =>
         throw Errors.Unsupported("DIRECTIONAL_DISCOVERY_UNAVAILABLE", "Directional discovery is not configured.", "Configure a compatible adapter.");

@@ -81,7 +81,7 @@ Plain sequential output remains usable when redirected or wrapped by a narrow te
 read the documented project, recipe, build, and package fields from the saved session and hand them
 directly to the ordinary `plan`, `verify`, and `package verify` commands.
 
-Only guided installation and the `addons install`/`addons rollback` commands can change a game
+Only guided installation and the `addons install`, `addons install-current` and `addons rollback` commands can change a game
 addon root, and installation requires explicit player authorization. All other normal workflow
 commands write only under their project root or an explicitly selected export path.
 
@@ -370,6 +370,23 @@ New sessions use schema 4; resume retains the selected IDs, typed field/policies
 and rejects changed parameters. Do not supply replacement options with `--resume`. Existing sessions
 keep their earlier meaning. Use the ordinary plan/build/verify/package lifecycle after review.
 
+### Protected directional and paired shaping (agent workflow)
+
+Advanced region shaping uses `directional` or `paired` agent commands; interactive menus do not
+expose every capability. See [AI usage](AI-USAGE.md) for source inspection, exact options,
+scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
+evidence 12 and requires explicit disjoint fields, protected records and compatibility policies.
+Structural discovery is not anatomical selection or admission: authored options must pass the
+exact planner with complete all-LOD members before building. Review front/side silhouettes and
+actual regional measurements; a core scale factor is not whole-part growth.
+
+One exact installed Wraith chest candidate has accepted owner appearance feedback after rollback.
+Other sources, animations, garment fit, LOD transitions, culling and collision remain unqualified.
+Serialized procedural inputs are preserved without proving simulation independence. Use the
+ordinary build/verify/minimal-package lifecycle and the guarded `addons install-current` route
+with the current game archive and separate installation authorization. Stale source/dependencies
+reject; an old successful preflight report cannot authorize a later installation.
+
 ### Translate a component
 
 ```powershell
@@ -428,6 +445,14 @@ Build/package evidence is `offline_static`: it proves structural and reopen chec
 animation or runtime load order.
 
 ## 6. Explicit installation, observation, and rollback
+
+For a reviewed minimal candidate imported from the game archive, agents use
+[`addons install-current`](CLI-REFERENCE.md#s2mod-addons-install-current) with the exact reviewed
+package hash and current base archive. It compares the model and every imported dependency inside
+the installation workflow, reverifies the candidate and rereads source at handoff. A mismatch or
+read failure stops before addon writes. Its receipt is under `result.installation.receipt`.
+It records a source snapshot and does not lock against later updates. The existing installation
+route below retains its meaning for earlier workflows and other explicitly authorized sources.
 
 First inspect addon collisions:
 

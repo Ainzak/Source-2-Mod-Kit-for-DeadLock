@@ -207,6 +207,8 @@ public sealed partial class SyntheticPipelineTests
         private readonly Dictionary<ContentHash, MutationPlan> plans = [];
         private readonly Dictionary<string, (PublishedBuild Build, ArtifactContent Content)> builds = new(StringComparer.Ordinal);
 
+        public IReadOnlyCollection<MutationPlan> SavedPlans => plans.Values;
+
         public MemoryWorkspace(ArtifactContent input)
         {
             this.input = input;

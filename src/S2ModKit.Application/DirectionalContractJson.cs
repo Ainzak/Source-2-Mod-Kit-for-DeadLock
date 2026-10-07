@@ -81,7 +81,7 @@ internal static class DirectionalContractJson
         foreach (var name in names) EllipsoidContractJson.RejectProperty(value, name);
     }
 
-    private static void Shape(JsonElement value, Type type, bool allowNull = false)
+    internal static void Shape(JsonElement value, Type type, bool allowNull = false)
     {
         if (value.ValueKind == JsonValueKind.Null) { if (allowNull) return; throw Invalid("Required directional facts cannot be null."); }
         if (Nullable.GetUnderlyingType(type) is { } underlying) type = underlying;
@@ -138,6 +138,12 @@ internal static class DirectionalContractJson
         {
             var name = JsonNamingPolicy.CamelCase.ConvertName(p.Name);
             if (!value.TryGetProperty(name, out var child)) throw Invalid($"Required directional fact '{name}' is missing.");
+            if (type == typeof(PairedSourceTriangleFacts) && name == "triangleIndices")
+            {
+                if (child.ValueKind != JsonValueKind.Array || child.GetArrayLength() > 3_000_000) throw Invalid("Invalid or oversized complete triangle inventory.");
+                foreach (var index in child.EnumerateArray()) Shape(index, typeof(int));
+                continue;
+            }
             Shape(child, p.PropertyType, name is "observed" or "observedWords" or "observedPayloadHash" || (type == typeof(DirectionalPivotEvidence) && name == "referenceLod"));
         }
     }

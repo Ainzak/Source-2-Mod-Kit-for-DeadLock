@@ -81,7 +81,7 @@ public sealed partial class SyntheticPipelineTests
         public bool CanReadDependencies(ArtifactContent artifact) => true;
         public virtual Task<ModelSnapshot> InspectAsync(ArtifactContent artifact, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
         public Task<IReadOnlyList<ResourceDependency>> ReadDependenciesAsync(ArtifactContent artifact, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ResourceDependency>>([]);
-        public TransformPlanningResult PlanTransform(TransformPlanningRequest request)
+        public virtual TransformPlanningResult PlanTransform(TransformPlanningRequest request)
         {
             var facts = Failure switch
             {

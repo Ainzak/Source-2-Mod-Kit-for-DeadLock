@@ -56,20 +56,17 @@ public sealed partial class FileSystemProjectWorkspace
         }
 
         var temporaryRoot = ResolveInside(root, $"temp/publish-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(temporaryRoot);
         var finalReportJson = ResolveInside(root, $"reports/{publication.BuildId}.json");
         var finalReportMarkdown = ResolveInside(root, $"reports/{publication.BuildId}.md");
         var movedReportJson = false;
         var movedReportMarkdown = false;
         var evidenceJsonBytes = new UTF8Encoding(false).GetBytes(publication.EvidenceJson);
         var evidenceMarkdownBytes = new UTF8Encoding(false).GetBytes(publication.EvidenceMarkdown);
-        if (evidenceJsonBytes.LongLength > MaximumEvidenceBytes || evidenceMarkdownBytes.LongLength > MaximumEvidenceBytes)
-        {
-            throw Errors.Verification("BUILD_EVIDENCE_SIZE_UNSUPPORTED", "Build evidence exceeds the 16 MiB per-file publication limit.", "Reduce diagnostic output before publishing the build.");
-        }
+        ValidateModelEvidenceSize(evidenceJsonBytes, evidenceMarkdownBytes);
 
         try
         {
+            Directory.CreateDirectory(temporaryRoot);
             if (File.Exists(finalReportJson)
                 || Directory.Exists(finalReportJson)
                 || File.Exists(finalReportMarkdown)

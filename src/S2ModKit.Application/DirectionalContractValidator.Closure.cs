@@ -8,7 +8,7 @@ public static partial class DirectionalContractValidator
     private static (int Lod, int Mesh, int Buffer) Key(DirectionalContextBuffer b) => (b.Lod, b.MeshOrdinal, b.VertexBufferOrdinal);
     private static (int Lod, int Mesh, int Buffer) Key(DirectionalProtectedSet s) => (s.Lod, s.MeshOrdinal, s.VertexBufferOrdinal);
 
-    private static void ValidateContext(PlannedDirectionalTransformTarget t, Dictionary<int, PlannedTargetBlock> sources)
+    private static void ValidateContext(ProtectedBufferStorage t, Dictionary<int, PlannedTargetBlock> sources)
     {
         if (t.ContextBuffers is not { Count: > 0 } || t.ContextBuffers.Any(c => c is null)
             || !t.ContextBuffers.Select(Key).SequenceEqual(t.ContextBuffers.Select(Key).Distinct().Order())
@@ -18,7 +18,7 @@ public static partial class DirectionalContractValidator
             || t.ContextBuffers.GroupBy(c => c.VertexResourceBlockIndex).Any(g => g.Any(c => c.Selected) && g.Count() != 1)
             || t.ContextBuffers.Sum(c => (long)c.VertexCount) > int.MaxValue) throw Invalid("Missing or noncanonical complete source context.");
         var selected = t.Buffers.ToDictionary(b => (b.Lod, b.MeshOrdinal, b.VertexBufferOrdinal));
-        var lods = t.DirectionalTransform.Members[0].Lods.Select(l => l.Lod).ToArray();
+        var lods = t.Members[0].Lods.Select(l => l.Lod).ToArray();
         foreach (var c in t.ContextBuffers)
         {
             if (!lods.Contains(c.Lod) || c.MeshOrdinal < 0 || c.VertexBufferOrdinal < 0 || c.VertexCount <= 0 || !Portable(c.ResourcePath)
@@ -43,17 +43,17 @@ public static partial class DirectionalContractValidator
         }
     }
 
-    private static void ValidateProtection(PlannedDirectionalTransformTarget t)
+    private static void ValidateProtection(ProtectedBufferStorage t)
     {
         var p = t.Protection;
         if (p is null || p.Assertions is null || p.Assertions.Any(a => a is null) || p.Union is null
-            || !p.Assertions.Select(a => a.AssertionId).SequenceEqual(t.DirectionalTransform.Protection.Assertions.Select(a => a.AssertionId)))
+            || !p.Assertions.Select(a => a.AssertionId).SequenceEqual(t.IntentProtection.Assertions.Select(a => a.AssertionId)))
             throw ProtectionDrift("Resolved assertion inventory drift.");
         var context = t.ContextBuffers.ToDictionary(Key);
         for (var ai = 0; ai < p.Assertions.Count; ai++)
         {
             var resolved = p.Assertions[ai];
-            var intent = t.DirectionalTransform.Protection.Assertions[ai];
+            var intent = t.IntentProtection.Assertions[ai];
             ValidateProtectedSets(resolved.Sets, context);
             var rows = intent is DirectionalBoneAssertion ? t.ContextBuffers : t.ContextBuffers.Where(c => c.Selected).ToArray();
             if (!resolved.Sets.Select(Key).SequenceEqual(rows.Select(Key)) || resolved.ContributorSetHash != ContributorSetHash(resolved.Sets))
@@ -91,12 +91,12 @@ public static partial class DirectionalContractValidator
             foreach (var a in asserted.Where(a => a.VertexIndices.SequenceEqual(indices)))
                 if (s.SourcePositionHash != a.SourcePositionHash || s.SourcePackedFrameHash != a.SourcePackedFrameHash) throw Invalid("Equal protected sets have inconsistent word identities.");
         }
-        foreach (var lod in t.DirectionalTransform.Members[0].Lods)
+        foreach (var lod in t.Members[0].Lods)
             if (p.Union.Where(s => s.Lod == lod.Lod && context[Key(s)].Selected).Sum(s => (long)s.VertexCount) == 0)
                 throw Invalid("The selected protected union must be nonempty in every LOD.");
     }
 
-    private static void ValidateProtectedSets(IReadOnlyList<DirectionalProtectedSet>? sets, Dictionary<(int Lod, int Mesh, int Buffer), DirectionalContextBuffer> context)
+    internal static void ValidateProtectedSets(IReadOnlyList<DirectionalProtectedSet>? sets, Dictionary<(int Lod, int Mesh, int Buffer), DirectionalContextBuffer> context)
     {
         if (sets is null || sets.Any(s => s is null) || !sets.Select(Key).SequenceEqual(sets.Select(Key).Distinct().Order())) throw Invalid("Protected records must be complete, unique and sorted.");
         foreach (var s in sets)
@@ -112,7 +112,7 @@ public static partial class DirectionalContractValidator
         }
     }
 
-    private static void ValidateBoxes(PlannedDirectionalTransformTarget t, IReadOnlyDictionary<int, PlannedTargetBlock> sources)
+    private static void ValidateBoxes(ProtectedBufferStorage t, IReadOnlyDictionary<int, PlannedTargetBlock> sources)
     {
         MutationPlanJson.ValidateMetadataFacts(t.BoxTargets, t.PreservationTargets, sources);
         static (int, string) Box(PlannedExperimentalBoxTarget b) => (b.ResourceBlockIndex, b.FieldPath);

@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/paired-selection-preview.schema.json",
+  "title": "S2ModKit paired surface comparison summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "projectionProfile",
+    "proofLevel",
+    "inputHash",
+    "planFingerprint",
+    "targetFingerprint",
+    "previewFingerprint",
+    "buffers",
+    "contactSheetHash",
+    "limitations",
+    "fields",
+    "regions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "paired_surface_comparison"
+      ]
+    },
+    "projectionProfile": {
+      "enum": [
+        "paired_surface_comparison@1"
+      ]
+    },
+    "proofLevel": {
+      "enum": [
+        "bind_space_prediction"
+      ]
+    },
+    "inputHash": {
+      "$ref": "#/definitions/hash"
+    },
+    "planFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "targetFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "previewFingerprint": {
+      "$ref": "#/definitions/hash"
+    },
+    "buffers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/buffer"
+      }
+    },
+    "contactSheetHash": {
+      "$ref": "#/definitions/hash"
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fieldId",
+          "field"
+        ],
+        "properties": {
+          "fieldId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "field": {
+            "$ref": "directional-contracts.schema.json#/definitions/directionalEllipsoidField"
+          }
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lod",
+          "fieldId",
+          "changedPositions",
+          "changedFrames",
+          "spanBefore",
+          "spanAfter",
+          "maximumDisplacement",
+          "protectedRecords",
+          "proceduralRecords",
+          "xChangePercent",
+          "yChangePercent",
+          "zChangePercent",
+          "positiveReachBefore",
+          "positiveReachAfter",
+          "negativeReachBefore",
+          "negativeReachAfter"
+        ],
+        "properties": {
+          "lod": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "fieldId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "changedPositions": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "changedFrames": {
+            "$ref": "#/definitions/count"
+          },
+          "spanBefore": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          },
+          "spanAfter": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          },
+          "maximumDisplacement": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 64
+          },
+          "protectedRecords": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "proceduralRecords": {
+            "$ref": "#/definitions/count"
+          },
+          "xChangePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "yChangePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "zChangePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "positiveReachBefore": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          },
+          "positiveReachAfter": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          },
+          "negativeReachBefore": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          },
+          "negativeReachAfter": {
+            "$ref": "directional-contracts.schema.json#/definitions/transformVector3"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "buffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "memberId",
+        "drawCallIds",
+        "triangleCount",
+        "protectedCount",
+        "protectedIndexHash",
+        "proceduralCount",
+        "proceduralIndexHash"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "directional-contracts.schema.json#/definitions/directionalContextBuffer"
+        },
+        "memberId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "drawCallIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "triangleCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "protectedCount": {
+          "$ref": "#/definitions/count"
+        },
+        "protectedIndexHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "proceduralCount": {
+          "$ref": "#/definitions/count"
+        },
+        "proceduralIndexHash": {
+          "$ref": "#/definitions/hash"
+        }
+      }
+    }
+  }
+}

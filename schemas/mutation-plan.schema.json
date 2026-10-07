@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://s2modkit.local/schemas/mutation-plan/v6",
-  "title": "S2ModKit mutation-plan v6 with unchanged earlier compatibility",
+  "$id": "https://s2modkit.local/schemas/mutation-plan/v7",
+  "title": "S2ModKit mutation-plan v7 with unchanged earlier compatibility",
   "oneOf": [
     {
       "$ref": "ellipsoid-contracts.schema.json#/definitions/plan"
@@ -11,6 +11,9 @@
     },
     {
       "$ref": "directional-contracts.schema.json#/definitions/plan"
+    },
+    {
+      "$ref": "paired-contracts.schema.json#/definitions/plan"
     }
   ]
 }

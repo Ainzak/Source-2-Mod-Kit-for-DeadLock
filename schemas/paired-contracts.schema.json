@@ -1,0 +1,3657 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/paired-contracts/v1",
+  "title": "Explicit paired directional compatibility contracts",
+  "definitions": {
+    "pairedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fieldId",
+        "field"
+      ],
+      "properties": {
+        "fieldId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "field": {
+          "$ref": "#/definitions/pairedEllipsoidField"
+        }
+      }
+    },
+    "pairedEllipsoidField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "coordinateSpace",
+        "pivot",
+        "outerRadii",
+        "coreFraction",
+        "scale",
+        "numericalPolicy"
+      ],
+      "properties": {
+        "kind": {
+          "const": "directional_ellipsoid",
+          "type": "string",
+          "enum": [
+            "directional_ellipsoid"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "coordinateSpace": {
+          "const": "model",
+          "type": "string",
+          "enum": [
+            "model"
+          ]
+        },
+        "pivot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "point"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "explicit_point",
+              "enum": [
+                "explicit_point"
+              ]
+            },
+            "point": {
+              "$ref": "#/definitions/shared-ellipsoid-contracts-vector3"
+            }
+          }
+        },
+        "outerRadii": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "y": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "z": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "coreFraction": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "scale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 2
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 2
+            },
+            "z": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 2
+            }
+          }
+        },
+        "numericalPolicy": {
+          "$ref": "#/definitions/shared-directional-contracts-ellipsoidNumericalPolicy"
+        }
+      }
+    },
+    "pairedTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "members",
+        "fields",
+        "protection"
+      ],
+      "properties": {
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/definitions/shared-coordinated-contracts-coordinatedMember"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/pairedField"
+          }
+        },
+        "protection": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalProtection"
+        }
+      }
+    },
+    "sourceTrianglePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "preserve_source_coincidence",
+          "enum": [
+            "preserve_source_coincidence"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "rejectPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "reject",
+          "enum": [
+            "reject"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "proceduralInputPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "preserve_serialized_inputs_unverified",
+          "enum": [
+            "preserve_serialized_inputs_unverified"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "plannedPairedField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fieldId",
+        "pivot",
+        "certificate"
+      ],
+      "properties": {
+        "fieldId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "pivot": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalPivotEvidence"
+        },
+        "certificate": {
+          "$ref": "#/definitions/shared-directional-contracts-plannedDirectionalCertificate"
+        }
+      }
+    },
+    "pairSeparation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "version",
+        "axis",
+        "centerDistance",
+        "radiusSum",
+        "gap"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "const": "axis_projection_exact",
+          "enum": [
+            "axis_projection_exact"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "axis": {
+          "type": "string",
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ]
+        },
+        "centerDistance": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "radiusSum": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "gap": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        }
+      }
+    },
+    "fieldDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fieldId",
+        "coreIndices",
+        "transitionIndices",
+        "changedPositionIndices",
+        "changedFrameIndices",
+        "membershipHash",
+        "weightHash"
+      ],
+      "properties": {
+        "fieldId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "coreIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "transitionIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "changedPositionIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "changedFrameIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "membershipHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "bufferDispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "fields",
+        "pinnedIndices",
+        "membershipHash",
+        "weightHash"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/fieldDispatch"
+          }
+        },
+        "pinnedIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "membershipHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "sourceTriangles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "indexHash",
+        "triangleIndices",
+        "triangleSetHash",
+        "sourcePartitions",
+        "sourcePartitionHash",
+        "expectedPartitionHash",
+        "validTriangleCount",
+        "changedValidTriangleCount",
+        "collapsedTriangleCount",
+        "touchedCollapsedTriangleCount"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "indexHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "triangleIndices": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "triangleSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourcePartitions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              4,
+              7
+            ]
+          }
+        },
+        "sourcePartitionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPartitionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "validTriangleCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "changedValidTriangleCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "collapsedTriangleCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "touchedCollapsedTriangleCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "rootBone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "name",
+        "parentIndex",
+        "flags",
+        "procedural",
+        "bindHash"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentIndex": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2147483647
+        },
+        "flags": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "procedural": {
+          "type": "boolean"
+        },
+        "bindHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "proceduralBoneContributors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootBoneIndex",
+        "rootBoneName",
+        "sets",
+        "contributorSetHash"
+      ],
+      "properties": {
+        "rootBoneIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "rootBoneName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalProtectedSet"
+          }
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "rootContributorSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootBoneIndex",
+        "vertexIndices",
+        "vertexSetHash"
+      ],
+      "properties": {
+        "rootBoneIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexIndices": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "skinningBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "stride",
+        "positionOffset",
+        "packedFrameOffset",
+        "indexFormat",
+        "indexOffset",
+        "indexWidth",
+        "weightFormat",
+        "weightOffset",
+        "weightWidth",
+        "declaredInfluenceCount",
+        "sourceSkinningHash",
+        "expectedSkinningHash",
+        "rootRenderRemapHash",
+        "rootContributors",
+        "contributorHash"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "stride": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "positionOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "packedFrameOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "indexFormat": {
+          "type": "integer",
+          "enum": [
+            4,
+            12,
+            14,
+            30
+          ]
+        },
+        "indexOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "indexWidth": {
+          "type": "integer",
+          "enum": [
+            4,
+            8,
+            16
+          ]
+        },
+        "weightFormat": {
+          "type": "integer",
+          "enum": [
+            0,
+            11,
+            28
+          ]
+        },
+        "weightOffset": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2147483647
+        },
+        "weightWidth": {
+          "type": "integer",
+          "enum": [
+            0,
+            4,
+            8
+          ]
+        },
+        "declaredInfluenceCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "sourceSkinningHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedSkinningHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "rootRenderRemapHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "rootContributors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/definitions/rootContributorSet"
+          }
+        },
+        "contributorHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "consumerReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "scopeId",
+        "sourceIndex",
+        "sourceName",
+        "rootBoneIndex",
+        "rootBoneName",
+        "rootIdentityHash",
+        "identityHash",
+        "disposition"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "root_bone",
+            "render_bone",
+            "attachment",
+            "fe_control",
+            "fe_node"
+          ]
+        },
+        "scopeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "sourceIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sourceName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootBoneIndex": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2147483647
+        },
+        "rootBoneName": {
+          "type": "string"
+        },
+        "rootIdentityHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "identityHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "disposition": {
+          "type": "string",
+          "const": "preserve_unverified",
+          "enum": [
+            "preserve_unverified"
+          ]
+        }
+      }
+    },
+    "consumerRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumerId",
+        "resourceBlockIndex",
+        "fieldPath",
+        "sourcePayloadHash",
+        "expectedPayloadHash",
+        "disposition",
+        "references",
+        "referenceHash"
+      ],
+      "properties": {
+        "consumerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourcePayloadHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPayloadHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "disposition": {
+          "type": "string",
+          "const": "preserve_unverified",
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "references": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/definitions/consumerReference"
+          }
+        },
+        "referenceHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "consumerFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "present",
+        "records"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "attachment",
+            "fe_colliders",
+            "fe_controls",
+            "fe_nodes",
+            "fe_rest_drivers",
+            "model_constraint",
+            "physics",
+            "render_skeleton",
+            "root_skeleton",
+            "skin_remap_weights"
+          ]
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "records": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/definitions/consumerRecord"
+          }
+        }
+      }
+    },
+    "proceduralInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootDataBlockIndex",
+        "rootPayloadHash",
+        "rootSkeletonHash",
+        "rootBones",
+        "rootFactsHash",
+        "skinningBuffers",
+        "boneContributors",
+        "union",
+        "unionHash",
+        "consumerFamilies",
+        "consumerInventoryHash"
+      ],
+      "properties": {
+        "rootDataBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "rootPayloadHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "rootSkeletonHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "rootBones": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/definitions/rootBone"
+          }
+        },
+        "rootFactsHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "skinningBuffers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/skinningBuffer"
+          }
+        },
+        "boneContributors": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/definitions/proceduralBoneContributors"
+          }
+        },
+        "union": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalProtectedSet"
+          }
+        },
+        "unionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "consumerFamilies": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/definitions/consumerFamily"
+          }
+        },
+        "consumerInventoryHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputHash",
+        "targetFingerprint",
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "boundsPolicyId",
+        "boundsPolicyVersion",
+        "runtimeMetadataPolicy",
+        "zeroBoneBoxPolicy",
+        "zeroRenderSpherePolicy",
+        "selector",
+        "maximumDisplacement",
+        "displacementLimit",
+        "buffers",
+        "wordAudits",
+        "protection",
+        "contextBuffers",
+        "coincidences",
+        "boxTargets",
+        "boxClosures",
+        "preservationTargets",
+        "sourceBlocks",
+        "pairedTransform",
+        "fields",
+        "separation",
+        "sourceTrianglePolicy",
+        "proceduralInputPolicy",
+        "dispatch",
+        "sourceTriangles",
+        "proceduralInputs"
+      ],
+      "properties": {
+        "inputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "targetFingerprint": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "structuralProfileId": {
+          "type": "string",
+          "const": "root_paired_directional_preservation_visual",
+          "enum": [
+            "root_paired_directional_preservation_visual"
+          ]
+        },
+        "structuralProfileVersion": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "boundsPolicyId": {
+          "type": "string",
+          "const": "retain_expand_boxes_preserve_runtime_paired",
+          "enum": [
+            "retain_expand_boxes_preserve_runtime_paired"
+          ]
+        },
+        "boundsPolicyVersion": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-runtimeMetadataPolicy"
+        },
+        "zeroBoneBoxPolicy": {
+          "$ref": "#/definitions/rejectPolicy"
+        },
+        "zeroRenderSpherePolicy": {
+          "$ref": "#/definitions/rejectPolicy"
+        },
+        "selector": {
+          "$ref": "#/definitions/shared-directional-contracts-componentSelector"
+        },
+        "maximumDisplacement": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "displacementLimit": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "buffers": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/shared-coordinated-contracts-plannedCoordinatedBuffer"
+          },
+          "minItems": 1
+        },
+        "wordAudits": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalWordAudit"
+          }
+        },
+        "protection": {
+          "$ref": "#/definitions/shared-directional-contracts-plannedDirectionalProtection"
+        },
+        "contextBuffers": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalContextBuffer"
+          },
+          "minItems": 1
+        },
+        "coincidences": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalCoincidenceLod"
+          },
+          "minItems": 1
+        },
+        "boxTargets": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalBoxTarget"
+          },
+          "minItems": 1
+        },
+        "boxClosures": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalBoxClosure"
+          },
+          "minItems": 1
+        },
+        "preservationTargets": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalPreservationTarget"
+          },
+          "minItems": 1
+        },
+        "sourceBlocks": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          },
+          "minItems": 1
+        },
+        "pairedTransform": {
+          "$ref": "#/definitions/pairedTransform"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/plannedPairedField"
+          }
+        },
+        "separation": {
+          "$ref": "#/definitions/pairSeparation"
+        },
+        "sourceTrianglePolicy": {
+          "$ref": "#/definitions/sourceTrianglePolicy"
+        },
+        "proceduralInputPolicy": {
+          "$ref": "#/definitions/proceduralInputPolicy"
+        },
+        "dispatch": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/bufferDispatch"
+          }
+        },
+        "sourceTriangles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/sourceTriangles"
+          }
+        },
+        "proceduralInputs": {
+          "$ref": "#/definitions/proceduralInputs"
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "buffers",
+        "wordAudits",
+        "protection",
+        "contextBuffers",
+        "coincidences",
+        "boxClosures",
+        "fields",
+        "separation",
+        "dispatch",
+        "sourceTriangles",
+        "proceduralInputs"
+      ],
+      "properties": {
+        "buffers": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-coordinated-contracts-coordinatedBufferObservation"
+          }
+        },
+        "wordAudits": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalWordAudit"
+          }
+        },
+        "protection": {
+          "$ref": "#/definitions/shared-directional-contracts-plannedDirectionalProtection"
+        },
+        "contextBuffers": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalContextBuffer"
+          }
+        },
+        "coincidences": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalCoincidenceLod"
+          }
+        },
+        "boxClosures": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalBoxClosure"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/definitions/plannedPairedField"
+          }
+        },
+        "separation": {
+          "$ref": "#/definitions/pairSeparation"
+        },
+        "dispatch": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/bufferDispatch"
+          }
+        },
+        "sourceTriangles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/sourceTriangles"
+          }
+        },
+        "proceduralInputs": {
+          "$ref": "#/definitions/proceduralInputs"
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "operations",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 11,
+          "enum": [
+            11
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/recipeOperation"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "recipeOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "granularity",
+        "selector",
+        "lodPolicy",
+        "expectedMatchesByLod",
+        "expectedVerticesByLod",
+        "ownershipPolicy",
+        "runtimeMetadataPolicy",
+        "limits",
+        "extensions",
+        "zeroBoneBoxPolicy",
+        "zeroRenderSpherePolicy",
+        "pairedTransform",
+        "sourceTrianglePolicy",
+        "proceduralInputPolicy"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "const": 10,
+          "enum": [
+            10
+          ]
+        },
+        "granularity": {
+          "type": "string",
+          "const": "paired_directional_buffer_vertices",
+          "enum": [
+            "paired_directional_buffer_vertices"
+          ]
+        },
+        "selector": {
+          "$ref": "#/definitions/shared-directional-contracts-coordinatedSelector"
+        },
+        "lodPolicy": {
+          "enum": [
+            "all_present"
+          ],
+          "type": "string"
+        },
+        "expectedMatchesByLod": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-lodExpectations"
+        },
+        "expectedVerticesByLod": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-lodExpectations"
+        },
+        "ownershipPolicy": {
+          "enum": [
+            "exclusive"
+          ],
+          "type": "string"
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-runtimeMetadataPolicy"
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximumVertexDisplacement"
+          ],
+          "properties": {
+            "maximumVertexDisplacement": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 64
+            }
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "zeroBoneBoxPolicy": {
+          "$ref": "#/definitions/rejectPolicy"
+        },
+        "zeroRenderSpherePolicy": {
+          "$ref": "#/definitions/rejectPolicy"
+        },
+        "pairedTransform": {
+          "$ref": "#/definitions/pairedTransform"
+        },
+        "sourceTrianglePolicy": {
+          "$ref": "#/definitions/sourceTrianglePolicy"
+        },
+        "proceduralInputPolicy": {
+          "$ref": "#/definitions/proceduralInputPolicy"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "fingerprint",
+        "operations",
+        "inputs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 7,
+          "enum": [
+            7
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "fingerprint": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/planOperation"
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-input"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "planOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCalls",
+        "targetBlocks",
+        "geometryTargets",
+        "distanceFieldTargets",
+        "pairedTransformTarget"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "const": 10,
+          "enum": [
+            10
+          ]
+        },
+        "selectedDrawCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+          },
+          "minItems": 1
+        },
+        "targetBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          },
+          "minItems": 1
+        },
+        "geometryTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "distanceFieldTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "pairedTransformTarget": {
+          "$ref": "#/definitions/target"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "createdUtc",
+        "proofLevel",
+        "command",
+        "status",
+        "input",
+        "dependencies",
+        "planFingerprint",
+        "operations",
+        "boundaries",
+        "blocks",
+        "toolVersions",
+        "warnings",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 12,
+          "enum": [
+            12
+          ]
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "proofLevel": {
+          "enum": [
+            "offline_static"
+          ],
+          "type": "string"
+        },
+        "command": {
+          "enum": [
+            "plan",
+            "build",
+            "verify"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ],
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+          }
+        },
+        "output": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "planFingerprint": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 1,
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/evidenceOperationPlanned"
+              },
+              {
+                "$ref": "#/definitions/evidenceOperationPassed"
+              }
+            ]
+          }
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-boundaryEvidence"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-resourceBlockEvidence"
+          }
+        },
+        "toolVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "output"
+          ],
+          "properties": {
+            "output": {
+              "$ref": "#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+            },
+            "operations": {
+              "items": {
+                "$ref": "#/definitions/evidenceOperationPassed"
+              }
+            }
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "output"
+            ]
+          },
+          "properties": {
+            "operations": {
+              "items": {
+                "$ref": "#/definitions/evidenceOperationPlanned"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "planBinding",
+        "observed",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "planBinding": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalPlanBinding"
+        },
+        "observed": {
+          "type": "null"
+        },
+        "boxes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-experimentalBoxEvidencePlanned"
+          }
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-experimentalPreservationEvidencePlanned"
+          }
+        }
+      }
+    },
+    "visualPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "planBinding",
+        "observed",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "planBinding": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalPlanBinding"
+        },
+        "observed": {
+          "$ref": "#/definitions/observation"
+        },
+        "boxes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-experimentalBoxEvidencePassed"
+          }
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-experimentalPreservationEvidencePassed"
+          }
+        }
+      }
+    },
+    "evidenceOperationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "pairedTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "const": 10,
+          "enum": [
+            10
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "pairedTransform": {
+          "$ref": "#/definitions/visualPlanned"
+        }
+      }
+    },
+    "evidenceOperationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "pairedTransform"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "transform_component"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "const": 10,
+          "enum": [
+            10
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "pairedTransform": {
+          "$ref": "#/definitions/visualPassed"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-vector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "shared-directional-contracts-ellipsoidNumericalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "const": "directional_ellipsoid_numeric",
+          "type": "string",
+          "enum": [
+            "directional_ellipsoid_numeric"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "shared-coordinated-contracts-coordinatedMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lods"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/shared-coordinated-contracts-coordinatedMemberLod"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        }
+      }
+    },
+    "shared-coordinated-contracts-coordinatedMemberLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "drawCallIds",
+        "expectedVertices"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "drawCallIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^dc_[0-9a-f]{24}$"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "expectedVertices": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "shared-directional-contracts-directionalProtection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "assertions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "keep_fixed",
+          "type": "string",
+          "enum": [
+            "keep_fixed"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalProtectionAssertion"
+          }
+        }
+      }
+    },
+    "shared-directional-contracts-directionalProtectionAssertion": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/shared-directional-contracts-directionalVertexAssertion"
+        },
+        {
+          "$ref": "#/definitions/shared-directional-contracts-directionalBoneAssertion"
+        }
+      ]
+    },
+    "shared-directional-contracts-directionalVertexAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sets",
+        "version",
+        "assertionId",
+        "kind"
+      ],
+      "properties": {
+        "sets": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalVertexSet"
+          }
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "assertionId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "const": "vertex_set",
+          "type": "string",
+          "enum": [
+            "vertex_set"
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-directionalVertexSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "sourceDecodedBufferHash",
+        "vertexIndices",
+        "vertexSetHash",
+        "vertexCount"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sourceDecodedBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexIndices": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "uniqueItems": true
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "shared-directional-contracts-directionalBoneAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boneName",
+        "boneIndex",
+        "rootSkeletonHash",
+        "lods",
+        "version",
+        "assertionId",
+        "kind"
+      ],
+      "properties": {
+        "boneName": {
+          "type": "string"
+        },
+        "boneIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "rootSkeletonHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "lods": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalBoneLod"
+          }
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "assertionId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "const": "root_bone_contributors",
+          "type": "string",
+          "enum": [
+            "root_bone_contributors"
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-directionalBoneLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "contributorSetHash",
+        "contributorCount"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "shared-directional-contracts-directionalPivotEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "point",
+        "coordinateSpace",
+        "sourceIdentity",
+        "sourceHash",
+        "referenceLod"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "point": {
+          "$ref": "#/definitions/shared-directional-contracts-transformVector3"
+        },
+        "coordinateSpace": {
+          "type": "string"
+        },
+        "sourceIdentity": {
+          "type": "string"
+        },
+        "sourceHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "referenceLod": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-transformVector3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "shared-directional-contracts-plannedDirectionalCertificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "version",
+        "subdivisionDepth",
+        "axisLowerBounds",
+        "minimumAxisFactors",
+        "alphaLowerBound",
+        "betaLowerBound",
+        "rankOneNormUpperBound",
+        "inverseNormUpperBound",
+        "minimumSingularValueLowerBound",
+        "determinantLowerBound",
+        "idealDisplacementUpperBound"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "directional_ellipsoid_rank_one",
+          "type": "string",
+          "enum": [
+            "directional_ellipsoid_rank_one"
+          ]
+        },
+        "version": {
+          "const": 1,
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "subdivisionDepth": {
+          "const": 12,
+          "type": "integer",
+          "enum": [
+            12
+          ]
+        },
+        "axisLowerBounds": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+          }
+        },
+        "minimumAxisFactors": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+          }
+        },
+        "alphaLowerBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "betaLowerBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "rankOneNormUpperBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "inverseNormUpperBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "minimumSingularValueLowerBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "determinantLowerBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        },
+        "idealDisplacementUpperBound": {
+          "$ref": "#/definitions/shared-directional-contracts-directionalRationalBound"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalRationalBound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "properties": {
+        "numerator": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 256
+        },
+        "denominator": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 256
+        }
+      }
+    },
+    "shared-directional-contracts-directionalProtectedSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "sourceDecodedBufferHash",
+        "vertexIndices",
+        "vertexSetHash",
+        "vertexCount",
+        "sourcePositionHash",
+        "expectedPositionHash",
+        "sourcePackedFrameHash",
+        "expectedPackedFrameHash"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sourceDecodedBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexIndices": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "uniqueItems": true
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sourcePositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourcePackedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPackedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-runtimeMetadataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "enum": [
+            1
+          ],
+          "type": "integer"
+        }
+      }
+    },
+    "shared-directional-contracts-componentSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "drawCallIds"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "draw_call_ids"
+          ],
+          "type": "string"
+        },
+        "drawCallIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^dc_[0-9a-f]{24}$"
+          },
+          "maxItems": 8192
+        }
+      }
+    },
+    "shared-coordinated-contracts-plannedCoordinatedBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "vertexBufferOrdinal",
+        "indexBufferOrdinal",
+        "vertexResourceBlockIndex",
+        "indexResourceBlockIndex",
+        "vertexBlockInputHash",
+        "indexBlockInputHash",
+        "inputDecodedVertexBufferHash",
+        "expectedDecodedVertexBufferHash",
+        "decodedIndexBufferHash",
+        "vertexSetHash",
+        "vertexCount",
+        "ownershipPolicy",
+        "positionLayout",
+        "packedFrameLayout",
+        "codec",
+        "maskHash",
+        "weightHash",
+        "fullVertexCount",
+        "transitionVertexCount",
+        "pinnedVertexCount",
+        "changedPositionCount",
+        "changedFrameCount",
+        "inputPositionHash",
+        "expectedPositionHash",
+        "inputPackedFrameHash",
+        "expectedPackedFrameHash",
+        "beforeBounds",
+        "expectedAfterBounds",
+        "maximumDisplacement"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "resourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "indexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexResourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "indexResourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBlockInputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "indexBlockInputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "inputDecodedVertexBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedDecodedVertexBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "decodedIndexBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "ownershipPolicy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "positionLayout": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-positionLayout"
+        },
+        "packedFrameLayout": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-packedFrameLayout"
+        },
+        "codec": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-codecIdentity"
+        },
+        "maskHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "fullVertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "transitionVertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "pinnedVertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "changedPositionCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "changedFrameCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "inputPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "inputPackedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPackedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "beforeBounds": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-bounds"
+        },
+        "expectedAfterBounds": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-bounds"
+        },
+        "maximumDisplacement": {
+          "type": "number"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-positionLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "offset",
+        "stride"
+      ],
+      "properties": {
+        "format": {
+          "enum": [
+            "R32G32B32_FLOAT"
+          ],
+          "type": "string"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stride": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-packedFrameLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "offset",
+        "stride",
+        "encodingProfile"
+      ],
+      "properties": {
+        "format": {
+          "enum": [
+            "R32_UINT"
+          ],
+          "type": "string"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stride": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "encodingProfile": {
+          "enum": [
+            "source2_normal_tangent_v2"
+          ],
+          "type": "string"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-codecIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "apiProfile",
+        "platform",
+        "binaryHash",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apiProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binaryHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-vector3"
+        },
+        "max": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-vector3"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalWordAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "changedPositionIndices",
+        "changedPositionSetHash",
+        "changedFrameIndices",
+        "changedFrameSetHash",
+        "pinnedIndices",
+        "pinnedSetHash",
+        "sourcePinnedPositionHash",
+        "expectedPinnedPositionHash",
+        "sourcePinnedFrameHash",
+        "expectedPinnedFrameHash",
+        "sourceUnchangedAttributesHash",
+        "expectedUnchangedAttributesHash"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "changedPositionIndices": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "changedPositionSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "changedFrameIndices": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "changedFrameSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "pinnedIndices": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "pinnedSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourcePinnedPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPinnedPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourcePinnedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPinnedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourceUnchangedAttributesHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedUnchangedAttributesHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-directional-contracts-plannedDirectionalProtection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertions",
+        "union",
+        "unionHash"
+      ],
+      "properties": {
+        "assertions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-plannedDirectionalAssertion"
+          },
+          "minItems": 1
+        },
+        "union": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalProtectedSet"
+          },
+          "minItems": 1
+        },
+        "unionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-directional-contracts-plannedDirectionalAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertionId",
+        "sets",
+        "contributorSetHash"
+      ],
+      "properties": {
+        "assertionId": {
+          "type": "string"
+        },
+        "sets": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalProtectedSet"
+          }
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalContextBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "resourceBlockIndex",
+        "vertexResourceBlockIndex",
+        "indexResourceBlockIndex",
+        "vertexCount",
+        "resourcePath",
+        "selected",
+        "meshMask",
+        "bodygroupMask",
+        "decodedBufferHash",
+        "positionHash",
+        "packedFrameHash",
+        "indexHash",
+        "skinningHash",
+        "rootRenderRemapHash"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexResourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "indexResourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "resourcePath": {
+          "type": "string"
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "meshMask": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "bodygroupMask": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "decodedBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "positionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "packedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "indexHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "skinningHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "rootRenderRemapHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalCoincidenceLod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "completeSourcePositionHash",
+        "pairSetHash",
+        "recordCount",
+        "pairCount",
+        "movingSelectedRecordCount",
+        "excludedMovingMates"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "completeSourcePositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "pairSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "recordCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "pairCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "movingSelectedRecordCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "excludedMovingMates": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-experimentalBoxTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "storage",
+        "coordinateSpace",
+        "coordinateMatrixHash",
+        "coordinateMatrixWords",
+        "contributorSetHash",
+        "contributorCount",
+        "originalWords",
+        "expectedWords",
+        "growth"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "enum": [
+            "min_max",
+            "center_half_extent"
+          ],
+          "type": "string"
+        },
+        "coordinateSpace": {
+          "enum": [
+            "model",
+            "render_inverse_bind"
+          ],
+          "type": "string"
+        },
+        "coordinateMatrixHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "coordinateMatrixWords": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "expectedWords": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "growth": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalGrowth"
+          }
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-experimentalGrowth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measure",
+        "originalValue",
+        "plannedValue",
+        "delta"
+      ],
+      "properties": {
+        "measure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalValue": {
+          "type": "number"
+        },
+        "plannedValue": {
+          "type": "number"
+        },
+        "delta": {
+          "type": "number"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalBoxClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "lod",
+        "meshOrdinal",
+        "contributors",
+        "closureHash"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "fieldPath": {
+          "type": "string"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "contributors": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-directional-contracts-directionalBoxContributor"
+          }
+        },
+        "closureHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalBoxContributor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "contributorCount",
+        "contributorSetHash",
+        "sourcePositionHash",
+        "expectedPositionHash"
+      ],
+      "properties": {
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "contributorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "contributorSetHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "sourcePositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "expectedPositionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-experimentalPreservationTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceBlockIndex",
+        "fieldPath",
+        "category",
+        "scope",
+        "disposition",
+        "sourcePayloadHash",
+        "originalWords"
+      ],
+      "properties": {
+        "resourceBlockIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "render_sphere",
+            "root_sphere",
+            "occlusion_distance_field",
+            "collision_payload"
+          ],
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "affected",
+            "resource"
+          ],
+          "type": "string"
+        },
+        "disposition": {
+          "enum": [
+            "preserve_unverified"
+          ],
+          "type": "string"
+        },
+        "sourcePayloadHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "originalWords": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-sourceBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "type",
+        "inputHash"
+      ],
+      "properties": {
+        "index": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "inputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        }
+      }
+    },
+    "shared-coordinated-contracts-coordinatedBufferObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "meshOrdinal",
+        "vertexBufferOrdinal",
+        "positionHash",
+        "packedFrameHash",
+        "decodedVertexBufferHash",
+        "maskHash",
+        "weightHash",
+        "maximumDisplacement"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vertexBufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "positionHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "packedFrameHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "decodedVertexBufferHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "maskHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "weightHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "maximumDisplacement": {
+          "type": "number"
+        }
+      }
+    },
+    "shared-directional-contracts-coordinatedSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "drawCallIds"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "draw_call_ids"
+          ],
+          "type": "string"
+        },
+        "drawCallIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^dc_[0-9a-f]{24}$"
+          },
+          "maxItems": 8192
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-lodExpectations": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(0|[1-9][0-9]*)$": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "contentHash",
+        "size"
+      ],
+      "properties": {
+        "logicalPath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "contentHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-selectedDrawCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lod",
+        "resourcePath",
+        "meshOrdinal",
+        "resourceBlockIndex",
+        "drawCallId",
+        "materialPath",
+        "drawCallOrdinal",
+        "indexStart",
+        "indexCount"
+      ],
+      "properties": {
+        "lod": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourcePath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "meshOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "resourceBlockIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "drawCallId": {
+          "pattern": "^dc_[0-9a-f]{24}$",
+          "type": "string"
+        },
+        "materialPath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "drawCallOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexStart": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "indexCount": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logicalPath",
+        "contentHash",
+        "size",
+        "sourceKind",
+        "catalogIdentity",
+        "verificationMode"
+      ],
+      "properties": {
+        "logicalPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceKind": {
+          "enum": [
+            "directory",
+            "vpk",
+            "generated"
+          ],
+          "type": "string"
+        },
+        "catalogIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verificationMode": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-boundaryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_applicable",
+            "untested",
+            "skipped"
+          ],
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-resourceBlockEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "type",
+        "inputHash",
+        "disposition"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "outputHash": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "planned_change",
+            "planned_unchanged",
+            "changed",
+            "unchanged"
+          ],
+          "type": "string"
+        }
+      }
+    },
+    "shared-directional-contracts-directionalPlanBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipeId",
+        "inputs",
+        "selectedDrawCalls",
+        "targetBlocks"
+      ],
+      "properties": {
+        "recipeId": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-input"
+          }
+        },
+        "selectedDrawCalls": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+          }
+        },
+        "targetBlocks": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          }
+        }
+      }
+    },
+    "shared-directional-contracts-experimentalBoxEvidencePlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "const": "planned",
+          "type": "string",
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-experimentalPreservationEvidencePlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "type": "null"
+        },
+        "observedWords": {
+          "type": "null"
+        },
+        "status": {
+          "const": "planned",
+          "type": "string",
+          "enum": [
+            "planned"
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-experimentalBoxEvidencePassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalBoxTarget"
+        },
+        "observedWords": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "const": "passed",
+          "type": "string",
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "shared-directional-contracts-experimentalPreservationEvidencePassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "observedPayloadHash",
+        "observedWords",
+        "status"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-experimentalPreservationTarget"
+        },
+        "observedPayloadHash": {
+          "$ref": "#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "observedWords": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        },
+        "status": {
+          "const": "passed",
+          "type": "string",
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "shared-ellipsoid-contracts-drawCallIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^dc_[0-9a-f]{24}$"
+      }
+    },
+    "shared-ellipsoid-contracts-resourcePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
