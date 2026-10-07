@@ -34,10 +34,11 @@ sphere containment, occlusion proxies or collision correspondence. It is not ana
 hair, clothing and animation may not follow an enlarged part. See the compatibility matrix before
 using an experimental edit.
 
-Local, mirrored, coordinated and protected directional/paired actions are available in the source
-checkout. Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md); interactive
-menus do not expose every operation. Downloadable v0.2.0
-includes the earlier whole-buffer and axis-ramp actions. See [the user guide](docs/USER-GUIDE.md)
+Local, mirrored, coordinated and protected directional/paired actions are included in
+[v0.3.0, the recommended Windows download](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest).
+Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md); interactive menus do not
+expose every operation. The older v0.2.0 prerelease includes whole-buffer and axis-ramp actions.
+See [the user guide](docs/USER-GUIDE.md)
 for explicit field parameters, coordinated options and the guided workflow.
 
 ## Quick start
