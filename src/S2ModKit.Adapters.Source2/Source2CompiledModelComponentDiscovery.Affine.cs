@@ -19,7 +19,7 @@ public sealed partial class Source2CompiledModelAdapter : IAffineComponentCapabi
             return Task.FromResult<IReadOnlyList<ComponentCapabilityAnalysis>>([]);
         }
 
-        using var parsed = Parse(request.Input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(request.Input, retainGeometryAnalysis: true);
         ValidateSnapshotAgreement(request.Model, parsed.Snapshot);
         var profile = CreateCapabilityProfile(request.Input, parsed);
         var results = request.Selections

@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "S2ModKit offline geometry authoring delta v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "kind": {
+      "enum": [
+        "geometry_authoring_delta"
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "author_positions"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ]
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundleSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "blenderVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "targetKey": {
+      "enum": [
+        "S2ModKit_Edit"
+      ]
+    },
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "memberId": {
+            "type": "string",
+            "pattern": "^lod:[0-9]+/mesh:[0-9]+/buffer:[0-9]+$"
+          },
+          "positions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500000,
+            "items": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        "required": [
+          "memberId",
+          "positions"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "operation",
+    "inputHash",
+    "bundleSha256",
+    "blenderVersion",
+    "targetKey",
+    "members"
+  ]
+}

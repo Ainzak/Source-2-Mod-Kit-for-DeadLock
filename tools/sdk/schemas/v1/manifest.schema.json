@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_source@1"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        1
+      ],
+      "type": "integer"
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "skeletonPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skeletonHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "defaultGraph": {
+      "type": "string",
+      "minLength": 1
+    },
+    "uiGraph": {
+      "type": "string",
+      "minLength": 1
+    },
+    "archive": {
+      "type": "string",
+      "minLength": 1
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "configHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "toolPins": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "sourceNodes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "sourceLodMasks": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "sourceBodygroups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "meshNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "baselineHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "addonHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "sourcePath",
+    "sourceHash",
+    "skeletonPath",
+    "skeletonHash",
+    "defaultGraph",
+    "uiGraph",
+    "archive",
+    "files",
+    "configHash",
+    "toolPins",
+    "sourceNodes",
+    "sourceRefs",
+    "sourceLodMasks",
+    "sourceBodygroups",
+    "meshNames",
+    "baselineHash",
+    "addonHash"
+  ],
+  "additionalProperties": false
+}

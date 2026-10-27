@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Source-bound position authoring validation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "inputHash",
+    "bundleSha256",
+    "deltaSha256",
+    "selectionSha256",
+    "buffers",
+    "modelBytesBuilt",
+    "runtimeStatus"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "position_return_validated"
+      ]
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bundleSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "deltaSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "selectionSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "buffers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "memberId",
+          "lod",
+          "changedPositions",
+          "maximumDisplacement",
+          "frameClosure",
+          "frames",
+          "boundaryFrameChanges",
+          "expectedPositionHash",
+          "expectedFrameHash"
+        ],
+        "properties": {
+          "memberId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          },
+          "lod": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "changedPositions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 500000
+          },
+          "maximumDisplacement": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 64
+          },
+          "frameClosure": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500000
+            },
+            "minItems": 0,
+            "maxItems": 500000
+          },
+          "frames": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "vertexId",
+                "sourceWord",
+                "expectedWord"
+              ],
+              "properties": {
+                "vertexId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 500000
+                },
+                "sourceWord": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                },
+                "expectedWord": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              }
+            },
+            "minItems": 0,
+            "maxItems": 500000
+          },
+          "boundaryFrameChanges": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500000
+            },
+            "minItems": 0,
+            "maxItems": 500000
+          },
+          "expectedPositionHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expectedFrameHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "minItems": 1,
+      "maxItems": 128
+    },
+    "modelBytesBuilt": {
+      "enum": [
+        false
+      ]
+    },
+    "runtimeStatus": {
+      "enum": [
+        "untested"
+      ]
+    }
+  }
+}

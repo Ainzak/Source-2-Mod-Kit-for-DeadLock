@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_config@1"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        1
+      ],
+      "type": "integer"
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "blender": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vrf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "csdk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cs2": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dotnet": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "blender",
+        "vrf",
+        "csdk",
+        "cs2",
+        "dotnet"
+      ],
+      "additionalProperties": false
+    },
+    "gameRoots": {
+      "type": "object",
+      "properties": {
+        "csdk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cs2": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "csdk",
+        "cs2"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "tools",
+    "gameRoots"
+  ],
+  "additionalProperties": false
+}

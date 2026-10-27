@@ -12,7 +12,7 @@ possible.
 
 Advanced directional body editing is currently an agent workflow. An agent chooses exact source
 components, authors XYZ factors and keep-fixed assertions, and uses `directional review` to show
-a matched source/predicted comparison before building. The feature has no new interactive menu.
+a matched source/predicted comparison before building.
 It does not automatically select a hand, chest or clothing, and offline verification does not
 establish live appearance or animated fit. [Agent authoring](AI-USAGE.md#agent-rules) describes the route.
 
@@ -23,8 +23,8 @@ place game assets, generated VPKs, or reports in Git.
 $s2mod = '.\s2mod.exe'
 $workspaceRoot = '.\.workspaces'
 
-# Required for transform discovery, planning, and rewriting.
-$env:S2MODKIT_MESHOPTIMIZER_PATH = '<path-to-meshoptimizer.dll>'
+# Optional: the release ships meshoptimizer.dll next to s2mod.exe for transforms; set this only to use another build.
+# $env:S2MODKIT_MESHOPTIMIZER_PATH = '<path-to-meshoptimizer.dll>'
 
 # Optional external package verification.
 $env:S2MODKIT_SOURCE2_VIEWER_PATH = '<path-to-Source2Viewer-CLI.exe>'
@@ -35,53 +35,11 @@ Run `& $s2mod doctor --format json` to check the configured adapter, geometry co
 verifier. A missing codec blocks transform work but not draw-call removal. An external verifier is
 supplemental unless a package command includes `--require-external`.
 
-For guided source and hero selection, create a local checkpoint and configure one or more sources:
+The interactive terminal workflow (`s2mod interactive`) was retired in 0.4.0. Every step is available
+through the non-interactive commands in this guide and in the [CLI reference](CLI-REFERENCE.md). A
+desktop interface for people is planned; it is not part of this release.
 
-```powershell
-$session = "$workspaceRoot\guided-session.json"
-& $s2mod interactive `
-  --catalogue '<path-to-hero-catalogue.json>' `
-  --session $session `
-  --base-vpk '<Deadlock game\citadel\pak01_dir.vpk>' `
-  --mod-vpk '<optional-mod_dir.vpk>' `
-  --compiled-model '<optional-model.vmdl_c>'
-```
-
-For the simpler prompted setup, run only:
-
-```powershell
-& $s2mod interactive
-```
-
-The CLI asks for the session path, catalogue, source type, and source path. Selecting an existing
-session path in this prompted mode resumes it automatically.
-
-The guided workflow saves the exact source, hero, resource, available component/action, bounded
-parameters, canonical recipe, and dry-run facts. It then offers recipe/plan-only, verified build,
-minimal package, or atomic VPK export. Packaged results may remain uninstalled or use an automatic
-or explicit verified addon slot. The CLI shows the exact destination and requires the exact word
-`install`, verifies the active receipt, prints a runnable rollback command, and offers immediate
-rollback or a player-test hold. Enter `cancel` to pause safely; completed artifacts remain available
-on resume. Resume with the command printed by the CLI, or with
-`& $s2mod interactive --catalogue '<same-catalogue>' --session $session --resume`. Add `--expert`
-to show IDs, paths, and unavailable-locator details. Existing non-interactive commands below remain
-the authoritative automation surface.
-
-At hero, resource, and component menus, choose the printed `0` entry to go back. From hero selection,
-it returns to source selection. `back` and `previous` remain accepted keyboard aliases. Returning
-from components lets you select another resource and then another hero without starting a new guided
-session. Imported resources use separate immutable
-internal workspaces and are reused if selected again. Navigation itself reuses the in-memory
-catalogue selection. Opening components for a resource not yet visited imports only that model and
-its dependencies; it does not scan every numbered VPK payload.
-
-The default guided view needs only keyboard input and numbered choices; it does not reveal or ask
-for component/draw-call IDs. Invalid entries explain the accepted range and repeat the prompt.
-Plain sequential output remains usable when redirected or wrapped by a narrow terminal. Agents can
-read the documented project, recipe, build, and package fields from the saved session and hand them
-directly to the ordinary `plan`, `verify`, and `package verify` commands.
-
-Only guided installation and the `addons install`, `addons install-current` and `addons rollback` commands can change a game
+Only the `addons install`, `addons install-current` and `addons rollback` commands can change a game
 addon root, and installation requires explicit player authorization. All other normal workflow
 commands write only under their project root or an explicitly selected export path.
 
@@ -283,7 +241,7 @@ triangle-island IDs. Recipe schema version 4 can apply `transform_component@3` w
 `granularity: connected_component_vertices`, explicit `connectedComponentIdsByLod`, and exact
 per-LOD vertex totals. The implementation resolves and hashes those islands again during planning
 and rewriting; it does not use hero names or coordinates. Arbitrary island-group scaffolding is not
-yet interactive, so treat this as an expert recipe path and never copy IDs between input revisions.
+yet scaffolded, so treat this as an expert recipe path and never copy IDs between input revisions.
 
 ### Experimental whole-part and region editing
 
@@ -291,11 +249,9 @@ These are separately opted-in visual edits, not a fallback when a strict operati
 They preserve unresolved sphere, distance-field and collision metadata without proving that it
 still matches the edited shape. Rendering, clothing fit and gameplay need a separate player test.
 
-Use `& $s2mod interactive --experimental` for the guided workflow, or
-`& $s2mod components list --project $project --experimental --format json` for agent discovery.
+Use `& $s2mod components list --project $project --experimental --format json` for agent discovery.
 Candidate IDs from strict discovery cannot be reused in experimental discovery.
-Current experimental discovery uses schema 4; old schema-2 experimental guided checkpoints retain
-schema-3 discovery. New experimental sessions use schema 3 and persist local-field preview identities.
+Current experimental discovery uses schema 4.
 
 Scaffolding with `--experimental --intent uniform-scale` creates a whole-part recipe. With
 `--experimental --intent region-scale`, also supply `--region-axis`, `--pinned-through`,
@@ -311,15 +267,12 @@ with explicit `--field-center X,Y,Z`, `--field-radii X,Y,Z`, `--core-fraction`, 
 full-strength radius relative to the outer ellipsoid. Influence falls smoothly to zero at the outer
 boundary. The center also anchors scaling; independent pivot and translation options reject.
 The field must pass the Jacobian, displacement and all-LOD geometry gates. Nothing identifies
-head/arm/chest anatomy automatically. Generate `selection-preview` before building; guided review
-publishes this sheet and rechecks its identity when resuming. Enter `back` in field prompts to choose
-another action, or `cancel` to save a checkpoint without partial parameters.
+head/arm/chest anatomy automatically. Generate `selection-preview` before building.
 
 For paired shaping, use `--intent mirrored-ellipsoid-scale` with the same field arguments plus
 `--mirror-axis` and `--mirror-coordinate`. An explicit model-axis plane reflects the center;
 the outer supports must be disjoint and both sides must change geometry in every LOD. Original
-asymmetry is retained. The guided paired action saves the plane and both field masks on resume.
-
+asymmetry is retained.
 For several ordinary buffers under one common field, first use
 `components list --project $project --experimental --coordinated --format json`. This returns
 schema-5 candidate IDs. Select exact material/lineage views; overlapping views deduplicate draw calls.
@@ -364,17 +317,12 @@ participating buffer, pinned records and excluded siblings, with original/predic
 LOD. Its summary lists exact draw-call/material coverage. This is a bind-space diagnostic, not
 proof of animations, garment fit or live culling.
 
-For the guided route, start `interactive --experimental --coordinated-options <options.json>` and
-select comma-separated component numbers. A successful exact union exposes one common-field action.
-New sessions use schema 4; resume retains the selected IDs, typed field/policies and preview identity
-and rejects changed parameters. Do not supply replacement options with `--resume`. Existing sessions
-keep their earlier meaning. Use the ordinary plan/build/verify/package lifecycle after review.
+After review, use the ordinary plan/build/verify/package lifecycle.
 
 ### Protected directional and paired shaping (agent workflow)
 
-Advanced region shaping uses `directional` or `paired` agent commands; interactive menus do not
-expose every capability. See [AI usage](AI-USAGE.md) for source inspection, exact options,
-scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
+Advanced region shaping uses the `directional` or `paired` agent commands. See
+[AI usage](AI-USAGE.md) for source inspection, exact options, scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
 evidence 12 and requires explicit disjoint fields, protected records and compatibility policies.
 Structural discovery is not anatomical selection or admission: authored options must pass the
 exact planner with complete all-LOD members before building. Review front/side silhouettes and

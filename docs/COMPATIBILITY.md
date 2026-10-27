@@ -1,6 +1,6 @@
 # S2ModKit compatibility matrix
 
-Updated: 2026-10-07.
+Updated: 2026-10-27.
 Status: current pre-alpha production boundary.
 
 Compatibility is determined from inspected structure, not a hero allowlist. A named hero below is
@@ -68,12 +68,22 @@ inspection-only.
 | Build evidence | 12 | Versions 1–11 retain their meanings. Schema 12 distinguishes planned paired facts from independently observed build/reverify facts. Procedural consumer obligations remain unqualified. |
 | Package evidence | 2 | Version 1 replace-source packages remain readable. |
 | Component discovery | 2 default; 4 local; 5 coordinated; 6 directional; 7 paired opt-in | Earlier versions remain readable; pair mappings remain unsupported until explicit options pass exact source planning. |
-| Guided session | 1 default; 3 local opt-in; 4 coordinated opt-in | Earlier versions retain their meanings. Schema 4 freezes exact selected IDs, common-field options and preview identity. Existing sessions never silently upgrade. |
 | Installation receipt | 1 | Current. |
 | Runtime observation | 1 | Active-bound recording only; direct after-rollback owner feedback is separately labelled. |
 | Current-source preflight report | 1 | Closed diagnostic only; install repeats current archive checks. |
 | Paired field options / comparison | 1 / 1 | Closed exact source bindings and matched regional observations. |
 | Hero catalogue | 1 | New additive navigation contract; no earlier persisted versions. |
+
+## Retired in 0.4.0 (breaking change)
+
+- The human terminal workflow `s2mod interactive` is removed. Invoking it now fails as an unknown
+  command with `CLI_PARSE_ERROR` (exit category 2). Every other command keeps its arguments, JSON
+  envelopes, exit categories and schemas.
+- Guided session checkpoints (guided-session schema versions 1, 3 and 4) are no longer written or
+  read. Existing checkpoint files are not converted or deleted; re-create the work with the
+  non-interactive commands.
+- The public schema files `schemas/guided-session.schema.json` and
+  `schemas/v1|v2|v3/guided-session.schema.json` are removed.
 
 ## Reading the status
 

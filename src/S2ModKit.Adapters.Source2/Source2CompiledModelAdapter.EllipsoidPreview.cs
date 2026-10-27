@@ -11,7 +11,7 @@ public sealed partial class Source2CompiledModelAdapter
         _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));
         if (!IsEllipsoidPlan(plan) || input.ContentHash != plan.InputHash || ContentHash.Compute(input.Bytes.Span) != input.ContentHash)
             throw EllipsoidDrift("Read-only preview input differs from its exact plan.");
-        using var parsed = Parse(input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(input, retainGeometryAnalysis: true);
         var operation = plan.Operations.Single();
         var target = operation.EllipsoidTransformTarget!;
         var request = EllipsoidRequest(input, parsed.Snapshot, operation);

@@ -25,7 +25,6 @@ untested. Paired directional discovery/scaffolding/review commands are not imple
   `components list`, and `plan` accept `--format text|json`; default is `text`.
 - Commands that publish or manage artifacts return a JSON envelope on stdout by design.
 - In JSON mode stdout contains only the envelope; diagnostics belong on stderr.
-- `interactive` is a human terminal workflow and intentionally has no JSON mode.
 - Every command accepts `-?`, `-h`, or `--help`.
 
 | Exit code | Category |
@@ -43,13 +42,13 @@ untested. Paired directional discovery/scaffolding/review commands are not imple
 | Group | Leaf commands |
 |---|---|
 | Diagnostics | `doctor`, `bounds diagnose`, `influences diagnose` |
-| Guided workflow | `interactive` |
 | Hero catalogue | `catalog heroes list`, `catalog resolve` |
 | Compatibility | `compatibility scan` |
 | Projects | `project create`, `project create-vpk` |
 | Inspection and authoring | `inspect`, `components list`, `recipe scaffold`, `plan`, `selection-preview` |
 | Candidate lifecycle | `build`, `verify`, `package create`, `package create-minimal`, `package verify` |
-| Managed addon lifecycle | `addons inventory`, `addons install`, `addons install-current`, `addons verify-active`, `addons rollback`, `runtime record` |
+| Update status of loaded mods | `mods status`, `mods ack` |
+| Managed addon lifecycle | `addons scan`, `addons install-file`, `addons rollback-file`, `addons merge`, `addons inventory`, `addons install`, `addons install-current`, `addons verify-active`, `addons rollback`, `runtime record` |
 
 ### `s2mod doctor`
 
@@ -96,51 +95,6 @@ Frames, simulation family/rest/constraint semantics and complete dependency clos
 unassessed. The probe selects no mutation members and grants no permission to edit a rejected
 buffer. Use exact planning for eligibility. The schema is `schemas/influence-diagnostic.schema.json`.
 Matching reports are reused; conflicting output is preserved and rejected. Inputs are never rewritten.
-
-### `s2mod interactive`
-
-Starts or explicitly resumes a version-1 guided session. Tasks 22–26 implement configured source,
-catalogue-backed hero/resource selection, available component/action selection, bounded parameters,
-canonical recipe scaffolding, concise dry-run, output publication, and the optional managed install
-lifecycle. Enter `cancel`, `quit`, or `q` at a prompt to save and stop. Completed project, recipe,
-build, package, or export artifacts remain checkpointed; an active receipt-backed installation is
-never hidden and its exact rollback command is printed. Resource and component menus print `0` as
-the previous-menu choice; `back` and `previous` are accepted aliases. This can return from component
-selection through resource selection to a different hero without starting a new guided session.
-Navigation reuses the in-memory catalogue selection; opening an unvisited resource still performs
-the required model/dependency import into its own immutable internal project.
-
-Base VPKs must match the catalogue's pinned source identity. Mod VPKs offer only exact locators
-they contain. A standalone compiled model offers catalogue resources with the same compiled
-filename. Missing, moved, duplicate, and ambiguous locators are never selectable.
-
-The guided client derives session-owned immutable project paths and a recipe path beside `--session`
-and calls the same Application discovery, scaffolding, and planning use cases as the non-interactive
-commands. Each selected source/resource pair has a stable internal project path, allowing an earlier
-selection to be reused safely. It offers only capabilities reported `available`. Uniform scale is
-bounded to `0.25..4.0` excluding identity; movement axes are bounded to `-256..256`; required visual
-and collision displacement caps are greater than zero and at most `256`. The dry-run reports the
-selected draw calls, LODs, planned block changes, selected vertices, and coupled collision status,
-then offers recipe/plan-only, verified build, minimal package, or atomic verified VPK export.
-Package paths continue to explicit no-install, automatic verified slot, or explicit verified slot
-choices. Installation shows the exact package and destination and accepts only the exact word
-`install`; it then verifies the active receipt and offers immediate rollback or a player-test hold.
-The interaction is keyboard-only, uses numbered choices and plain sequential text without ANSI or
-cursor control, and does not depend on reading terminal dimensions. Invalid choices are rejected at
-the same prompt. Narrow or redirected writers can wrap output without changing workflow state.
-
-| Option | Required | Meaning |
-|---|---:|---|
-| `--catalogue` | No | Versioned hero catalogue JSON file; prompted when omitted for a new session. |
-| `--session` | No | New or existing local checkpoint; prompted when omitted. A prompted existing path is resumed. |
-| `--base-vpk` | No | Read-only base `*_dir.vpk`; repeat as needed. Source type/path are prompted when all source options are omitted. |
-| `--mod-vpk` | No | Read-only mod `*_dir.vpk`; repeat as needed. |
-| `--compiled-model` | No | Compiled `.vmdl_c`; repeat as needed. |
-| `--resume` | No | Resume the existing checkpoint; source options are then forbidden. |
-| `--expert` | No | Show stable IDs, paths, and unavailable-resource details. |
-| `--experimental` | No | Start an acknowledged experimental session (schema 3); saved acknowledgement is retained on resume. Old schema-2 checkpoints retain their discovery route. Never upgrades a strict checkpoint. |
-| `--coordinated-options` | No | With `--experimental`, start a schema-4 session using explicit version-1 common-field options JSON. Select comma-separated numbered components; the exact union is planner-probed. Resume uses saved typed options and forbids supplying replacements. |
-| `--help` | No | Print help. |
 
 ### `s2mod catalog heroes list`
 
@@ -261,7 +215,6 @@ flags with this intent; every field value is in the typed options document.
 `--mirror-axis x|y|z` and `--mirror-coordinate <number>`. The reflected center must be exactly
 representable; outer supports must be disjoint (touching pinned boundaries are allowed).
 Both fields must change stored geometry in every LOD. Asymmetric input is preserved, not repaired.
-The experimental guided workflow offers the same paired action and saves the exact plane/field.
 
 
 `--experimental` with `--intent uniform-scale` produces the visual-only version-5 profile;
@@ -370,8 +323,7 @@ retain source-derived colors; enclosing buffer topology and model axes are label
 is non-editable context. Each focused view retains every enclosing point and triangle; only context
 is cropped. Coordinated sheets show each participating buffer and use one common field; their
 summary lists exact members and excluded siblings with draw-call IDs, material paths and advisory
-source labels. Guided coordinated selection uses the same typed options document and preview,
-then persists the exact union and artifact identity for resume. There is no Blender or interactive viewport dependency.
+source labels. There is no Blender or interactive viewport dependency.
 
 Directional schema-10 recipes produce a separate `directional_surface_comparison@1` artifact and
 closed schema-1 summary (`directional-selection-preview.schema.json`). Every LOD gets matched
@@ -382,7 +334,7 @@ physical occlusion. The summary reports XYZ factors, changed/pinned/protected co
 stored displacement, complete-source AABB diagonal and their ratio, plus before/after spans for
 the same changed records and the complete selection. These measures do not define a perceptibility
 threshold or prove animation/garment fit. The route requires an existing explicit recipe;
-directional discovery/scaffolding use the separate agent route above. No new interactive menu is added.
+directional discovery/scaffolding use the separate agent route above.
 
 The command plans from immutable source without saving a plan, building or editing a resource.
 Matching existing artifacts are reused; conflicting or incomplete artifacts reject without
@@ -458,7 +410,7 @@ partner separately. Local spans and positive/negative axis reaches from authored
 identical changed records; zero spans give explicit
 null percentages. Protection and procedural context stay fixed. These are bind-space positions;
 packed-frame counts are planned, and animation, garment fit and runtime remain untested.
-Use the normal build/verify/minimal-package commands after review. Interactive parity is deferred.
+Use the normal build/verify/minimal-package commands after review.
 
 | Option | Required | Meaning |
 |---|---:|---|
@@ -604,6 +556,115 @@ Disables only the exact archive named by an installation receipt.
 | `--installation` | Yes | Installation receipt ID. |
 | `--help` | No | Print help. |
 
+### `s2mod addons scan`
+
+Read-only list of every addon archive: whether the game loads it (`pakNN_dir.vpk`), the Deadlock Mod Manager mod
+it belongs to (from `.dmm.json` and the manager's `state.json`, both read only), and its file counts by resource kind
+(model, animation, material, particles, sound, ui, localization, data, other). Only directory trees are read; an
+optional cache keeps them by file size and modification time.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--addons-root` | Yes | Deadlock addon directory or isolated test root. |
+| `--manager-state` | No | Deadlock Mod Manager `state.json` (default: its standard location under `%APPDATA%`). |
+| `--cache` | No | Cache file for addon file lists. |
+| `--format` | No | `text` (default) or `json`. |
+
+### `s2mod addons install-file`
+
+Installs one finished VPK (from any build route) into a free slot. It refuses, naming the mods, when an addon the
+game loads changes any of the same files; it never takes a slot a mod-manager record uses; it copies and hashes the
+package in one pass and records a receipt. Running it again with the same package changes nothing; a different package
+needs `rollback-file` first. Text output is one line.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--addons-root` | Yes | Deadlock addon directory or isolated test root. |
+| `--package` | Yes | VPK file to install (copied, never moved). |
+| `--slot` | No | Two-digit slot or `auto` (highest free slot 90-99; default). |
+| `--receipts` | Yes | Receipts folder for this installation (one installation at a time). |
+| `--label` | No | Short name used in messages. |
+| `--manager-state` | No | As for `addons scan`. |
+| `--cache` | No | As for `addons scan`. |
+| `--format` | No | `text` (default) or `json`. |
+
+### `s2mod addons rollback-file`
+
+Removes the file installed from a receipts folder, only when it still matches the installed package; other files are
+never touched. Without an installation it changes nothing.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--addons-root` | Yes | Deadlock addon directory or isolated test root. |
+| `--receipts` | Yes | Receipts folder used by `install-file`. |
+| `--format` | No | `text` (default) or `json`. |
+
+### `s2mod mods status`
+
+Read-only. Lists every addon the game loads (`pakNN_dir.vpk`) with its Deadlock Mod Manager name, resource kinds and an
+update status, so a game update that may have broken a mod is visible. Nothing is repaired, renamed or moved.
+
+- A mod installed by S2ModKit (its file name and hash match an `installed` receipt in a `--receipts` folder) reports
+  the game build recorded at install time: `installed on build X; game is now build Y` when they differ, `(current)`
+  when equal, and an unknown-build notice when the receipt has no build.
+- Any other mod is compared with the date of the current game build (`VersionDate` in `steam.inf`, start of that day,
+  UTC): a file last written before it gets `game updated on <date> after this mod was installed; it may be outdated`;
+  otherwise `installed after the current game update`.
+- The first line reads `Game build 6821 (Oct 26 2026)` and adds `; new build recorded` when the build was not seen
+  before. A new build is recorded once in the state folder: `builds/<build>/build.json`, `game-files.json` (CRC32 and
+  size of every base game file that a loaded addon overrides, read from the directory tree of `citadel/pak01_dir.vpk`
+  without reading payloads) and `files/<logical path>` (copies of overridden base files of kind data or localization
+  that are at most 1 MiB). An existing build record is never rewritten. Acknowledgements are kept in
+  `acks/<build>.json`.
+- Notices that were acknowledged with `mods ack` are hidden in text mode (a count is shown); in JSON they stay in the
+  list with `acknowledged: true`. A new game build starts without acknowledgements.
+- A missing or malformed `citadel/steam.inf` stops the command with an error; the build is never guessed.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--game` | Yes | Deadlock `game` folder (contains `citadel`). |
+| `--addons-root` | Yes | Deadlock addon directory or isolated test root. |
+| `--state` | Yes | S2ModKit state folder (never defaulted; choose a folder that is not on the system drive). |
+| `--receipts` | No | Receipts folder written by `addons install-file`; repeat the option for several folders. A missing folder is ignored. |
+| `--manager-state` | No | As for `addons scan`. |
+| `--format` | No | `text` (default) or `json`. |
+| `--help` | No | Print help. |
+
+### `s2mod mods ack`
+
+Dismisses the update notice of one loaded addon (`--file`) or of all loaded addons (`--all`) for the current game
+build. An acknowledgement is stored with the file size and modification time, so a replaced or changed file is not
+acknowledged. It does not touch any addon file.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--game` | Yes | Deadlock `game` folder (contains `citadel`). |
+| `--state` | Yes | State folder used by `mods status`. |
+| `--file` | One of `--file` and `--all` | Loaded addon file name, for example `pak03_dir.vpk`. |
+| `--all` | One of `--file` and `--all` | Acknowledge every loaded addon. |
+| `--addons-root` | No | Addon directory (default: `citadel/addons` below `--game`). |
+| `--format` | No | `text` (default) or `json`. |
+| `--help` | No | Print help. |
+
+### `s2mod addons merge`
+
+Combines several addon archives into one new archive; inputs are never changed and an existing output is never
+overwritten. Files of different resources merge freely. The same logical path with different content in two inputs is
+a conflict: the command stops and lists it until it is resolved with `--prefer` (an input whose files win every
+conflict; repeat to set an order) or `--keep <logical path>=<input file name>` (one file). Identical copies are not
+conflicts. Which archive the game itself prefers is not assumed. A model in one input that uses a material or other
+resource another input replaces is reported as a dependency note. Text output: one summary line plus one line per
+conflict and note.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--input` | Yes | Input VPK file; repeat for each archive (at least two, distinct file names). |
+| `--output` | Unless `--dry-run` | New merged VPK file. |
+| `--prefer` | No | Input file name whose files win conflicts; repeatable. |
+| `--keep` | No | `<logical path>=<input file name>` for one conflict; repeatable. |
+| `--dry-run` | No | List inputs, conflicts and notes without writing. |
+| `--format` | No | `text` (default) or `json`. |
+
 ### `s2mod runtime record`
 
 Publishes immutable `player_observed` evidence after `addons verify-active` succeeds for the same
@@ -616,11 +677,26 @@ installation.
 | `--observation` | Yes | Runtime-observation JSON input. |
 | `--help` | No | Print help. |
 
+## Position authoring
+
+The `authoring` commands return JSON. `import-recipe` prepares a source-checked recipe for the normal
+compiled build/verify/package lifecycle. See [position authoring](POSITION-AUTHORING.md).
+
+| Command | Required options |
+|---|---|
+| `authoring export` | `--project`, `--selection`, `--output` (absent directory) |
+| `authoring scene-create` | `--blender`, `--bridge-script`, `--bundle`, `--bundle-sha256`, `--output` (absent scene) |
+| `authoring scene-extract` | `--blender`, `--bridge-script`, `--bundle`, `--bundle-sha256`, `--scene`, `--output` (absent return) |
+| `authoring validate` | `--project`, `--selection`, `--bundle`, `--bundle-sha256`, `--delta` |
+| `authoring import-recipe` | `--project`, `--selection`, `--bundle`, `--bundle-sha256`, `--delta`, `--output` (absent recipe) |
+| `authoring import-request` | `--request` (closed version-1 validate/plan request) |
+| `authoring compose-recipe` | `--project`, `--import-recipe`, `--remove-recipe`, `--output` (absent combined recipe) |
+
 ## Configuration variables
 
 | Variable | Used by |
 |---|---|
-| `S2MODKIT_MESHOPTIMIZER_PATH` | Source 2 transform discovery, planning, and rewrite codec. |
+| `S2MODKIT_MESHOPTIMIZER_PATH` | Source 2 transform discovery, planning, and rewrite codec (optional: the release ships `meshoptimizer.dll` next to `s2mod.exe`). |
 | `S2MODKIT_SOURCE2_VIEWER_PATH` | Optional external Source 2 Viewer verifier. |
 | `S2MODKIT_EXTERNAL_VERIFY_ROOT` | Workspace-local scratch root for the external verifier. |
 

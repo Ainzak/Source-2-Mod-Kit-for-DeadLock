@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_edit@3"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        3
+      ],
+      "type": "integer"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "profile": {
+      "enum": [
+        "lod0_diagnostic"
+      ],
+      "type": "string"
+    },
+    "selectedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "excludedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "scales": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "mesh": {
+            "type": "string",
+            "minLength": 1
+          },
+          "axes": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 4
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "mesh",
+          "axes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 0
+    },
+    "acknowledge": {
+      "enum": [
+        [
+          "single_lod",
+          "sdk_regenerated_blocks",
+          "native_frames_unverified",
+          "source_export_fidelity_unverified"
+        ]
+      ],
+      "type": "array"
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "mesh": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blendPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blendHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "geometryMode": {
+          "type": "string",
+          "enum": [
+            "unchanged",
+            "triangle_fan"
+          ]
+        },
+        "sourceTriangles": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 1024,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199999
+          }
+        },
+        "center": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -10000,
+            "maximum": 10000
+          }
+        },
+        "axis": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -1,
+            "maximum": 1
+          }
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 20
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1.5
+        }
+      },
+      "required": [
+        "mesh",
+        "blendPath",
+        "blendHash",
+        "geometryMode",
+        "sourceTriangles",
+        "center",
+        "axis",
+        "radius",
+        "scale"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "manifestHash",
+    "profile",
+    "selectedMeshes",
+    "excludedMeshes",
+    "scales",
+    "acknowledge",
+    "patch"
+  ],
+  "additionalProperties": false
+}

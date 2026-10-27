@@ -1,0 +1,275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_edit@4"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        4
+      ],
+      "type": "integer"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "profile": {
+      "enum": [
+        "lod0_diagnostic"
+      ],
+      "type": "string"
+    },
+    "bindTransport": {
+      "type": "string",
+      "enum": ["exporter", "source_rest"]
+    },
+    "selectedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "excludedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "scales": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "mesh": {
+            "type": "string",
+            "minLength": 1
+          },
+          "axes": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 4
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "mesh",
+          "axes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 0
+    },
+    "acknowledge": {
+      "enum": [
+        [
+          "single_lod",
+          "sdk_regenerated_blocks",
+          "native_frames_unverified",
+          "source_export_fidelity_unverified"
+        ]
+      ],
+      "type": "array"
+    },
+    "surface": {
+      "type": "object",
+      "properties": {
+        "mesh": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blendPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blendHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "geometryMode": {
+          "type": "string",
+          "enum": [
+            "unchanged",
+            "authored"
+          ]
+        },
+        "sourceTriangles": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199999
+          },
+          "maxItems": 8192,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "editableVertices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199999
+          },
+          "maxItems": 100000,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "addedVertices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourceTriangle": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 199999
+              },
+              "barycentric": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "required": [
+              "sourceTriangle",
+              "barycentric"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 4096,
+          "minItems": 0
+        },
+        "faces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourceTriangle": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 199999
+              },
+              "vertices": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 199999
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "sourceTriangle",
+              "vertices"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 200000,
+          "minItems": 0
+        },
+        "maxDisplacement": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30
+        },
+        "maxBoundaryAngleChange": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "normal": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "offset": {
+                "type": "number",
+                "minimum": -10000,
+                "maximum": 10000
+              }
+            },
+            "required": [
+              "name",
+              "normal",
+              "offset"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 6,
+          "minItems": 0
+        },
+        "unchangedControlPath": {
+          "type": "string"
+        },
+        "unchangedControlHash": {
+          "type": "string",
+          "pattern": "^([a-f0-9]{64})?$"
+        }
+      },
+      "required": [
+        "mesh",
+        "blendPath",
+        "blendHash",
+        "geometryMode",
+        "sourceTriangles",
+        "editableVertices",
+        "addedVertices",
+        "faces",
+        "maxDisplacement",
+        "maxBoundaryAngleChange",
+        "sections",
+        "unchangedControlPath",
+        "unchangedControlHash"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "manifestHash",
+    "profile",
+    "bindTransport",
+    "selectedMeshes",
+    "excludedMeshes",
+    "scales",
+    "acknowledge",
+    "surface"
+  ],
+  "additionalProperties": false
+}

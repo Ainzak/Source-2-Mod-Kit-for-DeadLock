@@ -10,6 +10,19 @@ public static partial class RecipeValidator
     public static void Validate(RecipeDocument recipe)
     {
         ArgumentNullException.ThrowIfNull(recipe);
+        if (recipe.SchemaVersion == 13)
+        {
+            if (recipe.Operations is not [ImportPositionsOperation import, RemoveComponentOperation removal]
+                || import.OperationId == removal.OperationId || removal.Selector.Kind != "draw_call_ids"
+                || removal.LodPolicy != "all_present" || recipe.Extensions.Count != 0)
+                throw Errors.InvalidRecipe("IMPORT_COMPOSITION_INVALID", "Composition requires one import and one disjoint exact all-LOD removal.", "Use the explicit composition contract.");
+            Validate(recipe with { SchemaVersion = 12, Operations = [import] });
+            Validate(recipe with { SchemaVersion = 1, Operations = [removal] });
+            if (import.Selector.DrawCallIds!.Intersect(removal.Selector.DrawCallIds!, StringComparer.Ordinal).Any())
+                throw Errors.InvalidRecipe("IMPORT_COMPOSITION_CONFLICT", "Imported draws cannot also be removed.", "Select disjoint draws.");
+            return;
+        }
+        if (recipe.SchemaVersion == 12) { ValidatePositionImport(recipe); return; }
 
         if (recipe.SchemaVersion is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 11))
         {

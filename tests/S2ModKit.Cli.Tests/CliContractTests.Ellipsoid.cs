@@ -45,34 +45,6 @@ public sealed partial class CliContractTests
         Assert.Null(app.LastScaffoldRequest);
     }
 
-    [Theory]
-    [InlineData("cancel\n", "action_selection")]
-    [InlineData("back\ncancel\n", "action_selection")]
-    [InlineData("1\n2\ncancel\n", "action_selection")]
-    public async Task GuidedLocalParametersSupportInvalidInputBackCancelAndResume(string values, string expectedStep)
-    {
-        var hash = ContentHash.Compute("catalogue-directory"u8);
-        var catalogue = await WriteCatalogueAsync(hash);
-        var path = Path.Combine(Path.GetTempPath(), $"s2modkit-local-{Guid.NewGuid():N}.json");
-        try
-        {
-            var app = new FakeApplication() { EllipsoidAvailable = true };
-            var cli = new S2ModKitCli(app, "test", "1", false, catalogueInventoryFactory: new FakeCatalogueInventoryFactory(hash));
-            using var input = new StringReader("1\n1\n1\n1\n2\n" + values);
-            using var output = new StringWriter(); using var error = new StringWriter();
-            Assert.Equal(0, await cli.RunAsync(["interactive", "--catalogue", catalogue, "--session", path, "--base-vpk", "pak01_dir.vpk", "--experimental"], input, output, error, TestContext.Current.CancellationToken));
-            Assert.Empty(error.ToString());
-            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken), "session");
-            Assert.Equal(3, session.SchemaVersion); Assert.Equal(expectedStep, session.Step);
-            Assert.Null(session.EllipsoidParameters); Assert.Null(session.EllipsoidPreview); Assert.Null(app.LastScaffoldRequest);
-            Assert.Contains("Experimental local ellipsoid scale", output.ToString(), StringComparison.Ordinal);
-            using var resumed = new StringReader("cancel\n");
-            Assert.Equal(0, await cli.RunAsync(["interactive", "--session", path, "--resume"], resumed, output, error, TestContext.Current.CancellationToken));
-            Assert.Empty(error.ToString());
-        }
-        finally { File.Delete(path); File.Delete(catalogue); }
-    }
-
     private static string[] LocalFieldArgs() => ["recipe", "scaffold", "--project", "project", "--component", "cmp_0123456789abcdef01234567",
         "--intent", "ellipsoid-scale", "--output", "unused.json", "--experimental", "--field-center", "-3,0,106", "--field-radii", "10,10,10",
         "--core-fraction", "0.0625", "--scale", "2", "--max-displacement", "64"];

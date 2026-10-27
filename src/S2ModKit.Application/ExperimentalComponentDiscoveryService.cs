@@ -5,7 +5,7 @@ using S2ModKit.Domain;
 namespace S2ModKit.Application;
 
 /// <summary>Explicit opt-in discovery. Availability proves a bounded probe, never arbitrary anatomy or all parameters.</summary>
-public sealed partial class ExperimentalComponentDiscoveryService(IComponentCapabilityAnalyzer? analyzer, ITransformOperationPlanner? planner)
+public sealed partial class ExperimentalComponentDiscoveryService(IComponentCapabilityAnalyzer? analyzer, ITransformOperationPlanner? planner, IProgress<DiscoveryProgress>? progress = null)
 {
     public async Task<ComponentDiscoveryResultV2> DiscoverAsync(ArtifactContent input, ModelSnapshot model, CancellationToken token = default)
     {
@@ -14,6 +14,7 @@ public sealed partial class ExperimentalComponentDiscoveryService(IComponentCapa
         foreach (var candidate in strict.Candidates)
         {
             token.ThrowIfCancellationRequested();
+            progress?.Report(new DiscoveryProgress("experimental", candidates.Count, strict.Candidates.Count));
             var capabilities = candidate.Capabilities.ToList();
             foreach (var version in new[] { 5, 6 })
             {

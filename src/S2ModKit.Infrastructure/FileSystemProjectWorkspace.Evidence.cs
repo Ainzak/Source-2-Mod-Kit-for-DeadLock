@@ -68,10 +68,10 @@ public sealed partial class FileSystemProjectWorkspace
     private static void RequireLargePairedEvidence(byte[] json)
     {
         var report = JsonDefaults.Deserialize<EvidenceReport>(json, "Large paired evidence");
-        if (report.SchemaVersion != 12) throw EvidenceSizeInvalid();
+        if (report.SchemaVersion is not (12 or 13 or 14)) throw EvidenceSizeInvalid();
     }
 
     private static S2ModKitException EvidenceSizeInvalid() => Errors.Verification("BUILD_EVIDENCE_SIZE_UNSUPPORTED",
-        "Model evidence exceeds its publication limit: 64 MiB for validated schema-12 JSON; 16 MiB for other evidence.",
+        "Model evidence exceeds its publication limit: 64 MiB for validated schema-12/13 JSON; 16 MiB for other evidence.",
         "Keep complete evidence within the applicable bounded contract; do not truncate observations.");
 }

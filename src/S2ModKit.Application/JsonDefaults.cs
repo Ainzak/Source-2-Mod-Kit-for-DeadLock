@@ -21,9 +21,17 @@ public static class JsonDefaults
             if (typeof(T) == typeof(RecipeDocument))
             {
                 ValidateExperimentalRecipeShape(utf8Json);
+                using var importDoc = JsonDocument.Parse(utf8Json.ToArray());
+                if (EllipsoidContractJson.HasVersion(importDoc.RootElement, 13))
+                {
+                    var composed = PositionAuthoringJson.Read<RecipeDocument>(utf8Json.ToArray(), PositionImportCompositionContract.MaximumRecipeBytes); PositionImportCompositionContract.ValidateRecipe(composed); return (T)(object)composed;
+                }
+                if (EllipsoidContractJson.HasVersion(importDoc.RootElement, 12))
+                {
+                    var importRecipe = PositionAuthoringJson.Read<RecipeDocument>(utf8Json.ToArray()); PositionImportContract.ValidateRecipe(importRecipe); return (T)(object)importRecipe;
+                }
             }
             if (typeof(T) == typeof(EvidenceReport)) ExperimentalEvidenceValidator.ValidateShape(utf8Json);
-            if (typeof(T) == typeof(GuidedWorkflowSession)) GuidedWorkflow.ValidateSessionShape(utf8Json);
             if (typeof(T) == typeof(ComponentDiscoveryResultV2)) EllipsoidDiscoveryJson.ValidateShape(utf8Json);
 
             var result = JsonSerializer.Deserialize<T>(utf8Json, Options)
@@ -45,14 +53,15 @@ public static class JsonDefaults
             }
             if (result is EvidenceReport evidence)
             {
+                if (evidence.SchemaVersion is 13 or 14) evidence = PositionAuthoringJson.Read<EvidenceReport>(utf8Json.ToArray());
                 if (evidence.SchemaVersion == 12) PairedContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 11) DirectionalContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 10) CoordinatedContractValidator.ValidateEvidence(evidence);
                 else if (evidence.SchemaVersion == 9) EllipsoidContractValidator.ValidateEvidence(evidence);
                 else ExperimentalEvidenceValidator.Validate(evidence);
+                if (evidence.SchemaVersion is 13 or 14) result = (T)(object)evidence;
             }
             if (result is ComponentDiscoveryResultV2 discovery) EllipsoidDiscoveryJson.Validate(discovery);
-            if (result is GuidedWorkflowSession { SchemaVersion: 3 or 4 } session) GuidedWorkflow.ValidateSession(session);
             return result;
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
@@ -66,21 +75,38 @@ public static class JsonDefaults
     public static byte[] SerializeToUtf8<T>(T value)
     {
         ValidateDirectionalWrite(value);
-        var json = JsonSerializer.SerializeToUtf8Bytes(value, value is EvidenceReport { SchemaVersion: 12 } ? PairedEvidenceOptions : Options);
-        if (PairedContractJson.IsPairedArtifact(value)) PairedContractJson.RequireBudget(json.Length);
+        var json = JsonSerializer.SerializeToUtf8Bytes(value, value is EvidenceReport { SchemaVersion: 12 or 13 or 14 } or MutationPlan { SchemaVersion: 9 } ? PairedEvidenceOptions : Options);
+        if (value is RecipeDocument { SchemaVersion: 12 or 13 } && json.Length > PositionImportCompositionContract.MaximumRecipeBytes) throw PositionAuthoringJson.Invalid("IMPORT_JSON_BUDGET", "Recipe exceeds 16 MiB.");
+        if (PairedContractJson.IsPairedArtifact(value) || value is RecipeDocument { SchemaVersion: 12 or 13 } or MutationPlan { SchemaVersion: 8 or 9 } or EvidenceReport { SchemaVersion: 13 or 14 }) PairedContractJson.RequireBudget(json.Length);
         return json;
     }
 
     public static string Serialize<T>(T value)
     {
         ValidateDirectionalWrite(value);
-        var json = JsonSerializer.Serialize(value, value is EvidenceReport { SchemaVersion: 12 } ? PairedEvidenceOptions : Options);
-        if (PairedContractJson.IsPairedArtifact(value)) PairedContractJson.RequireBudget(System.Text.Encoding.UTF8.GetByteCount(json));
+        var json = JsonSerializer.Serialize(value, value is EvidenceReport { SchemaVersion: 12 or 13 or 14 } or MutationPlan { SchemaVersion: 9 } ? PairedEvidenceOptions : Options);
+        if (value is RecipeDocument { SchemaVersion: 12 or 13 } && System.Text.Encoding.UTF8.GetByteCount(json) > PositionImportCompositionContract.MaximumRecipeBytes) throw PositionAuthoringJson.Invalid("IMPORT_JSON_BUDGET", "Recipe exceeds 16 MiB.");
+        if (PairedContractJson.IsPairedArtifact(value) || value is RecipeDocument { SchemaVersion: 12 or 13 } or MutationPlan { SchemaVersion: 8 or 9 } or EvidenceReport { SchemaVersion: 13 or 14 }) PairedContractJson.RequireBudget(System.Text.Encoding.UTF8.GetByteCount(json));
         return json;
     }
 
     private static void ValidateDirectionalWrite<T>(T value)
     {
+        if (value is RecipeDocument { SchemaVersion: 13 } cr) { PositionImportCompositionContract.ValidateRecipe(cr); return; }
+        if (value is MutationPlan { SchemaVersion: 9 } cp) { PositionImportCompositionContract.ValidatePlan(cp); return; }
+        if (value is EvidenceReport { SchemaVersion: 14 } ce) { PositionImportCompositionContract.ValidateEvidence(ce); return; }
+        if (value is MutationPlan { PositionImportComposition: not null } or EvidenceReport { PositionImportComposition: not null }) throw PositionImportCompositionContract.Invalid("Composition fields require their own version.");
+        if (value is RecipeDocument { SchemaVersion: 12 } ir) { PositionImportContract.ValidateRecipe(ir); return; }
+        if (value is MutationPlan { SchemaVersion: 8 } ip) PositionImportContract.ValidatePlan(ip);
+        if (value is EvidenceReport { SchemaVersion: 13 } ie) PositionImportContract.ValidateEvidence(ie);
+        if (value is RecipeDocument or MutationPlan or EvidenceReport)
+        {
+            var element = JsonSerializer.SerializeToElement(value, Options);
+            var version = value switch { RecipeDocument r => r.SchemaVersion, MutationPlan p => p.SchemaVersion ?? 0, EvidenceReport e => e.SchemaVersion, _ => 0 };
+            var expected = value is RecipeDocument ? 12 : value is MutationPlan ? 8 : 13;
+            if (version != expected && element.TryGetProperty("operations", out var ops) && ops.EnumerateArray().Any(o => o.TryGetProperty(value is MutationPlan ? "positionImportTarget" : "positionImport", out _)))
+                throw PositionAuthoringJson.Invalid("IMPORT_VERSION_MISMATCH", "New import fields cannot enter an older contract.");
+        }
         if (value is PairedFieldOptions options) _ = PairedFieldOptionsJson.ToRecipe(options);
         if (value is RecipeDocument pairedRecipe && pairedRecipe.SchemaVersion != 11
             && pairedRecipe.Operations?.OfType<TransformComponentOperation>().Any(op => op.Version == 10 || op.PairedTransform is not null || op.SourceTrianglePolicy is not null || op.ProceduralInputPolicy is not null) == true)
@@ -109,6 +135,8 @@ public static class JsonDefaults
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (PositionImportCompositionContract.RecipeShape(root, json.Length)) return;
+        if (PositionImportContractJson.RecipeShape(root, json.Length)) return;
         if (PairedContractJson.RecipeShape(root, json.Length)) return;
         if (DirectionalContractJson.RecipeShape(root)) return;
         if (CoordinatedContractJson.RecipeShape(root)) return;

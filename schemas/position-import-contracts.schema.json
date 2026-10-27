@@ -1,0 +1,1218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://s2modkit.local/schemas/position-import/v1",
+  "title": "Source-bound compiled position import contracts",
+  "definitions": {
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleSha256",
+        "deltaSha256",
+        "policySha256",
+        "selectionSha256",
+        "deltaArtifact"
+      ],
+      "properties": {
+        "bundleSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "deltaSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "selectionSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "deltaArtifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "boundaryMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "sourceDecodedHash",
+        "vertexIds"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "sourceDecodedHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "vertexIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "minItems": 1,
+          "maxItems": 1000000,
+          "uniqueItems": true
+        }
+      }
+    },
+    "boundaryPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "keep_positions_and_frames",
+              "enum": [
+                "keep_positions_and_frames"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "const": 1,
+              "enum": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version",
+            "allowedBoundary"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "keep_positions_allow_source_derived_boundary_frames",
+              "enum": [
+                "keep_positions_allow_source_derived_boundary_frames"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "const": 1,
+              "enum": [
+                1
+              ]
+            },
+            "allowedBoundary": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/boundaryMap"
+              },
+              "minItems": 1,
+              "maxItems": 128
+            }
+          }
+        }
+      ]
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding",
+        "members",
+        "framePolicy",
+        "boundaryFramePolicy",
+        "protection"
+      ],
+      "properties": {
+        "binding": {
+          "$ref": "#/definitions/binding"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-coordinated-contracts-coordinatedMember"
+          },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "framePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "incident_source_differential",
+              "enum": [
+                "incident_source_differential"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "const": 1,
+              "enum": [
+                1
+              ]
+            }
+          }
+        },
+        "boundaryFramePolicy": {
+          "$ref": "#/definitions/boundaryPolicy"
+        },
+        "protection": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/boundaryMap"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "granularity",
+        "selector",
+        "lodPolicy",
+        "expectedMatchesByLod",
+        "expectedVerticesByLod",
+        "ownershipPolicy",
+        "runtimeMetadataPolicy",
+        "limits",
+        "extensions",
+        "zeroBoneBoxPolicy",
+        "zeroRenderSpherePolicy",
+        "sourceTrianglePolicy",
+        "proceduralInputPolicy",
+        "positionImport"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "import_positions",
+          "enum": [
+            "import_positions"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "granularity": {
+          "type": "string",
+          "const": "returned_buffer_positions",
+          "enum": [
+            "returned_buffer_positions"
+          ]
+        },
+        "selector": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-coordinatedSelector"
+        },
+        "lodPolicy": {
+          "enum": [
+            "all_present"
+          ],
+          "type": "string"
+        },
+        "expectedMatchesByLod": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-lodExpectations"
+        },
+        "expectedVerticesByLod": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-lodExpectations"
+        },
+        "ownershipPolicy": {
+          "enum": [
+            "exclusive"
+          ],
+          "type": "string"
+        },
+        "runtimeMetadataPolicy": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-runtimeMetadataPolicy"
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximumVertexDisplacement"
+          ],
+          "properties": {
+            "maximumVertexDisplacement": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 64
+            }
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "zeroBoneBoxPolicy": {
+          "$ref": "paired-contracts.schema.json#/definitions/rejectPolicy"
+        },
+        "zeroRenderSpherePolicy": {
+          "$ref": "paired-contracts.schema.json#/definitions/rejectPolicy"
+        },
+        "sourceTrianglePolicy": {
+          "$ref": "paired-contracts.schema.json#/definitions/sourceTrianglePolicy"
+        },
+        "proceduralInputPolicy": {
+          "$ref": "paired-contracts.schema.json#/definitions/proceduralInputPolicy"
+        },
+        "positionImport": {
+          "$ref": "#/definitions/intent"
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "operations",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 12,
+          "enum": [
+            12
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/operation"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "frameWord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vertexId",
+        "sourceWord",
+        "expectedWord"
+      ],
+      "properties": {
+        "vertexId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "sourceWord": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}$"
+        },
+        "expectedWord": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{8}$"
+        }
+      }
+    },
+    "buffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "meshOrdinal",
+        "bufferOrdinal",
+        "vertexCount",
+        "sourceDecodedHash",
+        "sourceEncodedHash",
+        "sourceIndexHash",
+        "layoutHash",
+        "expectedPositionHash",
+        "expectedFrameHash",
+        "expectedDecodedHash",
+        "positionChangeCount",
+        "frameClosureIds",
+        "frameWords",
+        "protectedPositionHash",
+        "protectedFrameHash",
+        "boundaryChangedFrameIds"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "meshOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "bufferOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "vertexCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "sourceDecodedHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceEncodedHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceIndexHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "layoutHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedPositionHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedFrameHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expectedDecodedHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "positionChangeCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "frameClosureIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "minItems": 0,
+          "maxItems": 1000000,
+          "uniqueItems": true
+        },
+        "frameWords": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/frameWord"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "protectedPositionHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "protectedFrameHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "boundaryChangedFrameIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "minItems": 0,
+          "maxItems": 1000000,
+          "uniqueItems": true
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputHash",
+        "targetFingerprint",
+        "structuralProfileId",
+        "structuralProfileVersion",
+        "boundsPolicyId",
+        "boundsPolicyVersion",
+        "positionImport",
+        "buffers",
+        "contextInventoryHash",
+        "sourceBlocksHash",
+        "sourceCoincidenceHash",
+        "sourceTriangles",
+        "proceduralInputs",
+        "boxTargets",
+        "boxClosures",
+        "preservationTargets",
+        "contextBuffers",
+        "coincidences",
+        "sourceBlocks"
+      ],
+      "properties": {
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "targetFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "structuralProfileId": {
+          "type": "string",
+          "const": "root_returned_positions_preservation_visual",
+          "enum": [
+            "root_returned_positions_preservation_visual"
+          ]
+        },
+        "structuralProfileVersion": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "boundsPolicyId": {
+          "type": "string",
+          "const": "retain_expand_boxes_preserve_runtime_import",
+          "enum": [
+            "retain_expand_boxes_preserve_runtime_import"
+          ]
+        },
+        "boundsPolicyVersion": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "positionImport": {
+          "$ref": "#/definitions/intent"
+        },
+        "buffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/buffer"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "contextInventoryHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceBlocksHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceCoincidenceHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceTriangles": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/sourceTriangles"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "proceduralInputs": {
+          "$ref": "paired-contracts.schema.json#/definitions/proceduralInputs"
+        },
+        "boxTargets": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-experimentalBoxTarget"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "boxClosures": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-directionalBoxClosure"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "preservationTargets": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-experimentalPreservationTarget"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "contextBuffers": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-directionalContextBuffer"
+          },
+          "minItems": 1
+        },
+        "coincidences": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-directionalCoincidenceLod"
+          },
+          "minItems": 1
+        },
+        "sourceBlocks": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "planOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCalls",
+        "targetBlocks",
+        "geometryTargets",
+        "distanceFieldTargets",
+        "positionImportTarget"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "import_positions",
+          "enum": [
+            "import_positions"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+          },
+          "minItems": 1
+        },
+        "targetBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          },
+          "minItems": 0
+        },
+        "geometryTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "distanceFieldTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "positionImportTarget": {
+          "$ref": "#/definitions/target"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "fingerprint",
+        "operations",
+        "inputs"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 8,
+          "enum": [
+            8
+          ]
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "fingerprint": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/planOperation"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-input"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "observedBuffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "memberId",
+        "lod",
+        "observedDecodedHash",
+        "observedPositionHash",
+        "observedFrameHash",
+        "unchangedAttributesHash",
+        "status"
+      ],
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "lod": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "observedDecodedHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "observedPositionHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "observedFrameHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "unchangedAttributesHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "status": {
+          "type": "string",
+          "const": "passed",
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputHash",
+        "outputHash",
+        "planFingerprint",
+        "targetFingerprint",
+        "binding",
+        "buffers",
+        "structuralStatus",
+        "boxStatus",
+        "preservationStatus",
+        "consumerStatus",
+        "poseStatus",
+        "runtimeStatus"
+      ],
+      "properties": {
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "outputHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "planFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "targetFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "binding": {
+          "$ref": "#/definitions/binding"
+        },
+        "buffers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/observedBuffer"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "structuralStatus": {
+          "type": "string",
+          "const": "passed",
+          "enum": [
+            "passed"
+          ]
+        },
+        "boxStatus": {
+          "type": "string",
+          "const": "passed",
+          "enum": [
+            "passed"
+          ]
+        },
+        "preservationStatus": {
+          "type": "string",
+          "const": "passed",
+          "enum": [
+            "passed"
+          ]
+        },
+        "consumerStatus": {
+          "type": "string",
+          "const": "untested",
+          "enum": [
+            "untested"
+          ]
+        },
+        "poseStatus": {
+          "type": "string",
+          "const": "untested",
+          "enum": [
+            "untested"
+          ]
+        },
+        "runtimeStatus": {
+          "type": "string",
+          "const": "untested",
+          "enum": [
+            "untested"
+          ]
+        }
+      }
+    },
+    "visualPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "planBinding",
+        "observed",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "planBinding": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-directionalPlanBinding"
+        },
+        "observed": {
+          "$ref": "#/definitions/observation"
+        },
+        "boxes": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-experimentalBoxEvidencePassed"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-experimentalPreservationEvidencePassed"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        }
+      }
+    },
+    "visualPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "planBinding",
+        "observed",
+        "boxes",
+        "preservedMetadata"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "planBinding": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-directionalPlanBinding"
+        },
+        "observed": {
+          "type": "null"
+        },
+        "boxes": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-experimentalBoxEvidencePlanned"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        },
+        "preservedMetadata": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-experimentalPreservationEvidencePlanned"
+          },
+          "minItems": 0,
+          "maxItems": 1000000
+        }
+      }
+    },
+    "evidenceOperationPlanned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "positionImport"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "import_positions",
+          "enum": [
+            "import_positions"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "positionImport": {
+          "$ref": "#/definitions/visualPlanned"
+        }
+      }
+    },
+    "evidenceOperationPassed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges",
+        "positionImport"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "type": "string",
+          "const": "import_positions",
+          "enum": [
+            "import_positions"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "positionImport": {
+          "$ref": "#/definitions/visualPassed"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "createdUtc",
+        "proofLevel",
+        "command",
+        "status",
+        "input",
+        "dependencies",
+        "planFingerprint",
+        "operations",
+        "boundaries",
+        "blocks",
+        "toolVersions",
+        "warnings",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 13,
+          "enum": [
+            13
+          ]
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "proofLevel": {
+          "enum": [
+            "offline_static"
+          ],
+          "type": "string"
+        },
+        "command": {
+          "enum": [
+            "plan",
+            "build",
+            "verify"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ],
+          "type": "string"
+        },
+        "input": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+          }
+        },
+        "output": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "planFingerprint": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/evidenceOperationPlanned"
+              },
+              {
+                "$ref": "#/definitions/evidenceOperationPassed"
+              }
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-boundaryEvidence"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-resourceBlockEvidence"
+          }
+        },
+        "toolVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "project",
+        "binding",
+        "recipe",
+        "action"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "const": "position_import_request",
+          "enum": [
+            "position_import_request"
+          ]
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "binding": {
+          "$ref": "#/definitions/binding"
+        },
+        "recipe": {
+          "$ref": "#/definitions/recipe"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "validate",
+            "plan"
+          ]
+        }
+      }
+    }
+  }
+}

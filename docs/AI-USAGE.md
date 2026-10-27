@@ -1,8 +1,17 @@
 # AI usage guide
 
 S2ModKit is designed so an AI agent can inspect and plan a change without guessing Source 2
-identities. The non-interactive commands are the automation contract; `interactive` is a convenient
-human-guided front end.
+identities. The non-interactive commands are the automation contract and the only supported command
+surface; the former `interactive` terminal mode was retired in 0.4.0.
+
+For an existing-mesh Blender sculpt, use the [position authoring commands](POSITION-AUTHORING.md).
+Keep the trusted bundle hash separate, return every selected LOD and validate against immutable source.
+`authoring import-recipe` freezes the return in a recipe-12 import and immutable project artifacts.
+Use normal `plan`, `build`, `verify` and minimal packaging: complete compiled reopen verification
+is required before publication. For one disjoint all-LOD draw removal, use `authoring compose-recipe`
+to create recipe 13; it resolves both operations against the original input and merges compatible
+metadata writes. Consumer/pose/runtime behavior stays untested. Interactive parity
+is not required for this agent workflow.
 
 Paired directional intent has strict operation-10 / recipe-11 / plan-7 / evidence-12 contracts
 and a separate `paired_directional_field_options@1` artifact. Explicit recipe-11 intent can now be
@@ -27,7 +36,7 @@ Local spans and signed-axis reaches from the authored pivots measure identical c
 zero-span percentages are explicit null. Core scale factors do not describe whole-part growth.
 Then use ordinary `plan`, `build`, `verify` and `package create-minimal --require-external`.
 Discovery mapping alone is unsupported until authored options pass exact planning; labels never
-infer anatomy or active bodygroups. Interactive parity, optimization and automatic anatomy remain
+infer anatomy or active bodygroups. Optimization and automatic anatomy remain
 backlog work. Existing single-directional commands below retain their contracts.
 
 Experimental editing is explicit: use `components list --experimental`, then scaffold with the
@@ -56,7 +65,7 @@ the same component IDs. It maps and plans the exact source before publishing a c
 Then use `directional review` for one compact summary and comparison/proof paths, followed by
 the existing `plan`, `build` and `verify` commands. Judge shape and measured effects before
 offering a player checkpoint. Surface predictions alone do not prove animated fit or live behavior.
-There is no directional interactive menu. See [CLI options](CLI-REFERENCE.md#s2mod-directional-inspect).
+See [CLI options](CLI-REFERENCE.md#s2mod-directional-inspect).
 
 For a skinning/dependency rejection, `influences diagnose` supplies bounded per-buffer root/render
 bone mappings and contributor counts, including tiny nonzero weights and unindexed vertices.
@@ -92,13 +101,6 @@ Successful CLI calls can be reduced to one `OK` line with the included PowerShel
 ```
 
 Use the real CLI directly when the returned JSON, IDs, hashes, or diagnostics are needed.
-
-## Guided workflow
-
-`& .\s2mod.exe interactive` prompts for the session, catalogue, and source paths. With explicit
-options, use `--catalogue`, `--session`, and one or more `--base-vpk`, `--mod-vpk`, or
-`--compiled-model` options. Menus print `0` for a previous selection where navigation is available;
-`back` and `previous` are accepted aliases. A prompted existing session resumes it.
 
 ## Evidence language
 

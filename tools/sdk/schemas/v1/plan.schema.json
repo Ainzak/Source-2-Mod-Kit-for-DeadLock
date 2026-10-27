@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_plan@1"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        1
+      ],
+      "type": "integer"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "intentHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exportRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "configHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "compiledPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stages": {
+      "enum": [
+        [
+          "csdk_raw_dmx",
+          "cs2_raw_dmx"
+        ]
+      ],
+      "type": "array"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "manifestHash",
+    "intentHash",
+    "sourceRoot",
+    "exportRoot",
+    "configHash",
+    "files",
+    "compiledPath",
+    "stages",
+    "limitations"
+  ],
+  "additionalProperties": false
+}

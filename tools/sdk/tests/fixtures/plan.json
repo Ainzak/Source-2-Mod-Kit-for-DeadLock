@@ -1,0 +1,23 @@
+{
+  "operation": "sdk_plan@1",
+  "version": 1,
+  "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceRoot": "configured/source",
+  "exportRoot": "configured/export",
+  "configHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "files": {
+    "authored.json": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "compiledPath": "models/test/test.vmdl_c",
+  "stages": [
+    "csdk_raw_dmx",
+    "cs2_raw_dmx"
+  ],
+  "limitations": [
+    "single_lod",
+    "sdk_regenerated_blocks",
+    "native_frames_unverified",
+    "source_export_fidelity_unverified"
+  ]
+}

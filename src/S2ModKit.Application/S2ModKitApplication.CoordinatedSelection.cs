@@ -9,7 +9,7 @@ public sealed partial class S2ModKitApplication
         var (_, input, _) = await LoadProjectGraphAsync(projectRoot, token).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, token).ConfigureAwait(false);
-        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverCoordinatedAsync(input, model, token).ConfigureAwait(false);
+        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress).DiscoverCoordinatedAsync(input, model, token).ConfigureAwait(false);
     }
 
     public async Task<CoordinatedSelectionProbe> ProbeCoordinatedSelectionAsync(string projectRoot, IReadOnlyList<string> componentIds,
@@ -18,7 +18,7 @@ public sealed partial class S2ModKitApplication
         var (_, input, _) = await LoadProjectGraphAsync(projectRoot, token).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, token).ConfigureAwait(false);
-        var service = new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner);
+        var service = new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress);
         var discovery = await service.DiscoverCoordinatedAsync(input, model, token).ConfigureAwait(false);
         var candidates = componentIds.Select(id => discovery.Candidates.SingleOrDefault(c => c.CandidateId == id)
             ?? throw CoordinatedSelection.Invalid("SCAFFOLD_COMPONENT_STALE", "A selected candidate is absent from current coordinated discovery.")).ToArray();

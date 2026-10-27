@@ -1,0 +1,36 @@
+{
+  "operation": "sdk_edit@2",
+  "version": 2,
+  "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "profile": "lod0_diagnostic",
+  "selectedMeshes": [
+    "body_LOD0"
+  ],
+  "excludedMeshes": [
+    "body_LOD1"
+  ],
+  "scales": [],
+  "acknowledge": [
+    "single_lod",
+    "sdk_regenerated_blocks",
+    "native_frames_unverified",
+    "source_export_fidelity_unverified"
+  ],
+  "replacement": {
+    "mesh": "body_LOD0",
+    "rigidBone": "root",
+    "blendPath": "private/authored.blend",
+    "blendHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometryMode": "replace_rigid_closed",
+    "boundsMin": [
+      -2,
+      -2,
+      -2
+    ],
+    "boundsMax": [
+      2,
+      2,
+      2
+    ]
+  }
+}

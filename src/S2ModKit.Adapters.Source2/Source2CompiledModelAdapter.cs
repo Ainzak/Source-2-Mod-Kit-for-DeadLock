@@ -18,6 +18,10 @@ public sealed partial class Source2CompiledModelAdapter : IModelInspector, IReso
     private const int MaximumDrawCallsPerMesh = 65536;
     private const int MaximumDirectDependencyCount = 4096;
     private readonly string? meshOptimizerPath;
+    private readonly object codecGate = new();
+    private readonly object parseCacheGate = new();
+    private readonly List<CachedParse> parseCache = [];
+    private IMeshOptimizerCodec? sharedCodec;
     private readonly Action<AffineRewriteCheckpoint>? affineRewriteCheckpoint;
 
     public Source2CompiledModelAdapter(string? meshOptimizerPath = null)
@@ -96,17 +100,42 @@ public sealed partial class Source2CompiledModelAdapter : IModelInspector, IReso
                 "Configure a compatible native library explicitly and confirm it with s2mod doctor.");
         }
 
-        var codec = NativeMeshOptimizerCodec.Open(meshOptimizerPath);
-        if (GeometryCodecCapability.Identity is null || codec.Identity != GeometryCodecCapability.Identity)
+        lock (codecGate)
         {
-            codec.Dispose();
-            throw Errors.Unsupported(
-                "MESHOPTIMIZER_IDENTITY_DRIFT",
-                "The configured meshoptimizer library changed after capability probing.",
-                "Restart the command, run s2mod doctor, and regenerate any geometry plan against the current binary identity.");
-        }
+            if (sharedCodec is null)
+            {
+                // Opened and identity-checked once per adapter: the loaded native image cannot change afterwards,
+                // so callers receive non-owning leases instead of re-hashing and reloading the library per parse.
+                var codec = NativeMeshOptimizerCodec.Open(meshOptimizerPath);
+                if (GeometryCodecCapability.Identity is null || codec.Identity != GeometryCodecCapability.Identity)
+                {
+                    codec.Dispose();
+                    throw Errors.Unsupported(
+                        "MESHOPTIMIZER_IDENTITY_DRIFT",
+                        "The configured meshoptimizer library changed after capability probing.",
+                        "Restart the command, run s2mod doctor, and regenerate any geometry plan against the current binary identity.");
+                }
 
-        return codec;
+                sharedCodec = codec;
+            }
+
+            return new CodecLease(sharedCodec);
+        }
+    }
+
+    private sealed class CodecLease(IMeshOptimizerCodec inner) : IMeshOptimizerCodec
+    {
+        public GeometryCodecIdentity Identity => inner.Identity;
+
+        public byte[] DecodeVertexBuffer(byte[] encoded, int vertexCount, int vertexStride) => inner.DecodeVertexBuffer(encoded, vertexCount, vertexStride);
+
+        public byte[] DecodeIndexBuffer(byte[] encoded, int indexCount, int indexStride) => inner.DecodeIndexBuffer(encoded, indexCount, indexStride);
+
+        public byte[] EncodeVertexBuffer(byte[] decoded, int vertexCount, int vertexStride, int version) => inner.EncodeVertexBuffer(decoded, vertexCount, vertexStride, version);
+
+        public void Dispose()
+        {
+        }
     }
 
     private static KVObject RequireArray(KVObject parent, string key, string path)
@@ -231,10 +260,23 @@ public sealed partial class Source2CompiledModelAdapter : IModelInspector, IReso
 
         public Dictionary<int, ParsedMesh> MeshesByOrdinal { get; }
 
+        /// <summary>Set on cached instances: callers' <c>using</c> blocks must not dispose a model other calls reuse.</summary>
+        public bool IsShared { get; set; }
+
         public void Dispose()
+        {
+            if (!IsShared)
+            {
+                Release();
+            }
+        }
+
+        public void Release()
         {
             Resource.Dispose();
             Stream.Dispose();
         }
     }
+
+    private sealed record CachedParse(ContentHash Hash, string LogicalPath, bool RetainGeometryAnalysis, bool AllowLodExcludedMeshes, ParsedModel Model);
 }

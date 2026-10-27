@@ -47,6 +47,13 @@ public sealed class EvidenceReportRenderer : IReportRenderer, IVpkPackageReportR
             }
 
             AppendInvariantLine(text, $"- Affected mesh resources: {operation.ChangedResources.Count}");
+            if (operation.PositionImport is { } imported)
+            {
+                AppendInvariantLine(text, $"- Returned positions: `{imported.Target.PositionImport.Binding.DeltaSha256}`; trusted bundle: `{imported.Target.PositionImport.Binding.BundleSha256}`");
+                AppendInvariantLine(text, $"- Position records changed: {imported.Target.Buffers.Sum(b => b.PositionChangeCount)}; boundary shading records changed: {imported.Target.Buffers.Sum(b => b.BoundaryChangedFrameIds.Count)}");
+                AppendInvariantLine(text, $"- Independent compiled reopen: `{imported.Observed?.StructuralStatus ?? "not_applicable"}`; positive boxes: {imported.Boxes.Count}");
+                text.AppendLine("- Serialized consumer inputs are preserved; culling, simulation, collision, pose and runtime remain untested.");
+            }
             foreach (var resource in operation.ChangedResources)
             {
                 AppendInvariantLine(text, $"  - `{Escape(resource)}`");

@@ -11,6 +11,10 @@ public static class MutationPlanJson
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) throw Invalid("A mutation plan must be an object.");
+        if (EllipsoidContractJson.HasVersion(root, 9)) return PositionImportCompositionContract.ReadPlan(json);
+        if (root.TryGetProperty("positionImportComposition", out _)) throw Invalid("Composition fields require plan 9, including null.");
+        if (EllipsoidContractJson.HasVersion(root, 8)) return PositionImportContractJson.ReadPlan(json);
+        EllipsoidContractJson.RejectOperationProperty(root, "positionImportTarget");
         if (EllipsoidContractJson.HasVersion(root, 7)) return PairedContractJson.ReadPlan(root, json);
         EllipsoidContractJson.RejectOperationProperty(root, "pairedTransformTarget");
         if (EllipsoidContractJson.HasVersion(root, 6)) return DirectionalContractJson.ReadPlan(root, json);
@@ -84,8 +88,16 @@ public static class MutationPlanJson
     /// <summary>All serialized semantic facts enter a canonical property-ordered digest; the digest itself does not.</summary>
     public static ContentHash ComputeExperimentalFingerprint(MutationPlan plan)
     {
-        if (plan.SchemaVersion is not (2 or 3 or 4 or 5 or 6 or 7)) throw Invalid("Only experimental plan versions 2 through 7 use this fingerprint.");
-        var facts = JsonSerializer.SerializeToElement(new { plan.SchemaVersion, plan.RecipeId, plan.InputHash, plan.Inputs, plan.Operations }, JsonDefaults.Options);
+        if (plan.SchemaVersion is not (2 or 3 or 4 or 5 or 6 or 7 or 8 or 9)) throw Invalid("Only experimental plan versions 2 through 9 use this fingerprint.");
+        var operations = plan.Operations.Select(op => op.PositionImportTarget is { } t ? op with { PositionImportTarget = NormalizeImportLocator(t) } : op).ToArray();
+        var composition = plan.PositionImportComposition is { } c ? c with
+        {
+            ImportPlan = c.ImportPlan with
+            { Operations = c.ImportPlan.Operations.Select(op => op.PositionImportTarget is { } t ? op with { PositionImportTarget = NormalizeImportLocator(t) } : op).ToArray() }
+        } : null;
+        var facts = plan.SchemaVersion == 9
+            ? JsonSerializer.SerializeToElement(new { plan.SchemaVersion, plan.RecipeId, plan.InputHash, plan.Inputs, Operations = operations, PositionImportComposition = composition }, JsonDefaults.Options)
+            : JsonSerializer.SerializeToElement(new { plan.SchemaVersion, plan.RecipeId, plan.InputHash, plan.Inputs, Operations = operations }, JsonDefaults.Options);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, facts);
         return ContentHash.Compute(stream.ToArray());
@@ -102,6 +114,19 @@ public static class MutationPlanJson
 
     public static ContentHash ComputePairedTargetFingerprint(PlannedPairedTransformTarget target)
         => ComputeVisualTargetFingerprint(target);
+
+    public static ContentHash ComputePositionImportTargetFingerprint(PlannedPositionImportTarget target)
+        => ComputeVisualTargetFingerprint(NormalizeImportLocator(target));
+
+    private static PlannedPositionImportTarget NormalizeImportLocator(PlannedPositionImportTarget t)
+        => t with
+        {
+            PositionImport = t.PositionImport with
+            {
+                Binding = t.PositionImport.Binding with
+                { DeltaArtifact = t.PositionImport.Binding.DeltaArtifact with { Path = $"authoring/{t.PositionImport.Binding.DeltaSha256}.json" } }
+            }
+        };
 
     public static ContentHash ComputeDirectionalFactsHash<T>(T value)
     {

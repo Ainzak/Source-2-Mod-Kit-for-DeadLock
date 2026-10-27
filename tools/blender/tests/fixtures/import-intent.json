@@ -1,0 +1,44 @@
+{
+  "binding": {
+    "bundleSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deltaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "policySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "selectionSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deltaArtifact": {
+      "path": "returns/delta.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "members": [
+    {
+      "memberId": "body",
+      "lods": [
+        {
+          "lod": 0,
+          "drawCallIds": [
+            "dc_0123456789abcdef01234567"
+          ],
+          "expectedVertices": 3
+        }
+      ]
+    }
+  ],
+  "framePolicy": {
+    "kind": "incident_source_differential",
+    "version": 1
+  },
+  "boundaryFramePolicy": {
+    "kind": "keep_positions_and_frames",
+    "version": 1
+  },
+  "protection": [
+    {
+      "memberId": "body",
+      "lod": 0,
+      "sourceDecodedHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "vertexIds": [
+        0
+      ]
+    }
+  ]
+}

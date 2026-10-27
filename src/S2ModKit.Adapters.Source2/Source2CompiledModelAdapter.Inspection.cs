@@ -17,12 +17,50 @@ public sealed partial class Source2CompiledModelAdapter
     public Task<ModelSnapshot> InspectAsync(ArtifactContent artifact, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var parsed = Parse(artifact, allowLodExcludedMeshes: true);
+        using var parsed = ParseShared(artifact, allowLodExcludedMeshes: true);
         return Task.FromResult(parsed.Snapshot);
     }
 
     TransformPlanningResult ITransformOperationPlanner.PlanTransform(TransformPlanningRequest request) =>
         PlanTransform(request);
+
+    private const int MaximumCachedParses = 4;
+
+    /// <summary>Parse for read-only callers (inspection, discovery, planning, previews): one parse per input and
+    /// option set is reused within this adapter instead of re-reading and re-decoding every mesh per call. A cached
+    /// parse that retains geometry analysis also serves requests that do not. Rewriters keep calling
+    /// <see cref="Parse"/> and own their instance.</summary>
+    private ParsedModel ParseShared(
+        ArtifactContent artifact,
+        bool retainGeometryAnalysis = false,
+        bool allowLodExcludedMeshes = false)
+    {
+        lock (parseCacheGate)
+        {
+            var hit = parseCache.FindIndex(entry => entry.Hash == artifact.ContentHash
+                && string.Equals(entry.LogicalPath, artifact.LogicalPath, StringComparison.Ordinal)
+                && entry.AllowLodExcludedMeshes == allowLodExcludedMeshes
+                && (entry.RetainGeometryAnalysis || !retainGeometryAnalysis));
+            if (hit >= 0)
+            {
+                var entry = parseCache[hit];
+                parseCache.RemoveAt(hit);
+                parseCache.Add(entry);
+                return entry.Model;
+            }
+
+            var model = Parse(artifact, retainGeometryAnalysis, allowLodExcludedMeshes);
+            model.IsShared = true;
+            parseCache.Add(new CachedParse(artifact.ContentHash, artifact.LogicalPath, retainGeometryAnalysis, allowLodExcludedMeshes, model));
+            while (parseCache.Count > MaximumCachedParses)
+            {
+                parseCache[0].Model.Release();
+                parseCache.RemoveAt(0);
+            }
+
+            return model;
+        }
+    }
 
     private ParsedModel Parse(
         ArtifactContent artifact,

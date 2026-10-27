@@ -1,0 +1,552 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Read-only character measurement profile",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "type": "string",
+      "enum": [
+        "character_measure@1"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "frame": {
+      "$ref": "#/definitions/frame"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/input"
+      },
+      "minItems": 2,
+      "maxItems": 4
+    },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/measurement"
+      },
+      "minItems": 1,
+      "maxItems": 256
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/section"
+      },
+      "minItems": 0,
+      "maxItems": 64
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/view"
+      },
+      "minItems": 1,
+      "maxItems": 32
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "frame",
+    "inputs",
+    "measurements",
+    "sections",
+    "views"
+  ],
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000-\\u001f]+$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "vector": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": -1000000,
+        "maximum": 1000000
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "nameIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "minItems": 0,
+      "maxItems": 1024,
+      "uniqueItems": true
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "observed_skin",
+        "source_skeleton",
+        "clothing_estimate",
+        "authored_anatomy",
+        "intentional_change",
+        "unavailable"
+      ]
+    },
+    "ground": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "point": {
+          "$ref": "#/definitions/vector"
+        },
+        "normal": {
+          "$ref": "#/definitions/vector"
+        }
+      },
+      "required": [
+        "point",
+        "normal"
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "units": {
+          "enum": [
+            "source_units",
+            "synthetic_units"
+          ]
+        },
+        "pose": {
+          "type": "string",
+          "enum": [
+            "mesh_basis/bone_rest"
+          ]
+        },
+        "axes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/vector"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "ground": {
+          "$ref": "#/definitions/ground"
+        }
+      },
+      "required": [
+        "units",
+        "pose",
+        "axes",
+        "ground"
+      ]
+    },
+    "mesh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "object": {
+          "$ref": "#/definitions/text"
+        },
+        "geometryHash": {
+          "$ref": "#/definitions/hash"
+        }
+      },
+      "required": [
+        "object",
+        "geometryHash"
+      ]
+    },
+    "rig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "object": {
+          "$ref": "#/definitions/text"
+        },
+        "restHash": {
+          "$ref": "#/definitions/hash"
+        }
+      },
+      "required": [
+        "object",
+        "restHash"
+      ]
+    },
+    "landmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "surface",
+            "bone",
+            "unavailable"
+          ]
+        },
+        "mesh": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "enum": [
+            "head",
+            "tail",
+            null
+          ]
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999
+          },
+          "minItems": 0,
+          "maxItems": 128,
+          "uniqueItems": true
+        },
+        "weights": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 0,
+          "maxItems": 128
+        },
+        "origin": {
+          "$ref": "#/definitions/origin"
+        },
+        "note": {
+          "$ref": "#/definitions/text"
+        }
+      },
+      "required": [
+        "kind",
+        "mesh",
+        "bone",
+        "endpoint",
+        "ids",
+        "weights",
+        "origin",
+        "note"
+      ]
+    },
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mesh": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "faceIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999
+          },
+          "minItems": 0,
+          "maxItems": 500000,
+          "uniqueItems": true
+        },
+        "origin": {
+          "$ref": "#/definitions/origin"
+        },
+        "note": {
+          "$ref": "#/definitions/text"
+        }
+      },
+      "required": [
+        "mesh",
+        "faceIds",
+        "origin",
+        "note"
+      ]
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "label": {
+          "$ref": "#/definitions/text"
+        },
+        "kind": {
+          "enum": [
+            "distance",
+            "delta",
+            "span",
+            "projection",
+            "section_span",
+            "angle",
+            "peak_distance",
+            "clearance"
+          ]
+        },
+        "landmarks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "minItems": 0,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "minItems": 0,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "axis": {
+          "$ref": "#/definitions/vector"
+        },
+        "expectation": {
+          "enum": [
+            "preserve",
+            "intentional",
+            "reference"
+          ]
+        },
+        "absoluteTolerance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "landmarks",
+        "regions",
+        "section",
+        "axis",
+        "expectation",
+        "absoluteTolerance"
+      ]
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "label": {
+          "$ref": "#/definitions/text"
+        },
+        "region": {
+          "$ref": "#/definitions/identifier"
+        },
+        "point": {
+          "$ref": "#/definitions/vector"
+        },
+        "normal": {
+          "$ref": "#/definitions/vector"
+        },
+        "axes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/vector"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "expectedComponents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "region",
+        "point",
+        "normal",
+        "axes",
+        "expectedComponents"
+      ]
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "center": {
+          "$ref": "#/definitions/vector"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1e-06,
+          "maximum": 10000
+        },
+        "direction": {
+          "$ref": "#/definitions/vector"
+        },
+        "landmarks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "minItems": 0,
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "minItems": 0,
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "center",
+        "scale",
+        "direction",
+        "landmarks",
+        "sections"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/identifier"
+        },
+        "scene": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "[.][bB][lL][eE][nN][dD]$"
+        },
+        "sceneHash": {
+          "$ref": "#/definitions/hash"
+        },
+        "units": {
+          "enum": [
+            "source_units",
+            "synthetic_units"
+          ]
+        },
+        "pose": {
+          "type": "string",
+          "enum": [
+            "mesh_basis/bone_rest"
+          ]
+        },
+        "meshes": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1024,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,63}$": {
+              "$ref": "#/definitions/mesh"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rig": {
+          "$ref": "#/definitions/rig"
+        },
+        "landmarks": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1024,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,63}$": {
+              "$ref": "#/definitions/landmark"
+            }
+          },
+          "additionalProperties": false
+        },
+        "regions": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1024,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,63}$": {
+              "$ref": "#/definitions/region"
+            }
+          },
+          "additionalProperties": false
+        },
+        "visibleMeshes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "scene",
+        "sceneHash",
+        "units",
+        "pose",
+        "meshes",
+        "rig",
+        "landmarks",
+        "regions",
+        "visibleMeshes"
+      ]
+    }
+  }
+}

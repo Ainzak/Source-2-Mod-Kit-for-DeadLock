@@ -11,6 +11,15 @@ namespace S2ModKit.Architecture.Tests;
 public sealed class DependencyBoundaryTests
 {
     [Fact]
+    public void BlenderAdapterDoesNotDependOnSource2OrLeakIntoCore()
+    {
+        var references = typeof(S2ModKit.Adapters.Blender.BlenderSceneBridge).Assembly.GetReferencedAssemblies()
+            .Select(r => r.Name).Where(n => n?.StartsWith("S2ModKit.", StringComparison.Ordinal) == true).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["S2ModKit.Application", "S2ModKit.Domain"], references);
+        Assert.DoesNotContain("S2ModKit.Adapters.Blender", typeof(ContentHash).Assembly.GetReferencedAssemblies().Select(r => r.Name));
+    }
+
+    [Fact]
     public void DomainHasNoProjectOrValveDependencies()
     {
         var references = typeof(ContentHash).Assembly.GetReferencedAssemblies().Select(reference => reference.Name).ToArray();

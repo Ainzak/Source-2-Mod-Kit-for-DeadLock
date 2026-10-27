@@ -13,8 +13,6 @@ public sealed partial class SchemaContractTests
     [InlineData("recipe.schema.json")]
     [InlineData("component-discovery.schema.json")]
     [InlineData("hero-catalogue.schema.json")]
-    [InlineData("guided-session.schema.json")]
-    [InlineData("v2/guided-session.schema.json")]
     [InlineData("v3/component-discovery.schema.json")]
     [InlineData("evidence.schema.json")]
     [InlineData("package.schema.json")]

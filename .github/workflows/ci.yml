@@ -29,7 +29,10 @@ jobs:
         run: dotnet build S2ModKit.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 1198
+        run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 1285
+
+      - name: Test standalone geometry authoring contracts
+        run: python -B -m unittest discover -s tools/blender/tests -q
 
       - name: Publish win-x64 candidate
         run: dotnet publish src/S2ModKit.Cli/S2ModKit.Cli.csproj --configuration Release -p:PublishProfile=WinX64SingleFile --output artifacts/publish --no-restore --verbosity quiet

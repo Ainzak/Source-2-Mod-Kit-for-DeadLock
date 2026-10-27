@@ -1,0 +1,37 @@
+{
+  "operation": "sdk_source@1",
+  "version": 1,
+  "sourcePath": "models/test/test.vmdl_c",
+  "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "skeletonPath": "models/test/test.vnmskel",
+  "skeletonHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "defaultGraph": "animgraphs/test.vnmgraph",
+  "uiGraph": "animgraphs/test_ui.vnmgraph",
+  "archive": "configured/pak01_dir.vpk",
+  "files": {
+    "baseline.json": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "configHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "toolPins": {
+    "blender": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "addonHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceNodes": [
+    "RenderMeshList"
+  ],
+  "sourceRefs": [
+    "models/test/test.vnmskel"
+  ],
+  "sourceLodMasks": [
+    1,
+    2
+  ],
+  "sourceBodygroups": [
+    "body"
+  ],
+  "meshNames": [
+    "body_LOD0",
+    "body_LOD1"
+  ],
+  "baselineHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

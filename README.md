@@ -21,6 +21,8 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
   commands and matched region/silhouette previews across every LOD.
 - Preview selected and excluded geometry across every LOD before building.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
+- Export Blender geometry, validate all-LOD position returns and build independently verified
+  existing-mesh sculpts through a bounded import contract. See [position authoring](docs/POSITION-AUTHORING.md).
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
 
 Support is structural, not hero-name based. Unknown layouts, incomplete LOD coverage, ambiguous
@@ -36,32 +38,28 @@ using an experimental edit.
 
 Local, mirrored, coordinated and protected directional/paired actions are included in
 [v0.3.0, the recommended Windows download](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest).
-Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md); interactive menus do not
-expose every operation. The older v0.2.0 prerelease includes whole-buffer and axis-ramp actions.
-See [the user guide](docs/USER-GUIDE.md)
-for explicit field parameters, coordinated options and the guided workflow.
+Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md). The older v0.2.0
+prerelease includes whole-buffer and axis-ramp actions. See [the user guide](docs/USER-GUIDE.md)
+for explicit field parameters and coordinated options.
+
+**Breaking change in 0.4.0:** the interactive terminal mode (`s2mod interactive`) is retired. Use the
+non-interactive commands documented below and in the [CLI reference](docs/CLI-REFERENCE.md).
 
 ## Quick start
 
-The easiest route is the guided workflow. It prompts for paths when options are omitted:
+Check the configured adapter and codec, then list the verified heroes in the packaged catalogue:
 
 ```powershell
 $s2mod = '.\s2mod.exe'
-& $s2mod interactive
-```
-
-For an explicit run:
-
-```powershell
-& $s2mod interactive `
+& $s2mod doctor --format json
+& $s2mod catalog heroes list `
   --catalogue '.\catalogues\deadlock-current.json' `
-  --session '.\guided-session.json' `
-  --base-vpk '<Deadlock game>\citadel\pak01_dir.vpk'
+  --source-vpk '<Deadlock game>\citadel\pak01_dir.vpk'
 ```
 
-The workflow is read-only until an explicit install confirmation. It prints a receipt-backed
-rollback command after installation. The catalogue contains portable logical paths only; the local
-VPK path is always supplied by the user.
+The catalogue contains portable logical paths only; the local VPK path is always supplied by the
+user. Only `addons install`, `addons install-current` and `addons rollback` can change a game addon
+root, and each requires explicit authorization.
 
 See [the user guide](docs/USER-GUIDE.md), [the CLI reference](docs/CLI-REFERENCE.md),
 [the AI usage guide](docs/AI-USAGE.md), and [the compatibility matrix](docs/COMPATIBILITY.md).
@@ -77,7 +75,7 @@ dotnet test --solution S2ModKit.slnx --configuration Release --no-build
 ```
 
 For contributor checks, use `scripts/Invoke-Verification.ps1`. The optional native meshoptimizer
-codec is configured through `S2MODKIT_MESHOPTIMIZER_PATH`; removal and inspection do not require it.
+codec ships with the release (`meshoptimizer.dll` next to `s2mod.exe`; `S2MODKIT_MESHOPTIMIZER_PATH` overrides it); removal and inspection do not require it.
 
 ## Safety and scope
 

@@ -11,7 +11,7 @@ public sealed partial class Source2CompiledModelAdapter : IPairedPreviewGeometry
         _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));
         if (!IsPairedPlan(plan) || input.ContentHash != plan.InputHash || ContentHash.Compute(input.Bytes.Span) != input.ContentHash)
             throw PairedDrift("Preview source identity differs from its frozen plan.");
-        using var parsed = Parse(input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(input, retainGeometryAnalysis: true);
         CheckPreviewBudget(parsed.Snapshot.Lods.Sum(l => l.Meshes.Sum(m => m.Geometry!.VertexBuffers.Sum(b => (long)b.VertexCount))),
             parsed.Snapshot.Lods.Sum(l => l.Meshes.Sum(m => m.DrawCalls.Sum(c => (long)c.IndexCount))));
         var operation = plan.Operations.Single(); var target = operation.PairedTransformTarget!;

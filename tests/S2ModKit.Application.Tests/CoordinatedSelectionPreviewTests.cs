@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
+using NJsonSchema;
 using S2ModKit.Application;
 using S2ModKit.Domain;
 using S2ModKit.Geometry;
@@ -118,6 +119,29 @@ public sealed class CoordinatedSelectionPreviewTests
             Assert.Empty(Directory.GetDirectories(root, ".ellipsoid-preview-*"));
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task CoordinatedPreviewSummaryUsesAClosedSchemaWithoutGeometryPayloads()
+    {
+        var (plan, geometry, model) = Fixture();
+        var preview = CoordinatedSelectionPreviewBuilder.Create(plan, geometry, model);
+        var artifacts = CoordinatedSelectionPreviewRenderer.Render(preview);
+        var schema = await JsonSchema.FromFileAsync(SchemaPath("coordinated-selection-preview.schema.json"), TestContext.Current.CancellationToken);
+        var json = Encoding.UTF8.GetString(artifacts.SummaryJson.Span); Assert.Empty(schema.Validate(json));
+        foreach (var property in new[] { "transform", "policy", "zeroBoneBoxPolicy", "zeroRenderSpherePolicy", "lods", "contactSheetHash", "limitations" })
+        {
+            var invalid = JsonNode.Parse(json)!; invalid.AsObject().Remove(property);
+            Assert.NotEmpty(schema.Validate(invalid.ToJsonString()));
+        }
+        var unknown = JsonNode.Parse(json)!; unknown["anatomyQualified"] = true; Assert.NotEmpty(schema.Validate(unknown.ToJsonString()));
+    }
+
+    private static string SchemaPath(string name)
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "S2ModKit.slnx"))) root = root.Parent;
+        return Path.Combine(root!.FullName, "schemas", name);
     }
 
     internal static (MutationPlan Plan, CoordinatedPreviewGeometry Geometry, ModelSnapshot Model) Fixture()

@@ -41,35 +41,6 @@ public sealed partial class CliContractTests
         Assert.Empty(error.ToString());
     }
 
-    [Fact]
-    public async Task GuidedUnionCheckpointsExactChoicesAndResumesWithoutUpgradingOldSessions()
-    {
-        var hash = ContentHash.Compute("catalogue-directory"u8); var catalogue = await WriteCatalogueAsync(hash); var options = await WriteCoordinatedOptionsAsync();
-        var path = Path.Combine(Path.GetTempPath(), "s2modkit-coordinated-session-" + Guid.NewGuid().ToString("N") + ".json"); var token = TestContext.Current.CancellationToken;
-        try
-        {
-            var app = new FakeApplication(); var cli = new S2ModKitCli(app, "test", "1", false, catalogueInventoryFactory: new FakeCatalogueInventoryFactory(hash));
-            using var output = new StringWriter(); using var error = new StringWriter(); using var input = new StringReader("1\n1\n1\n1,1\n1,2\ncancel\n");
-            Assert.Equal(0, await cli.RunAsync(["interactive", "--catalogue", catalogue, "--session", path, "--base-vpk", "pak01_dir.vpk", "--experimental", "--coordinated-options", options], input, output, error, token));
-            Assert.Empty(error.ToString()); Assert.Null(app.LastScaffoldRequest);
-            Assert.Contains("Use distinct current menu numbers", output.ToString(), StringComparison.Ordinal);
-            Assert.Contains("Apply common field to selected buffers", output.ToString(), StringComparison.Ordinal);
-            var session = JsonDefaults.Deserialize<GuidedWorkflowSession>(await File.ReadAllBytesAsync(path, token), "session");
-            Assert.Equal(4, session.SchemaVersion); Assert.Equal(GuidedWorkflowContract.ActionSelectionStep, session.Step);
-            Assert.Equal(2, session.SelectedComponentIds!.Count); Assert.Equal(GuidedWorkflow.CoordinatedChoiceId(session.SelectedComponentIds), session.SelectedComponentId);
-            Assert.Equal(64, session.CoordinatedParameters!.MaximumDisplacement);
-            using var resumed = new StringReader("cancel\n");
-            Assert.Equal(0, await cli.RunAsync(["interactive", "--session", path, "--resume"], resumed, output, error, token));
-            Assert.Empty(error.ToString());
-            using var forbidden = new StringReader("cancel\n");
-            Assert.NotEqual(0, await cli.RunAsync(["interactive", "--session", path, "--resume", "--experimental", "--coordinated-options", options], forbidden, output, error, token));
-            foreach (var invalid in new[] { session with { SchemaVersion = 3 }, session with { SelectedComponentIds = null }, session with { SelectedComponentIds = session.SelectedComponentIds.Reverse().ToArray() },
-                session with { SelectedComponentId = "cmp_0123456789abcdef01234567" }, session with { UniformScale = 1.5f } })
-                Assert.Throws<S2ModKitException>(() => JsonDefaults.Deserialize<GuidedWorkflowSession>(JsonDefaults.SerializeToUtf8(invalid), "bad session"));
-        }
-        finally { File.Delete(path); File.Delete(catalogue); File.Delete(options); }
-    }
-
     private static async Task<string> WriteCoordinatedOptionsAsync()
     {
         var path = Path.Combine(Path.GetTempPath(), "s2modkit-common-options-" + Guid.NewGuid().ToString("N") + ".json");

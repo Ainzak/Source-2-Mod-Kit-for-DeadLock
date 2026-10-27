@@ -10,6 +10,8 @@ public sealed partial class ModelVerifier
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.SchemaVersion == 9) return VerifyPositionImportCompositionSnapshot(before, after, plan);
+        if (plan.SchemaVersion == 8 || plan.Operations.Any(o => o.PositionImportTarget is not null || o.Kind == "import_positions")) return VerifyPositionImportSnapshot(before, after, plan);
         if (plan.SchemaVersion == 7 || plan.Operations.Any(operation => operation.Version == 10 || operation.PairedTransformTarget is not null))
         {
             _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));

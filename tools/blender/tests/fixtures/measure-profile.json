@@ -1,0 +1,406 @@
+{
+  "operation": "character_measure@1",
+  "version": 1,
+  "frame": {
+    "units": "synthetic_units",
+    "pose": "mesh_basis/bone_rest",
+    "axes": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "ground": {
+      "point": [
+        0,
+        0,
+        0
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "id": "source",
+      "scene": "fixture.blend",
+      "sceneHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "units": "synthetic_units",
+      "pose": "mesh_basis/bone_rest",
+      "meshes": {
+        "skin": {
+          "object": "source_skin",
+          "geometryHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "rig": {
+        "object": "fixture_rig",
+        "restHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "landmarks": {
+        "finger_root": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            0
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "finger_tip": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            1
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "shoulder": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            6
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "jaw": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            7
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "root": {
+          "kind": "bone",
+          "mesh": null,
+          "bone": "root",
+          "endpoint": "head",
+          "ids": [],
+          "weights": [],
+          "origin": "source_skeleton",
+          "note": "Synthetic rest-bone reference"
+        },
+        "neck": {
+          "kind": "bone",
+          "mesh": null,
+          "bone": "neck",
+          "endpoint": "head",
+          "ids": [],
+          "weights": [],
+          "origin": "source_skeleton",
+          "note": "Synthetic rest-bone reference"
+        }
+      },
+      "regions": {
+        "torso": {
+          "mesh": "skin",
+          "faceIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic nonuniform box; whole declared mesh"
+        }
+      },
+      "visibleMeshes": [
+        "skin"
+      ]
+    },
+    {
+      "id": "candidate",
+      "scene": "fixture.blend",
+      "sceneHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "units": "synthetic_units",
+      "pose": "mesh_basis/bone_rest",
+      "meshes": {
+        "skin": {
+          "object": "candidate_skin",
+          "geometryHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "rig": {
+        "object": "fixture_rig",
+        "restHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "landmarks": {
+        "finger_root": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            0
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "finger_tip": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            1
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "shoulder": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            6
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "jaw": {
+          "kind": "surface",
+          "mesh": "skin",
+          "bone": null,
+          "endpoint": null,
+          "ids": [
+            7
+          ],
+          "weights": [
+            1.0
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic explicit surface vertex"
+        },
+        "root": {
+          "kind": "bone",
+          "mesh": null,
+          "bone": "root",
+          "endpoint": "head",
+          "ids": [],
+          "weights": [],
+          "origin": "source_skeleton",
+          "note": "Synthetic rest-bone reference"
+        },
+        "neck": {
+          "kind": "bone",
+          "mesh": null,
+          "bone": "neck",
+          "endpoint": "head",
+          "ids": [],
+          "weights": [],
+          "origin": "source_skeleton",
+          "note": "Synthetic rest-bone reference"
+        }
+      },
+      "regions": {
+        "torso": {
+          "mesh": "skin",
+          "faceIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "origin": "authored_anatomy",
+          "note": "Synthetic nonuniform box; whole declared mesh"
+        }
+      },
+      "visibleMeshes": [
+        "skin"
+      ]
+    }
+  ],
+  "measurements": [
+    {
+      "id": "finger_length",
+      "label": "finger length",
+      "kind": "distance",
+      "landmarks": [
+        "finger_root",
+        "finger_tip"
+      ],
+      "regions": [],
+      "section": null,
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "expectation": "preserve",
+      "absoluteTolerance": 0.0001
+    },
+    {
+      "id": "jaw_shoulder_height",
+      "label": "jaw shoulder height",
+      "kind": "delta",
+      "landmarks": [
+        "shoulder",
+        "jaw"
+      ],
+      "regions": [],
+      "section": null,
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "expectation": "preserve",
+      "absoluteTolerance": 0.0001
+    },
+    {
+      "id": "bone_length",
+      "label": "bone length",
+      "kind": "distance",
+      "landmarks": [
+        "root",
+        "neck"
+      ],
+      "regions": [],
+      "section": null,
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "expectation": "preserve",
+      "absoluteTolerance": 0.0001
+    },
+    {
+      "id": "section_width",
+      "label": "section width",
+      "kind": "section_span",
+      "landmarks": [],
+      "regions": [],
+      "section": "torso",
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "expectation": "preserve",
+      "absoluteTolerance": 0.0001
+    },
+    {
+      "id": "section_depth",
+      "label": "section depth",
+      "kind": "section_span",
+      "landmarks": [],
+      "regions": [],
+      "section": "torso",
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "expectation": "preserve",
+      "absoluteTolerance": 0.0001
+    }
+  ],
+  "sections": [
+    {
+      "id": "torso",
+      "label": "Synthetic transformed nonuniform box",
+      "region": "torso",
+      "point": [
+        10,
+        0,
+        4
+      ],
+      "normal": [
+        0,
+        0,
+        1
+      ],
+      "axes": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ]
+      ],
+      "expectedComponents": 1
+    }
+  ],
+  "views": [
+    {
+      "id": "full",
+      "center": [
+        10,
+        0,
+        8
+      ],
+      "scale": 105,
+      "direction": [
+        1,
+        0,
+        0
+      ],
+      "landmarks": [
+        "finger_root",
+        "finger_tip",
+        "shoulder",
+        "jaw"
+      ],
+      "sections": [
+        "torso"
+      ]
+    }
+  ]
+}

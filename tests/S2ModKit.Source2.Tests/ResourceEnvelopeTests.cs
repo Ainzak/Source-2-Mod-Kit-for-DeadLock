@@ -13,7 +13,7 @@ public sealed class ResourceEnvelopeTests
         var versions = new Source2CompiledModelAdapter().ComponentVersions;
 
         Assert.Equal("2", versions["s2modkit.adapter.source2"]);
-        Assert.Contains("20.0.6980", versions["nuget.valveresourceformat"], StringComparison.Ordinal);
+        Assert.Contains("20.1.7467", versions["nuget.valveresourceformat"], StringComparison.Ordinal);
         Assert.NotEmpty(versions["nuget.valvekeyvalue"]);
     }
 
@@ -79,6 +79,47 @@ public sealed class ResourceEnvelopeTests
         var exception = Assert.Throws<S2ModKitException>(() => ResourceEnvelopeReader.Read(input));
 
         Assert.Equal("RESOURCE_BLOCK_RANGE_INVALID", exception.Error.Code);
+    }
+
+    [Theory]
+    [InlineData(11, 17)]
+    [InlineData(17, 11)]
+    [InlineData(32, 25)]
+    public void ImportAuditProjectionUsesOriginalPaddingAndObservedGeometry(int removedMetadataLength, int restoredMetadataLength)
+    {
+        var input = CreateResource(("MVTX", new byte[9]), ("MDAT", new byte[7]), ("DATA", "opaque"u8.ToArray()));
+        var initial = ResourceEnvelopeReader.Read(input);
+        input.AsSpan(initial.Blocks[0].Offset + 9, initial.Blocks[0].PaddingAfter.Length).Fill(0xa5);
+        var source = ResourceEnvelopeReader.Read(input);
+        var geometry = Enumerable.Repeat((byte)0x37, 23).ToArray();
+        var removedMetadata = Enumerable.Repeat((byte)0x51, removedMetadataLength).ToArray();
+        var restoredMetadata = Enumerable.Repeat((byte)0x62, restoredMetadataLength).ToArray();
+        var combined = ResourceEnvelopeReader.Read(ResourceEnvelopeWriter.Rebuild(source,
+            new Dictionary<int, ReadOnlyMemory<byte>> { [0] = geometry, [1] = removedMetadata }));
+
+        var projected = Source2CompiledModelAdapter.RebuildImportAuditProjection(source, combined,
+            new Dictionary<int, ReadOnlyMemory<byte>> { [1] = restoredMetadata });
+        var expected = ResourceEnvelopeWriter.Rebuild(source,
+            new Dictionary<int, ReadOnlyMemory<byte>> { [0] = geometry, [1] = restoredMetadata });
+
+        Assert.Equal(expected, projected);
+        var envelope = ResourceEnvelopeReader.Read(projected);
+        Assert.Equal(geometry, envelope.Blocks[0].Payload.ToArray());
+        Assert.Equal(restoredMetadata, envelope.Blocks[1].Payload.ToArray());
+        Assert.Equal(source.Blocks[2].Payload.ToArray(), envelope.Blocks[2].Payload.ToArray());
+        Assert.Equal(source.Blocks[0].PaddingAfter.ToArray(), envelope.Blocks[0].PaddingAfter[..source.Blocks[0].PaddingAfter.Length].ToArray());
+    }
+
+    [Fact]
+    public void ImportAuditProjectionRejectsMismatchedInventoryAndUnknownRestoration()
+    {
+        var source = ResourceEnvelopeReader.Read(CreateResource(("MDAT", "source"u8.ToArray())));
+        var wrong = ResourceEnvelopeReader.Read(CreateResource(("DATA", "source"u8.ToArray())));
+
+        Assert.Throws<S2ModKitException>(() => Source2CompiledModelAdapter.RebuildImportAuditProjection(source, wrong,
+            new Dictionary<int, ReadOnlyMemory<byte>>()));
+        Assert.Throws<S2ModKitException>(() => Source2CompiledModelAdapter.RebuildImportAuditProjection(source, source,
+            new Dictionary<int, ReadOnlyMemory<byte>> { [1] = "unknown"u8.ToArray() }));
     }
 
     [Fact]

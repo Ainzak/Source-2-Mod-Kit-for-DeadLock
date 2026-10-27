@@ -24,7 +24,8 @@ public sealed class PackagedApplicationSmokeTests
 
             var help = await RunAsync(executable, workingDirectory, "--help");
             Assert.Equal(0, help.ExitCode);
-            Assert.Contains("interactive", help.Stdout, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("inspect", help.Stdout, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("interactive", help.Stdout, StringComparison.OrdinalIgnoreCase);
 
             var doctor = await RunAsync(executable, workingDirectory, "doctor", "--format", "json");
             Assert.Equal(0, doctor.ExitCode);

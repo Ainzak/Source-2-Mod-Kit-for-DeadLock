@@ -56,7 +56,7 @@ public sealed partial class Source2CompiledModelAdapter : IComponentCapabilityAn
             return Task.FromResult<IReadOnlyList<ComponentCapabilityAnalysis>>([]);
         }
 
-        using var parsed = Parse(request.Input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(request.Input, retainGeometryAnalysis: true);
         ValidateSnapshotAgreement(request.Model, parsed.Snapshot);
         return Task.FromResult<IReadOnlyList<ComponentCapabilityAnalysis>>(
             AssessSelections(request.Selections, CreateCapabilityProfile(request.Input, parsed), cancellationToken));

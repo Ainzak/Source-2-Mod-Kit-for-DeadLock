@@ -10,6 +10,7 @@ public sealed partial class ExperimentalComponentDiscoveryService
         var candidates = new List<ComponentCandidateV2>();
         foreach (var candidate in previous.Candidates)
         {
+            progress?.Report(new DiscoveryProgress("coordinated", candidates.Count, previous.Candidates.Count));
             token.ThrowIfCancellationRequested();
             var capabilities = candidate.Capabilities.ToList();
             try

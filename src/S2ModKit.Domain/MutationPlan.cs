@@ -52,6 +52,9 @@ public sealed record PlannedOperation(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PlannedPairedTransformTarget? PairedTransformTarget { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PlannedPositionImportTarget? PositionImportTarget { get; init; }
 }
 
 public sealed record GeometryBounds(
@@ -307,6 +310,9 @@ public sealed record MutationPlan(
     public int? SchemaVersion { get; init; }
 
     public IReadOnlyList<PlannedInput> Inputs { get; init; } = [];
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PositionImportCompositionTarget? PositionImportComposition { get; init; }
 }
 
 public sealed record RewriteCandidate(

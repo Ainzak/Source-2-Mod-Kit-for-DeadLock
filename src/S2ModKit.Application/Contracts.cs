@@ -273,6 +273,13 @@ public interface IS2ModKitApplication
         string projectRoot,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Optional progress for long discoveries (per candidate part); null keeps discovery silent.</summary>
+    IProgress<DiscoveryProgress>? DiscoveryProgress
+    {
+        get => null;
+        set { }
+    }
+
     Task<ComponentDiscoveryResultV2> DiscoverExperimentalComponentsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
         throw Errors.Unsupported("EXPERIMENTAL_DISCOVERY_UNAVAILABLE", "This application cannot discover experimental components.", "Use a configured experimental planner.");
 
@@ -440,3 +447,5 @@ public sealed class MisconfiguredExternalVerifier(string summary) : IExternalVer
     public Task<BoundaryEvidence> VerifyAsync(RewriteCandidate candidate, CancellationToken cancellationToken = default) =>
         Task.FromResult(new BoundaryEvidence("external_verifier", "failed", summary));
 }
+
+public sealed record DiscoveryProgress(string Stage, int Completed, int Total);

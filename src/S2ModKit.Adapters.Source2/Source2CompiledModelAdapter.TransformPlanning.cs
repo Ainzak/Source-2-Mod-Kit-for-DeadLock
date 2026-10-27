@@ -54,7 +54,7 @@ public sealed partial class Source2CompiledModelAdapter
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(pivot);
-        using var parsed = Parse(input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(input, retainGeometryAnalysis: true);
         ValidateSnapshotAgreement(model, parsed.Snapshot);
         var mesh = parsed.MeshesByOrdinal.Values.SingleOrDefault();
         if (mesh?.RawMbufAnalysis is null
@@ -100,7 +100,7 @@ public sealed partial class Source2CompiledModelAdapter
             throw Errors.Input("INPUT_HASH_DRIFT", "The Source 2 transform request no longer matches its immutable input.", "Reload the input and regenerate the plan.");
         }
 
-        using var parsed = Parse(request.Input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(request.Input, retainGeometryAnalysis: true);
         ValidateSnapshotAgreement(request.Model, parsed.Snapshot);
         var selectedIds = request.SelectedDrawCalls.Select(item => item.DrawCallId).ToHashSet(StringComparer.Ordinal);
         if (selectedIds.Count != request.SelectedDrawCalls.Count || selectedIds.Count == 0)

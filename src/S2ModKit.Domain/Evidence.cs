@@ -40,6 +40,9 @@ public sealed record OperationEvidence(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PairedDirectionalTransformEvidence? PairedTransform { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PositionImportEvidence? PositionImport { get; init; }
 }
 
 public sealed record ExperimentalBoxEvidence(
@@ -161,6 +164,9 @@ public sealed record ResourceBlockEvidence(
 
 public sealed record EvidenceReport
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PositionImportCompositionEvidence? PositionImportComposition { get; init; }
+
     public int SchemaVersion { get; init; } = 6;
 
     public string ReportId { get; init; } = string.Empty;

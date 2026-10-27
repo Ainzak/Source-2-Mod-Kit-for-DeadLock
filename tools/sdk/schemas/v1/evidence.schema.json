@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_evidence@1"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        1
+      ],
+      "type": "integer"
+    },
+    "planHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "intentHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "modelHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "metadataExact": {
+      "enum": [
+        true
+      ],
+      "type": "boolean"
+    },
+    "boneMapExact": {
+      "enum": [
+        true
+      ],
+      "type": "boolean"
+    },
+    "maxBindPositionError": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.002
+    },
+    "maxBindRotationErrorDegrees": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.002
+    },
+    "geometryReportHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "runtimeTested": {
+      "enum": [
+        false
+      ],
+      "type": "boolean"
+    },
+    "productionAdmission": {
+      "enum": [
+        false
+      ],
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "planHash",
+    "manifestHash",
+    "intentHash",
+    "modelHash",
+    "metadataExact",
+    "boneMapExact",
+    "maxBindPositionError",
+    "maxBindRotationErrorDegrees",
+    "geometryReportHash",
+    "files",
+    "limitations",
+    "runtimeTested",
+    "productionAdmission"
+  ],
+  "additionalProperties": false
+}

@@ -10,7 +10,7 @@ public sealed partial class Source2CompiledModelAdapter : ICoordinatedPreviewGeo
         _ = MutationPlanJson.Read(JsonDefaults.SerializeToUtf8(plan));
         if (!IsCoordinatedPlan(plan) || input.ContentHash != plan.InputHash || ContentHash.Compute(input.Bytes.Span) != input.ContentHash)
             throw CoordinatedDrift("Preview source identity differs from its frozen plan.");
-        using var parsed = Parse(input, retainGeometryAnalysis: true);
+        using var parsed = ParseShared(input, retainGeometryAnalysis: true);
         var operation = plan.Operations.Single(); var target = operation.CoordinatedTransformTarget!;
         var sources = parsed.Envelope.Blocks.Select(b => new PlannedTargetBlock(b.Index, b.Type, ContentHash.Compute(b.Payload.Span))).ToArray();
         if (!sources.SequenceEqual(target.SourceBlocks)) throw CoordinatedDrift("Preview source block inventory differs from its plan.");

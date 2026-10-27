@@ -16,6 +16,9 @@ public static class ExperimentalEvidenceValidator
 
     public static void Validate(EvidenceReport report)
     {
+        if (report.SchemaVersion == 14) { PositionImportCompositionContract.ValidateEvidence(report); return; }
+        if (report.PositionImportComposition is not null) throw Invalid("Composition evidence requires schema 14.");
+        if (report.SchemaVersion == 13) { PositionImportContract.ValidateEvidence(report); return; }
         if (report.SchemaVersion == 12) { PairedContractValidator.ValidateEvidence(report); return; }
         if (report.Operations.Any(operation => operation.Version == 10 || operation.PairedTransform is not null)) throw Invalid("Paired evidence requires schema 12.");
         if (report.SchemaVersion == 11) { DirectionalContractValidator.ValidateEvidence(report); return; }
@@ -96,6 +99,9 @@ public static class ExperimentalEvidenceValidator
         using var document = JsonDocument.Parse(json.ToArray());
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) return;
+        if (EllipsoidContractJson.HasVersion(root, 14)) { PositionImportCompositionContract.EvidenceShape(root); _ = PositionAuthoringJson.Read<EvidenceReport>(json.ToArray()); return; }
+        if (root.TryGetProperty("positionImportComposition", out _)) throw Invalid("Composition fields require schema 14, including null.");
+        if (PositionImportContractJson.EvidenceShape(root, json.Length)) return;
         if (PairedContractJson.EvidenceShape(root, json.Length)) return;
         if (DirectionalContractJson.EvidenceShape(root)) return;
         if (CoordinatedContractJson.EvidenceShape(root)) return;

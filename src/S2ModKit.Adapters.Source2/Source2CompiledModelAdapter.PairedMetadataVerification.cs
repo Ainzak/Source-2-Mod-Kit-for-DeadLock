@@ -9,7 +9,13 @@ public sealed partial class Source2CompiledModelAdapter
     private static (ExperimentalBoxEvidence[] Boxes, DirectionalBoxClosure[] Closures, ExperimentalPreservationEvidence[] Preserved)
         AuditPairedMetadata(ParsedModel source, ParsedModel observed, CoordinatedResolvedBuffer[] members,
             Dictionary<(string MemberId, int Lod), CoordinatedResolvedBuffer> actual,
-            DirectionalSourceBuffer[] context, PlannedPairedTransformTarget target)
+        DirectionalSourceBuffer[] context, PlannedPairedTransformTarget target)
+        => AuditCompleteContributorMetadata(source, observed, members, actual, context, target.BoxTargets, target.PreservationTargets, false);
+
+    private static (ExperimentalBoxEvidence[] Boxes, DirectionalBoxClosure[] Closures, ExperimentalPreservationEvidence[] Preserved)
+        AuditCompleteContributorMetadata(ParsedModel source, ParsedModel observed, CoordinatedResolvedBuffer[] members,
+            Dictionary<(string MemberId, int Lod), CoordinatedResolvedBuffer> actual, DirectionalSourceBuffer[] context,
+            IReadOnlyList<PlannedExperimentalBoxTarget> expectedBoxes, IReadOnlyList<PlannedExperimentalPreservationTarget> expectedPreservation, bool allowUnchangedMeshes)
     {
         var boxes = new List<ExperimentalBoxEvidence>(); var closures = new List<DirectionalBoxClosure>();
         var preserved = new List<PlannedExperimentalPreservationTarget>();
@@ -24,10 +30,15 @@ public sealed partial class Source2CompiledModelAdapter
                         || !c.Before.AsSpan(i * c.Frame!.Stride + c.Frame.Offset, 4).SequenceEqual(c.After.AsSpan(i * c.Frame.Stride + c.Frame.Offset, 4)))
                     .Select(i => i + meshGroup.Single(m => m.Profile.Vertices.Snapshot.Ordinal == c.Facts.VertexBufferOrdinal).Profile.BufferBaseOffset)).ToHashSet();
             var affected = original.Metadata.BoneBounds.Where(b => b.InfluencedVertices.Any(selected.Contains)).ToArray();
+            if (selected.Count == 0 && allowUnchangedMeshes)
+            {
+                if (expectedBoxes.Any(b => b.ResourceBlockIndex == original.Mesh.BlockIndex) || KvSemanticHasher.ComputeComplete(original.Mesh.Block.Data) != KvSemanticHasher.ComputeComplete(current.Mesh.Block.Data)) throw PairedDrift("Unchanged mesh metadata differs.");
+                continue;
+            }
             if (affected.Length == 0) throw PairedDrift("Affected contributor closure is absent.");
             var required = affected.Select(b => $"m_skeleton.m_bones[{b.BoneIndex}].m_bbox.m_vecCenter+m_vecSize")
                 .Prepend("m_sceneObjects[0].m_vMinBounds+m_vMaxBounds").ToHashSet(StringComparer.Ordinal);
-            var meshTargets = target.BoxTargets.Where(b => b.ResourceBlockIndex == original.Mesh.BlockIndex).ToArray();
+            var meshTargets = expectedBoxes.Where(b => b.ResourceBlockIndex == original.Mesh.BlockIndex).ToArray();
             if (meshTargets.Length != required.Count || !required.SetEquals(meshTargets.Select(b => b.FieldPath))) throw PairedDrift("Unique scene/bone target inventory differs from complete source closure.");
             foreach (var box in meshTargets)
             {
@@ -83,11 +94,11 @@ public sealed partial class Source2CompiledModelAdapter
             if (KvSemanticHasher.ComputeComplete(original.Mesh.Block.Data) != KvSemanticHasher.ComputeComplete(current.Mesh.Block.Data))
                 throw PairedDrift("MDAT changed outside the independently prescribed box words.");
         }
-        if (boxes.Count != target.BoxTargets.Count) throw PairedDrift("Box inventory is incomplete.");
+        if (boxes.Count != expectedBoxes.Count) throw PairedDrift("Box inventory is incomplete.");
         var uniqueSource = members.Select(m => m.Profile).DistinctBy(p => p.Mesh.MeshOrdinal).ToArray();
         ReadPairedVerificationRootPreservation(source, context, preserved);
         var sortedPreserved = preserved.OrderBy(p => p.ResourceBlockIndex).ThenBy(p => p.FieldPath, StringComparer.Ordinal).ToArray();
-        SamePaired(sortedPreserved, target.PreservationTargets, "full preservation inventory");
+        SamePaired(sortedPreserved, expectedPreservation, "full preservation inventory");
         var uniqueOutput = actual.Values.Select(m => m.Profile).DistinctBy(p => p.Mesh.MeshOrdinal).ToDictionary(p => p.Mesh.MeshOrdinal);
         var observedPreservation = sortedPreserved.Select(p => VerifyExperimentalPreservedField(observed, uniqueSource, uniqueOutput, p)).ToArray();
         return (boxes.OrderBy(b => b.Target.ResourceBlockIndex).ThenBy(b => b.Target.FieldPath, StringComparer.Ordinal).ToArray(),

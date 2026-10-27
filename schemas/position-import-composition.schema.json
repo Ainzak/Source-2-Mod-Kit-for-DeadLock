@@ -1,0 +1,423 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Atomic source-bound position import and draw removal",
+  "definitions": {
+    "removalRecipeOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "granularity",
+        "selector",
+        "lodPolicy",
+        "expectedMatchesByLod",
+        "extensions"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "const": "remove_component"
+        },
+        "version": {
+          "const": 1
+        },
+        "granularity": {
+          "const": "draw_call"
+        },
+        "selector": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-directional-contracts-coordinatedSelector"
+        },
+        "lodPolicy": {
+          "enum": [
+            "all_present"
+          ]
+        },
+        "expectedMatchesByLod": {
+          "$ref": "v1/recipe.schema.json#/definitions/lodExpectations"
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "operations",
+        "extensions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 13
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": [
+            {
+              "$ref": "position-import-contracts.schema.json#/definitions/operation"
+            },
+            {
+              "$ref": "#/definitions/removalRecipeOperation"
+            }
+          ],
+          "additionalItems": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "removalPlanOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCalls",
+        "targetBlocks",
+        "geometryTargets",
+        "distanceFieldTargets"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "const": "remove_component"
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCalls": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+          },
+          "minItems": 1
+        },
+        "targetBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-sourceBlock"
+          },
+          "minItems": 1
+        },
+        "geometryTargets": {
+          "maxItems": 0,
+          "type": "array"
+        },
+        "distanceFieldTargets": {
+          "maxItems": 0,
+          "type": "array"
+        }
+      }
+    },
+    "draw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "output",
+        "entryHash"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-selectedDrawCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entryHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "recipeId",
+        "inputHash",
+        "fingerprint",
+        "operations",
+        "inputs",
+        "positionImportComposition"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 9
+        },
+        "recipeId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "inputHash": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "fingerprint": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": [
+            {
+              "$ref": "position-import-contracts.schema.json#/definitions/planOperation"
+            },
+            {
+              "$ref": "#/definitions/removalPlanOperation"
+            }
+          ],
+          "additionalItems": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-input"
+          },
+          "minItems": 1
+        },
+        "positionImportComposition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "importPlan",
+            "draws",
+            "targetBlocks"
+          ],
+          "properties": {
+            "importPlan": {
+              "$ref": "position-import-contracts.schema.json#/definitions/plan"
+            },
+            "draws": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/draw"
+              },
+              "minItems": 1,
+              "maxItems": 65536
+            },
+            "targetBlocks": {
+              "type": "array",
+              "items": {
+                "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-sourceBlock"
+              },
+              "minItems": 1
+            }
+          }
+        }
+      }
+    },
+    "evidenceOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "kind",
+        "version",
+        "selectedDrawCallIds",
+        "changedResources",
+        "geometryChanges"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "kind": {
+          "enum": [
+            "import_positions",
+            "remove_component"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "enum": [
+            1
+          ]
+        },
+        "selectedDrawCallIds": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-drawCallIds"
+        },
+        "changedResources": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-resourcePaths"
+        },
+        "geometryChanges": {
+          "maxItems": 0,
+          "type": "array"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "createdUtc",
+        "proofLevel",
+        "command",
+        "status",
+        "input",
+        "dependencies",
+        "planFingerprint",
+        "operations",
+        "boundaries",
+        "blocks",
+        "toolVersions",
+        "warnings",
+        "extensions",
+        "positionImportComposition"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 14
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "proofLevel": {
+          "enum": [
+            "offline_static"
+          ],
+          "type": "string"
+        },
+        "command": {
+          "enum": [
+            "plan",
+            "build",
+            "verify"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed"
+          ],
+          "type": "string"
+        },
+        "input": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+          }
+        },
+        "output": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-artifactEvidence"
+        },
+        "planFingerprint": {
+          "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-contentHash"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/evidenceOperation"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-boundaryEvidence"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "paired-contracts.schema.json#/definitions/shared-ellipsoid-contracts-resourceBlockEvidence"
+          }
+        },
+        "toolVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "positionImportComposition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan",
+            "projectionHash",
+            "importEvidence"
+          ],
+          "properties": {
+            "plan": {
+              "$ref": "#/definitions/plan"
+            },
+            "projectionHash": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "importEvidence": {
+              "$ref": "position-import-contracts.schema.json#/definitions/evidence"
+            }
+          }
+        }
+      }
+    }
+  }
+}

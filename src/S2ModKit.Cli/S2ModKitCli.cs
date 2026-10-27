@@ -19,6 +19,7 @@ public sealed partial class S2ModKitCli
     private readonly IVpkPackagingApplication? packagingApplication;
     private readonly IAddonManagementApplication? addonApplication;
     private readonly ICurrentSourceInstallationApplication? currentSourceInstallation;
+    private IAddonFileApplication? addonFileApplication;
     private readonly IResourceCatalogInventoryFactory? catalogueInventoryFactory;
     private readonly ICompatibilityScanner? compatibilityScanner;
     private readonly ICompatibilityReportPublisher? compatibilityReportPublisher;
@@ -115,10 +116,17 @@ public sealed partial class S2ModKitCli
         this.compatibilityReportPublisher = compatibilityReportPublisher;
     }
 
+    /// <summary>Installs finished VPK files from any build route (defaults to the file-system implementation).</summary>
+    public IAddonFileApplication AddonFileApplication
+    {
+        get => addonFileApplication ??= new AddonFileApplication(new AddonFileStore(), new ValvePakAddonTreeReader(), new ModManagerStateReader(), new SystemClock(), new GameBuildReader());
+        init => addonFileApplication = value;
+    }
+
     public static S2ModKitCli CreateDefault()
     {
         var workspace = new FileSystemProjectWorkspace();
-        var adapter = new Source2CompiledModelAdapter(Environment.GetEnvironmentVariable("S2MODKIT_MESHOPTIMIZER_PATH"));
+        var adapter = new Source2CompiledModelAdapter(ResolveMeshOptimizerPath(Environment.GetEnvironmentVariable("S2MODKIT_MESHOPTIMIZER_PATH"), AppContext.BaseDirectory));
         var (externalVerifier, externalVerifierStatus) = CreateExternalVerifier();
         var vpkVerifier = CreateVpkExternalVerifier();
         var reports = new EvidenceReportRenderer();
@@ -134,7 +142,8 @@ public sealed partial class S2ModKitCli
             new VpkProjectResourceSourceFactory(),
             adapter,
             adapter,
-            new AtomicRecipeDocumentWriter());
+            new AtomicRecipeDocumentWriter(),
+            new AtomicPositionAuthoringPublisher());
         var packaging = new VpkPackagingApplication(
             workspace,
             workspace,
@@ -165,6 +174,19 @@ public sealed partial class S2ModKitCli
             new CurrentSourceInstallationApplication(workspace, workspace,
                 new CatalogCurrentSourceReader(new VpkResourceCatalogFactory()),
                 new CurrentSourceCandidateVerifier(application, packaging), addons, new SystemClock()));
+    }
+
+    /// <summary>An explicit <c>S2MODKIT_MESHOPTIMIZER_PATH</c> wins; otherwise the codec shipped next to the executable
+    /// is used. Either way the adapter still checks exports, profile and identity before enabling geometry edits.</summary>
+    public static string? ResolveMeshOptimizerPath(string? configuredPath, string applicationDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        var bundled = Path.Combine(applicationDirectory, "meshoptimizer.dll");
+        return File.Exists(bundled) ? bundled : null;
     }
 
     private static (IExternalVerifier Verifier, string Status) CreateExternalVerifier()
@@ -220,20 +242,11 @@ public sealed partial class S2ModKitCli
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken = default)
-        => await RunAsync(arguments, Console.In, output, error, cancellationToken).ConfigureAwait(false);
-
-    public async Task<int> RunAsync(
-        IReadOnlyList<string> arguments,
-        TextReader input,
-        TextWriter output,
-        TextWriter error,
-        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
-        var root = CreateRootCommand(input, output, error);
+        var root = CreateRootCommand(output, error);
         ParseResult parseResult;
         try
         {
@@ -272,11 +285,10 @@ public sealed partial class S2ModKitCli
         }
     }
 
-    private RootCommand CreateRootCommand(TextReader input, TextWriter output, TextWriter error)
+    private RootCommand CreateRootCommand(TextWriter output, TextWriter error)
     {
         var root = new RootCommand("Deterministic Source 2 compiled-model mod workbench");
         root.Subcommands.Add(CreateDoctorCommand(output, error));
-        root.Subcommands.Add(CreateInteractiveCommand(input, output, error));
         root.Subcommands.Add(CreateCatalogueCommand(output, error));
         root.Subcommands.Add(CreateCompatibilityCommand(output, error));
         root.Subcommands.Add(CreateBoundsCommand(output, error));
@@ -289,77 +301,14 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreateSelectionPreviewCommand(output, error));
         root.Subcommands.Add(CreateDirectionalCommand(output, error));
         root.Subcommands.Add(CreatePairedCommand(output, error));
+        root.Subcommands.Add(CreatePositionAuthoringCommand(output, error));
         root.Subcommands.Add(CreateBuildCommand(output, error));
         root.Subcommands.Add(CreateVerifyCommand(output, error));
         root.Subcommands.Add(CreatePackageCommand(output, error));
         root.Subcommands.Add(CreateAddonsCommand(output, error));
+        root.Subcommands.Add(CreateModsCommand(output, error));
         root.Subcommands.Add(CreateRuntimeCommand(output, error));
         return root;
-    }
-
-    private Command CreateInteractiveCommand(TextReader input, TextWriter output, TextWriter error)
-    {
-        var command = new Command("interactive", "Start or resume the guided terminal workflow.");
-        var catalogue = new Option<string>("--catalogue")
-        {
-            Description = "Versioned hero catalogue JSON file; prompted when omitted.",
-        };
-        var session = new Option<string>("--session")
-        {
-            Description = "Guided session JSON checkpoint; prompted when omitted.",
-        };
-        var baseVpk = new Option<string[]>("--base-vpk")
-        {
-            Description = "Configured read-only base *_dir.vpk source; repeat as needed.",
-        };
-        var modVpk = new Option<string[]>("--mod-vpk")
-        {
-            Description = "Configured read-only mod *_dir.vpk source; repeat as needed.",
-        };
-        var compiledModel = new Option<string[]>("--compiled-model")
-        {
-            Description = "Configured compiled .vmdl_c source; repeat as needed.",
-        };
-        var resume = new Option<bool>("--resume")
-        {
-            Description = "Resume the existing checkpoint instead of creating a new session.",
-        };
-        var expert = new Option<bool>("--expert")
-        {
-            Description = "Show stable IDs, paths, and verification details.",
-        };
-        command.Options.Add(catalogue);
-        command.Options.Add(session);
-        command.Options.Add(baseVpk);
-        command.Options.Add(modVpk);
-        command.Options.Add(compiledModel);
-        command.Options.Add(resume);
-        command.Options.Add(expert);
-        var experimental = new Option<bool>("--experimental") { Description = "Opt in to visual-only editing with unverified culling, proxy, collision and visual-quality risks; saved in a new session." };
-        command.Options.Add(experimental);
-        var coordinatedOptions = new Option<string?>("--coordinated-options") { Description = "Start a new coordinated session with typed common-field options; requires --experimental. Select comma-separated components." };
-        command.Options.Add(coordinatedOptions);
-        command.SetAction((parseResult, cancellationToken) => ExecuteAsync(
-            "interactive",
-            json: false,
-            output,
-            error,
-            () => RunInteractiveEntryAsync(
-                parseResult.GetValue(catalogue),
-                parseResult.GetValue(session),
-                parseResult.GetValue(baseVpk) ?? [],
-                parseResult.GetValue(modVpk) ?? [],
-                parseResult.GetValue(compiledModel) ?? [],
-                parseResult.GetValue(resume),
-                parseResult.GetValue(expert),
-                parseResult.GetValue(experimental),
-                parseResult.GetValue(coordinatedOptions),
-                input,
-                output,
-                cancellationToken),
-            renderText: null,
-            cancellationToken));
-        return command;
     }
 
     private Command CreateCatalogueCommand(TextWriter output, TextWriter error)
@@ -466,13 +415,13 @@ public sealed partial class S2ModKitCli
             IsJson(parseResult.GetRequiredValue(format)),
             output,
             error,
-            () => parseResult.GetValue(directional)
+            () => WithDiscoveryProgress(!IsJson(parseResult.GetRequiredValue(format)), error, () => parseResult.GetValue(directional)
                 ? DiscoverDirectionalCliAsync(parseResult.GetRequiredValue(project), parseResult.GetValue(experimental), parseResult.GetValue(coordinated), cancellationToken)
                 : parseResult.GetValue(coordinated)
                 ? DiscoverCoordinatedCliAsync(parseResult.GetRequiredValue(project), parseResult.GetValue(experimental), cancellationToken)
                 : parseResult.GetValue(experimental)
                 ? application.DiscoverEllipsoidComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)
-                : application.DiscoverComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken),
+                : application.DiscoverComponentsAsync(parseResult.GetRequiredValue(project), cancellationToken)),
             RenderComponents,
             cancellationToken));
         command.Subcommands.Add(list);
@@ -708,6 +657,8 @@ public sealed partial class S2ModKitCli
 
         command.Subcommands.Add(inventory);
         command.Subcommands.Add(install);
+        AddAddonFileCommands(command, output, error);
+        AddAddonMergeCommand(command, output, error);
         command.Subcommands.Add(CreateCurrentSourceInstallCommand(output, error));
         command.Subcommands.Add(verify);
         command.Subcommands.Add(rollback);

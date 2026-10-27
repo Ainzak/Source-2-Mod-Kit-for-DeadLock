@@ -1,0 +1,363 @@
+{
+  "operation": "export_mesh_unit@1",
+  "sourceHash": "9a3a45d01531a20e89ac6ae10b0b0beb0492acd7216a368aa062d1a5fecaf9cd",
+  "matrixLayout": "column-major",
+  "uvConvention": "source-unflipped",
+  "decodedInputs": {
+    "fixture": "174985e4dd3b2df2a316acc62b781b8712734467cc92f94ddccc6530acb14f1e"
+  },
+  "bones": [
+    {
+      "id": 7,
+      "name": "$cloth_m0p33",
+      "parent": null,
+      "bind": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "inverse": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "procedural": false
+    }
+  ],
+  "members": [
+    {
+      "lod": 0,
+      "mesh": 0,
+      "buffer": 3,
+      "records": [
+        {
+          "id": 10,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878552,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "position": [
+            1,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878553,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878554,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878555,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        }
+      ],
+      "faces": [
+        {
+          "id": 0,
+          "records": [
+            10,
+            11,
+            12
+          ],
+          "material": "models/test/a.vmat"
+        },
+        {
+          "id": 1,
+          "records": [
+            10,
+            11,
+            12
+          ],
+          "material": "models/test/b.vmat"
+        },
+        {
+          "id": 2,
+          "records": [
+            10,
+            13,
+            11
+          ],
+          "material": "models/test/a.vmat"
+        }
+      ],
+      "renderRemap": [
+        7
+      ],
+      "renderBindings": [
+        {
+          "index": 0,
+          "inverse": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "lod": 1,
+      "mesh": 4,
+      "buffer": 3,
+      "records": [
+        {
+          "id": 10,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878552,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "position": [
+            1,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878553,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "position": [
+            0,
+            1,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878554,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "uv": [
+            0.25,
+            0.75
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "frameWord": 4275878555,
+          "weights": [
+            {
+              "bone": "$cloth_m0p33",
+              "byte": 255
+            }
+          ]
+        }
+      ],
+      "faces": [
+        {
+          "id": 0,
+          "records": [
+            10,
+            11,
+            12
+          ],
+          "material": "models/test/a.vmat"
+        },
+        {
+          "id": 1,
+          "records": [
+            10,
+            11,
+            12
+          ],
+          "material": "models/test/b.vmat"
+        },
+        {
+          "id": 2,
+          "records": [
+            10,
+            13,
+            11
+          ],
+          "material": "models/test/a.vmat"
+        }
+      ],
+      "renderRemap": [
+        7
+      ],
+      "renderBindings": [
+        {
+          "index": 0,
+          "inverse": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

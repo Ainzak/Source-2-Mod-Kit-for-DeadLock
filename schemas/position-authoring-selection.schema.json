@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Source-bound position authoring selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "inputHash",
+    "members",
+    "maximumDisplacement",
+    "protection",
+    "boundaryFramePolicy",
+    "runtimeMetadataPolicy",
+    "proceduralInputPolicy",
+    "sourceTrianglePolicy",
+    "zeroBoneBoxPolicy",
+    "zeroRenderSpherePolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1
+      ]
+    },
+    "inputHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "$ref": "paired-contracts.schema.json#/definitions/shared-coordinated-contracts-coordinatedMember"
+      },
+      "minItems": 1,
+      "maxItems": 16
+    },
+    "maximumDisplacement": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 64
+    },
+    "protection": {
+      "type": "array",
+      "items": {
+        "$ref": "position-import-contracts.schema.json#/definitions/boundaryMap"
+      },
+      "minItems": 1,
+      "maxItems": 128
+    },
+    "boundaryFramePolicy": {
+      "$ref": "position-import-contracts.schema.json#/definitions/boundaryPolicy"
+    },
+    "runtimeMetadataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "proceduralInputPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_serialized_inputs_unverified"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "sourceTrianglePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "preserve_source_coincidence"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "zeroBoneBoxPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "reject"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    },
+    "zeroRenderSpherePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "reject"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        }
+      }
+    }
+  }
+}

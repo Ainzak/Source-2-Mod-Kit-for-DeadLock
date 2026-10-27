@@ -7,20 +7,6 @@ namespace S2ModKit.Application.Tests;
 public sealed partial class SchemaContractTests
 {
     [Fact]
-    public async Task GuidedSessionVersionOneSchemaAcceptsInitialCheckpointAndRejectsUnknownProperties()
-    {
-        var schema = await JsonSchema.FromFileAsync(GetSchemaPath("guided-session.schema.json"), TestContext.Current.CancellationToken);
-        var session = GuidedWorkflow.CreateSession(
-            "C:/workspace/catalogue.json",
-            [new GuidedSourceOption("source-1", GuidedWorkflowContract.BaseVpkSource, "Base game", "C:/game/pak01_dir.vpk")],
-            expert: false);
-        var json = JsonDefaults.Serialize(session);
-
-        Assert.Empty(schema.Validate(json));
-        Assert.NotEmpty(schema.Validate(json.Replace("\"expert\": false", "\"expert\": false, \"unexpected\": true", StringComparison.Ordinal)));
-    }
-
-    [Fact]
     public async Task RecipeVersionOneSchemaAcceptsRemoveAndRejectsUnknownProperties()
     {
         var schema = await JsonSchema.FromFileAsync(GetSchemaPath("v1/recipe.schema.json"), TestContext.Current.CancellationToken);

@@ -1,0 +1,15 @@
+{
+  "operation": "sdk_config@1",
+  "version": 1,
+  "tools": {
+    "blender": "configured/blender",
+    "vrf": "configured/vrf",
+    "csdk": "configured/csdk",
+    "cs2": "configured/cs2",
+    "dotnet": "configured/dotnet"
+  },
+  "gameRoots": {
+    "csdk": "configured/csdk/game",
+    "cs2": "configured/cs2/game"
+  }
+}

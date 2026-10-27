@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "operation": {
+      "enum": [
+        "sdk_edit@1"
+      ],
+      "type": "string"
+    },
+    "version": {
+      "enum": [
+        1
+      ],
+      "type": "integer"
+    },
+    "manifestHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "profile": {
+      "enum": [
+        "lod0_diagnostic"
+      ],
+      "type": "string"
+    },
+    "selectedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "excludedMeshes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "scales": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "mesh": {
+            "type": "string",
+            "minLength": 1
+          },
+          "axes": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 4
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "mesh",
+          "axes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "acknowledge": {
+      "enum": [
+        [
+          "single_lod",
+          "sdk_regenerated_blocks",
+          "native_frames_unverified",
+          "source_export_fidelity_unverified"
+        ]
+      ],
+      "type": "array"
+    }
+  },
+  "required": [
+    "operation",
+    "version",
+    "manifestHash",
+    "profile",
+    "selectedMeshes",
+    "excludedMeshes",
+    "scales",
+    "acknowledge"
+  ],
+  "additionalProperties": false
+}

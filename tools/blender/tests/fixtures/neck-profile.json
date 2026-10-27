@@ -1,0 +1,20 @@
+{
+  "operation": "neck_author@1",
+  "version": 1,
+  "sceneHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "head": "fixture_head",
+  "body": "fixture_body",
+  "outputObject": "fixture_authored",
+  "headBoundaryVertices": [0, 1, 2],
+  "protectedHeadVertices": [3, 4],
+  "protectedBodyVertices": [0, 1],
+  "cutZ": 4,
+  "blendBounds": {"min": [-2, -2, 3.5], "max": [2, 2, 7.8]},
+  "fade": {"lower": 0.6, "upper": 0.6},
+  "iterations": 12,
+  "factor": 0.4,
+  "mergeTolerance": 0.00001,
+  "maxBlendDisplacement": 1,
+  "shadeFade": {"minZ": 7.8, "maxZ": 8},
+  "view": {"center": [0, 0, 6], "scale": 8}
+}

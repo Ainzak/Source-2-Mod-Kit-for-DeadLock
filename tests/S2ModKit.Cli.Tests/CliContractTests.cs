@@ -24,7 +24,7 @@ public sealed partial class CliContractTests
         Assert.Equal(0, exitCode);
         Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
         Assert.Equal("doctor", document.RootElement.GetProperty("command").GetString());
-        Assert.Contains("0.3.0", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
+        Assert.Contains("0.4.0", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("result").GetProperty("runtimeIdentifier").GetString()));
         var catalogueRevision = document.RootElement.GetProperty("result").GetProperty("catalogueRevision").GetString();
         Assert.True(catalogueRevision is "not_packaged" or "2026-10-07.1");
@@ -119,6 +119,20 @@ public sealed partial class CliContractTests
     }
 
     [Fact]
+    public async Task RetiredInteractiveCommandIsRejectedAsUnknownCommand()
+    {
+        var cli = new S2ModKitCli(new FakeApplication(), "test-adapter", "1", externalVerifierAvailable: false);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = await cli.RunAsync(["interactive", "--catalogue", "catalogue.json"], output, error, TestContext.Current.CancellationToken);
+
+        Assert.Equal((int)ErrorCategory.CliOrSchema, exitCode);
+        Assert.Empty(output.ToString());
+        Assert.Contains("CLI_PARSE_ERROR", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CliReferenceDocumentsEveryPublicHelpOption()
     {
         var reference = await File.ReadAllTextAsync(
@@ -127,7 +141,6 @@ public sealed partial class CliContractTests
         var contracts = new[]
         {
             new HelpContract(["doctor"], "s2mod doctor"),
-            new HelpContract(["interactive"], "s2mod interactive"),
             new HelpContract(["catalog", "heroes", "list"], "s2mod catalog heroes list"),
             new HelpContract(["catalog", "resolve"], "s2mod catalog resolve"),
             new HelpContract(["compatibility", "scan"], "s2mod compatibility scan"),
@@ -155,6 +168,8 @@ public sealed partial class CliContractTests
             new HelpContract(["addons", "install"], "s2mod addons install"),
             new HelpContract(["addons", "verify-active"], "s2mod addons verify-active"),
             new HelpContract(["addons", "rollback"], "s2mod addons rollback"),
+            new HelpContract(["mods", "status"], "s2mod mods status"),
+            new HelpContract(["mods", "ack"], "s2mod mods ack"),
             new HelpContract(["runtime", "record"], "s2mod runtime record"),
         };
 

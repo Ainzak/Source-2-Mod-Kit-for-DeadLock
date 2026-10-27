@@ -1,0 +1,62 @@
+{
+  "operation": "sdk_surface_views@1",
+  "version": 1,
+  "fullCenter": [
+    0,
+    0,
+    40
+  ],
+  "fullScale": 90,
+  "regionCenter": [
+    0,
+    0,
+    30
+  ],
+  "regionScale": 30,
+  "directions": [
+    {
+      "name": "side",
+      "direction": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "rear",
+      "direction": [
+        0,
+        -1,
+        0
+      ]
+    },
+    {
+      "name": "underside",
+      "direction": [
+        0,
+        -1,
+        -1
+      ]
+    },
+    {
+      "name": "three-quarter",
+      "direction": [
+        1,
+        -1,
+        0.3
+      ]
+    }
+  ],
+  "poses": [
+    {
+      "name": "synthetic-bend",
+      "bone": "root",
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "angleDegrees": 45
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "operation": "sdk_edit@3",
+  "version": 3,
+  "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "profile": "lod0_diagnostic",
+  "selectedMeshes": [
+    "body_LOD0"
+  ],
+  "excludedMeshes": [
+    "body_LOD1"
+  ],
+  "scales": [],
+  "acknowledge": [
+    "single_lod",
+    "sdk_regenerated_blocks",
+    "native_frames_unverified",
+    "source_export_fidelity_unverified"
+  ],
+  "patch": {
+    "mesh": "body_LOD0",
+    "blendPath": "private/authored.blend",
+    "blendHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometryMode": "triangle_fan",
+    "sourceTriangles": [
+      0
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "axis": [
+      0,
+      0,
+      1
+    ],
+    "radius": 2,
+    "scale": 1.25
+  }
+}

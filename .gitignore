@@ -27,3 +27,7 @@ TestResults/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Python authoring-tool caches
+__pycache__/
+coverage/

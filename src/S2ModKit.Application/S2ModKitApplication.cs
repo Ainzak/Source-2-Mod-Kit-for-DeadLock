@@ -12,8 +12,11 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
     private readonly IModelInspector inspector;
     private readonly IModelRewriter rewriter;
     private readonly ITransformOperationPlanner? transformPlanner;
+
+    public IProgress<DiscoveryProgress>? DiscoveryProgress { get; set; }
     private readonly IComponentCapabilityAnalyzer? componentCapabilityAnalyzer;
     private readonly IRecipeDocumentWriter? recipeDocumentWriter;
+    private readonly IPositionAuthoringPublisher? positionAuthoringPublisher;
     private readonly IExternalVerifier externalVerifier;
     private readonly IReportRenderer reports;
     private readonly IClock clock;
@@ -30,7 +33,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         IVpkProjectResourceSourceFactory? vpkResourceSourceFactory = null,
         ITransformOperationPlanner? transformPlanner = null,
         IComponentCapabilityAnalyzer? componentCapabilityAnalyzer = null,
-        IRecipeDocumentWriter? recipeDocumentWriter = null)
+        IRecipeDocumentWriter? recipeDocumentWriter = null,
+        IPositionAuthoringPublisher? positionAuthoringPublisher = null)
     {
         this.workspace = workspace;
         projectImporter = new ProjectImporter(workspace, dependencyReader, resourceSourceFactory, vpkResourceSourceFactory);
@@ -39,6 +43,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         this.transformPlanner = transformPlanner;
         this.componentCapabilityAnalyzer = componentCapabilityAnalyzer;
         this.recipeDocumentWriter = recipeDocumentWriter;
+        this.positionAuthoringPublisher = positionAuthoringPublisher;
         this.externalVerifier = externalVerifier;
         this.reports = reports;
         this.clock = clock;
@@ -88,7 +93,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var (_, input, _) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
-        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner)
+        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress)
             .DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
     }
 
@@ -97,7 +102,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var (_, input, _) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
-        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner)
+        return await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress)
             .DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false);
     }
 
@@ -115,11 +120,11 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var discovery = request.Directional is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 6)
             ? await DirectionalAuthoring.DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
             : request.Coordinated is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 5)
-            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverCoordinatedAsync(input, model, cancellationToken).ConfigureAwait(false)
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress).DiscoverCoordinatedAsync(input, model, cancellationToken).ConfigureAwait(false)
             : request.Ellipsoid is not null || (request.ExperimentalDiscovery && request.ExperimentalDiscoverySchemaVersion == 4)
-            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false)
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress).DiscoverEllipsoidAsync(input, model, cancellationToken).ConfigureAwait(false)
             : request.Experimental is not null || request.ExperimentalDiscovery
-            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
+            ? await new ExperimentalComponentDiscoveryService(componentCapabilityAnalyzer, transformPlanner, DiscoveryProgress).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false)
             : await new PreciseComponentDiscoveryService(componentCapabilityAnalyzer).DiscoverAsync(input, model, cancellationToken).ConfigureAwait(false);
         var recipe = await new ComponentRecipeScaffolder(componentCapabilityAnalyzer)
             .CreateAsync(input, model, discovery, request, cancellationToken)
@@ -161,6 +166,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
 
     public async Task<PlanRunResult> PlanAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default)
     {
+        if (recipe.SchemaVersion == 13) return await PlanPositionImportComposition(projectRoot, recipe, cancellationToken).ConfigureAwait(false);
+        if (recipe.SchemaVersion == 12) return await PlanPositionImport(projectRoot, recipe, cancellationToken).ConfigureAwait(false);
         var (project, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         RequireInspector(input);
         var model = await inspector.InspectAsync(input, cancellationToken).ConfigureAwait(false);
@@ -192,6 +199,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
 
     public async Task<BuildRunResult> BuildAsync(string projectRoot, RecipeDocument recipe, CancellationToken cancellationToken = default)
     {
+        if (recipe.SchemaVersion == 13) return await BuildPositionImportComposition(projectRoot, recipe, cancellationToken).ConfigureAwait(false);
+        if (recipe.SchemaVersion == 12) return await BuildPositionImport(projectRoot, recipe, cancellationToken).ConfigureAwait(false);
         if (recipe.SchemaVersion == 11 || recipe.Operations.Any(o => o.Version == 10))
         {
             PairedContractValidator.ValidateRecipe(recipe);
@@ -264,6 +273,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         var (project, input, dependencies) = await LoadProjectGraphAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         var (published, candidateContent) = await workspace.LoadBuildAsync(projectRoot, buildId, cancellationToken).ConfigureAwait(false);
         var plan = await workspace.LoadPlanAsync(projectRoot, published.PlanFingerprint, cancellationToken).ConfigureAwait(false);
+        if (plan.SchemaVersion == 9) return await VerifyPositionImportCompositionBuild(projectRoot, project, input, dependencies, published, candidateContent, plan, cancellationToken).ConfigureAwait(false);
+        if (plan.SchemaVersion == 8) return await VerifyPositionImportBuild(projectRoot, project, input, dependencies, published, candidateContent, plan, cancellationToken).ConfigureAwait(false);
         if (plan.SchemaVersion == 7 && rewriter is not IPairedTransformVerifier)
             throw Errors.Unsupported("PAIRED_VERIFICATION_UNAVAILABLE", "The configured adapter has no independent paired resource verifier.", "Do not publish observations from snapshots alone.");
         ValidatePlanInputs(plan, input, dependencies);
@@ -393,7 +404,8 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
         EllipsoidTransformVerification? ellipsoidVerification = null,
         CoordinatedTransformVerification? coordinatedVerification = null,
         DirectionalTransformVerification? directionalVerification = null,
-        PairedTransformVerification? pairedVerification = null)
+        PairedTransformVerification? pairedVerification = null,
+        PositionImportVerification? positionImportVerification = null)
     {
         var toolVersions = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
@@ -505,7 +517,7 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
 
         var report = new EvidenceReport
         {
-            SchemaVersion = plan.SchemaVersion == 7 ? 12 : plan.SchemaVersion == 6 ? 11 : plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
+            SchemaVersion = plan.SchemaVersion == 8 ? 13 : plan.SchemaVersion == 7 ? 12 : plan.SchemaVersion == 6 ? 11 : plan.SchemaVersion == 5 ? 10 : plan.SchemaVersion == 4 ? 9 : plan.SchemaVersion == 3 ? 8 : plan.SchemaVersion == 2 ? 7 : 6,
             ReportId = reportId,
             CreatedUtc = clock.UtcNow,
             Command = command,
@@ -524,6 +536,9 @@ public sealed partial class S2ModKitApplication : IS2ModKitApplication
                     new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), pairedVerification?.Observed,
                     pairedVerification?.Boxes ?? paired.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
                     pairedVerification?.PreservedMetadata ?? paired.PreservationTargets.Select(p => new ExperimentalPreservationEvidence(p, null, null, "planned")).ToArray()) : null,
+                PositionImport = operation.PositionImportTarget is { } imported ? new(imported, new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), positionImportVerification?.Observed,
+                    positionImportVerification?.Boxes ?? imported.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),
+                    positionImportVerification?.PreservedMetadata ?? imported.PreservationTargets.Select(b => new ExperimentalPreservationEvidence(b, null, null, "planned")).ToArray()) : null,
                 DirectionalTransform = operation.DirectionalTransformTarget is { } directional ? new(directional,
                     new(plan.RecipeId, plan.Inputs, operation.SelectedDrawCalls, operation.TargetBlocks), directionalVerification?.Observed,
                     directionalVerification?.Boxes ?? directional.BoxTargets.Select(b => new ExperimentalBoxEvidence(b, null, "planned")).ToArray(),

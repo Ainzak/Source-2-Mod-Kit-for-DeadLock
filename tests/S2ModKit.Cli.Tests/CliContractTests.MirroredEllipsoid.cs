@@ -30,23 +30,4 @@ public sealed partial class CliContractTests
         Assert.Null(overlapping.LastScaffoldRequest);
         Assert.Contains("ELLIPSOID_MIRROR_OVERLAP", output.ToString() + error.ToString(), StringComparison.Ordinal);
     }
-
-    [Fact]
-    public async Task GuidedMirroredPlaneCanCancelWithoutScaffoldingOrInventingDefaults()
-    {
-        var hash = S2ModKit.Domain.ContentHash.Compute("catalogue-directory"u8); var catalogue = await WriteCatalogueAsync(hash);
-        var path = Path.Combine(Path.GetTempPath(), $"s2modkit-mirror-{Guid.NewGuid():N}.json");
-        try
-        {
-            var app = new FakeApplication { EllipsoidAvailable = true };
-            var cli = new S2ModKitCli(app, "test", "1", false, catalogueInventoryFactory: new FakeCatalogueInventoryFactory(hash));
-            using var input = new StringReader("1\n1\n1\n1\n5\n1.25\n64\n4\n0\n0\n4\n4\n4\n0.0625\ncancel\n");
-            using var output = new StringWriter(); using var error = new StringWriter();
-            var exit = await cli.RunAsync(["interactive", "--catalogue", catalogue, "--session", path, "--base-vpk", "pak01_dir.vpk", "--experimental"], input, output, error, TestContext.Current.CancellationToken);
-            Assert.True(exit == 0, output.ToString() + error.ToString());
-            Assert.Null(app.LastScaffoldRequest); Assert.Empty(error.ToString());
-            Assert.Contains("Explicit model-axis plane", output.ToString(), StringComparison.Ordinal);
-        }
-        finally { File.Delete(path); File.Delete(catalogue); }
-    }
 }

@@ -188,11 +188,6 @@ public sealed partial class S2ModKitCli
 
     private static bool UsesJsonOutput(IReadOnlyList<string> arguments)
     {
-        if (arguments.Count > 0 && arguments[0] == "interactive")
-        {
-            return false;
-        }
-
         if (arguments.Count > 0 && arguments[0] is "project" or "package" or "addons" or "runtime" or "recipe")
         {
             return true;
@@ -229,7 +224,7 @@ public sealed partial class S2ModKitCli
             return $"catalog.heroes.{arguments[2]}";
         }
 
-        return arguments[0] is "project" or "package" or "addons" or "runtime" or "components" or "recipe" or "catalog" or "compatibility" && arguments.Count > 1
+        return arguments[0] is "project" or "package" or "addons" or "mods" or "runtime" or "components" or "recipe" or "catalog" or "compatibility" && arguments.Count > 1
             ? $"{arguments[0]}.{arguments[1]}"
             : arguments[0];
     }

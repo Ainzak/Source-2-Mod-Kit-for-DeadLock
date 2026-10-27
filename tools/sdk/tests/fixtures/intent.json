@@ -1,0 +1,28 @@
+{
+  "operation": "sdk_edit@1",
+  "version": 1,
+  "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "profile": "lod0_diagnostic",
+  "selectedMeshes": [
+    "body_LOD0"
+  ],
+  "excludedMeshes": [
+    "body_LOD1"
+  ],
+  "scales": [
+    {
+      "mesh": "body_LOD0",
+      "axes": [
+        1,
+        1.35,
+        1
+      ]
+    }
+  ],
+  "acknowledge": [
+    "single_lod",
+    "sdk_regenerated_blocks",
+    "native_frames_unverified",
+    "source_export_fidelity_unverified"
+  ]
+}

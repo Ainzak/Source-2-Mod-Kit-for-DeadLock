@@ -1,0 +1,5 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Source-bound compiled position import contracts",
+  "$ref": "../position-import-contracts.schema.json#/definitions/recipe"
+}

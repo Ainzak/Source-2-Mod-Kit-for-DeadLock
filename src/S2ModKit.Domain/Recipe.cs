@@ -19,6 +19,7 @@ public sealed record RecipeDocument
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(RemoveComponentOperation), "remove_component")]
 [JsonDerivedType(typeof(TransformComponentOperation), "transform_component")]
+[JsonDerivedType(typeof(ImportPositionsOperation), "import_positions")]
 public abstract record RecipeOperation
 {
     public string OperationId { get; init; } = string.Empty;
