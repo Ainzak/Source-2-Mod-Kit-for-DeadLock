@@ -54,16 +54,4 @@ else if (action == "verify")
             throw new InvalidDataException("Package entries differ from verified model and skeleton");
     }
 }
-else if (action == "collisions")
-{
-    var paths = JsonSerializer.Deserialize<string[]>(File.ReadAllText(args[2]))!;
-    var inspector = new ValvePakAddonArchiveInspector();
-    foreach (var file in Directory.EnumerateFiles(args[1], "*.vpk"))
-    {
-        if (System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(file), @"_\d{3}\.vpk$")) continue;
-        foreach (var path in paths)
-            if ((await inspector.ProbeAsync(file, path, false)).ContainsLogicalPath)
-                throw new InvalidOperationException("Existing override: " + file + " : " + path);
-    }
-}
 else throw new ArgumentException("Unknown archive action");

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ValveResourceFormat.Renderer" />
+    <PackageReference Include="OpenTK.Windowing.Desktop" />
+  </ItemGroup>
+</Project>

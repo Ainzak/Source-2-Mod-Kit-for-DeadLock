@@ -274,9 +274,8 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
         }
 
         var occupiedSlots = archives.Where(item => item.Slot is not null).Select(item => item.Slot!.Value).ToHashSet();
-        var highestCollision = collisions.Where(item => item.Slot is not null).Select(item => item.Slot!.Value).DefaultIfEmpty(-1).Max();
         var automaticSlots = Enumerable.Range(90, 10)
-            .Where(candidate => !occupiedSlots.Contains(candidate) && candidate > highestCollision)
+            .Where(candidate => !occupiedSlots.Contains(candidate))
             .OrderDescending()
             .ToArray();
         return new AddonInventory(
@@ -320,7 +319,7 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
             throw Errors.Verification("ADDON_SLOT_OCCUPIED", $"Addon slot '{targetFileName}' is occupied.", "Choose an empty slot; S2ModKit never overwrites an existing archive.");
         }
 
-        RequireWinningSlot(inventory.Collisions, selectedSlot);
+        RequireNoCollision(inventory.Collisions);
         var now = clock.UtcNow.ToUniversalTime();
         var installationId = $"install-{package.Package.ContentHash.Value[..12]}-{Guid.NewGuid():N}"[..29];
         var stagingFileName = $".{targetFileName}.{installationId}.s2modkit-staging";
@@ -398,7 +397,7 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
 
         var package = await packageWorkspace.LoadPackageAsync(projectRoot, receipt.PackageId, cancellationToken).ConfigureAwait(false);
         var inventory = await InventoryAsync(addonsRoot, projectRoot, receipt.PackageId, cancellationToken).ConfigureAwait(false);
-        RequireWinningSlot(inventory.Collisions.Where(item => !string.Equals(item.FileName, receipt.TargetFileName, StringComparison.OrdinalIgnoreCase)), receipt.Slot);
+        RequireNoCollision(inventory.Collisions.Where(item => !string.Equals(item.FileName, receipt.TargetFileName, StringComparison.OrdinalIgnoreCase)));
         if (package.Package.ContentHash != installedHash)
         {
             throw Errors.Verification("ADDON_PACKAGE_RECEIPT_DRIFT", "The project package no longer matches the installed receipt.", "Preserve the installation and investigate workspace corruption before rollback.");
@@ -408,7 +407,7 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
         {
             new BoundaryEvidence("installation_hash", "passed", $"Installed archive matches package {installedHash}."),
             new BoundaryEvidence("installation_entry", "passed", $"Logical path {receipt.LogicalPath} matches build entry {receipt.EntryContentHash}."),
-            new BoundaryEvidence("addon_priority", "passed", $"Slot {receipt.Slot:00} is above every known colliding numbered archive."),
+            new BoundaryEvidence("addon_priority", "passed", "No other loaded archive contains the installed path."),
             new BoundaryEvidence("dmm_state", "passed", ".dmm.json is byte-identical to the pre-install state."),
         };
         if (receipt.Status == "prepared")
@@ -519,7 +518,7 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
         {
             return inventory.AvailableAutomaticSlots.Count > 0
                 ? inventory.AvailableAutomaticSlots[0]
-                : throw Errors.Verification("ADDON_NO_SAFE_SLOT", "No empty slot from 90 through 99 can be proven above every collision.", "Disable the conflicting mod or explicitly reorganize it outside S2ModKit.");
+                : throw Errors.Verification("ADDON_NO_FREE_SLOT", "No slot from 90 through 99 is empty.", "Choose an explicit empty slot with --slot NN.");
         }
 
         if (requested.Length != 2 || !int.TryParse(requested, out var explicitSlot) || explicitSlot is < 0 or > 99)
@@ -530,19 +529,14 @@ public sealed class AddonManagementApplication : IAddonManagementApplication
         return explicitSlot;
     }
 
-    private static void RequireWinningSlot(IEnumerable<AddonCollision> collisions, int candidateSlot)
+    /// <summary>The game loads the lower-numbered of two archives that ship the same file (tested 2026-10-28), so a
+    /// package in slots 90-99 cannot win against a colliding mod; S2ModKit refuses any overlap instead of guessing.</summary>
+    private static void RequireNoCollision(IEnumerable<AddonCollision> collisions)
     {
-        var collisionArray = collisions.ToArray();
-        var unnumbered = collisionArray.FirstOrDefault(item => item.Slot is null);
-        if (unnumbered is not null)
+        var colliding = collisions.Select(item => item.FileName).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (colliding.Length > 0)
         {
-            throw Errors.Verification("ADDON_COLLISION_PRIORITY_UNKNOWN", $"Archive '{unnumbered.FileName}' contains the target path but has no recognized pakNN_dir.vpk slot.", "Disable or rename the conflicting archive outside S2ModKit before installing.");
-        }
-
-        var shadowing = collisionArray.FirstOrDefault(item => item.Slot >= candidateSlot);
-        if (shadowing is not null)
-        {
-            throw Errors.Verification("ADDON_PACKAGE_WOULD_BE_SHADOWED", $"Colliding archive '{shadowing.FileName}' is not below candidate slot {candidateSlot:00}.", "Choose a higher empty slot or disable the conflict outside S2ModKit.");
+            throw Errors.Verification("ADDON_FILE_COLLISION", $"Loaded archives also contain the package's path: {string.Join(", ", colliding)}.", "Turn those mods off in the mod manager, then install again. No game files changed.");
         }
     }
 

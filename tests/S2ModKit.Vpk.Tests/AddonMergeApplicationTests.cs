@@ -36,24 +36,40 @@ public sealed class AddonMergeApplicationTests
     {
         using var directory = new TestDirectory();
         var token = TestContext.Current.CancellationToken;
-        var a = await WriteAsync(directory, "pak03_dir.vpk", token, (Model, "model-a"));
-        var b = await WriteAsync(directory, "pak04_dir.vpk", token, (Model, "model-b"), (Sound, "sound-b"));
+        var a = await WriteAsync(directory, "modA_dir.vpk", token, (Model, "model-a"));
+        var b = await WriteAsync(directory, "modB_dir.vpk", token, (Model, "model-b"), (Sound, "sound-b"));
         var output = directory.PathOf("merged_dir.vpk");
         var keptPath = directory.PathOf("kept_dir.vpk");
 
         var error = await Assert.ThrowsAsync<S2ModKitException>(() => Create().MergeAsync(Request([a, b], output), token));
         var listed = await Create().MergeAsync(Request([a, b], null) with { DryRun = true }, token);
-        var preferred = await Create().MergeAsync(Request([a, b], output) with { Prefer = ["pak04_dir.vpk"] }, token);
-        var kept = await Create().MergeAsync(Request([a, b], keptPath) with { Keep = new Dictionary<string, string> { [Model] = "pak03_dir.vpk" } }, token);
+        var preferred = await Create().MergeAsync(Request([a, b], output) with { Prefer = ["modB_dir.vpk"] }, token);
+        var kept = await Create().MergeAsync(Request([a, b], keptPath) with { Keep = new Dictionary<string, string> { [Model] = "modA_dir.vpk" } }, token);
 
         Assert.Equal("ADDON_MERGE_CONFLICT", error.Error.Code);
         Assert.Equal("conflicts", listed.Status);
         Assert.Null(Assert.Single(listed.Conflicts).Chosen);
         Assert.Equal("model-b", await ReadAsync(output, Model, token));
-        Assert.Equal("pak04_dir.vpk", Assert.Single(preferred.Conflicts).Chosen);
+        Assert.Equal("modB_dir.vpk", Assert.Single(preferred.Conflicts).Chosen);
         Assert.Equal("model-a", await ReadAsync(keptPath, Model, token));
         Assert.Equal("sound-b", await ReadAsync(keptPath, Sound, token));
         Assert.Equal("model", kept.Conflicts[0].Kind);
+    }
+
+    [Fact]
+    public async Task LoadedSlotsDefaultToTheGamesLowerSlotRule()
+    {
+        using var directory = new TestDirectory();
+        var token = TestContext.Current.CancellationToken;
+        var low = await WriteAsync(directory, "pak03_dir.vpk", token, (Model, "model-low"));
+        var high = await WriteAsync(directory, "pak11_dir.vpk", token, (Model, "model-high"));
+        var output = directory.PathOf("m_dir.vpk");
+
+        var result = await Create().MergeAsync(Request([high, low], output), token);
+
+        var conflict = Assert.Single(result.Conflicts);
+        Assert.Equal(("pak03_dir.vpk", "game_load_order"), (conflict.Chosen, conflict.ChosenBy));
+        Assert.Equal("model-low", await ReadAsync(output, Model, token));
     }
 
     [Fact]

@@ -5,13 +5,14 @@ import os
 from pathlib import Path
 import shutil
 import sys
+from types import SimpleNamespace
 
 sys.dont_write_bytecode = True
 from common import HERE, artifact_path, canonical, check_pins, fresh, load, logical, pins, require, run, sha, validate, write
 from kv import emit, field, metadata, parse, refs
 from verify import compare, animation_masks, compare_animation_masks
 from authoring import compare_authored
-import lifecycle
+from settings import load_settings, sdk_config
 
 ARCHIVE = HERE / 'archive/bin/Release/net10.0/ArchiveTool.dll'
 RETAINED = {'BoneMarkupList', 'AttachmentList', 'HitboxSetList', 'PhysicsShapeList', 'AnimationList', 'WeightListList'}
@@ -22,8 +23,15 @@ LIMITATIONS = ['single_lod', 'sdk_regenerated_blocks', 'native_frames_unverified
                'source_export_fidelity_unverified', 'runtime_unverified']
 
 
+OWN_PINS = ('adapter:', 'schema:', 'archive:')     # this repository's own files; every other pin is an external tool
+
+
 def configuration(path):
-    value = validate(load(path), 'config')
+    return checked_config(load(path))
+
+
+def checked_config(value):
+    value = validate(value, 'config')
     for tool in value['tools'].values():
         require(Path(tool).is_file(), 'TOOL_MISSING:' + tool)
     for kind, game in value['gameRoots'].items():
@@ -82,6 +90,10 @@ def probe(config_path, output):
     return result
 
 
+def changed_pins(old, new):
+    return sorted(k for k in old.keys() | new.keys() if old.get(k) != new.get(k))
+
+
 def source(root):
     root = Path(root).resolve()
     manifest = validate(load(root / 'manifest.json'), 'manifest')
@@ -92,6 +104,22 @@ def source(root):
     return root, manifest, config
 
 
+def source_repin(root):
+    """source(), but a drift of only this repository's own pins (adapter, schema, archive helper) is repinned first.
+    Returns (root, manifest, config, repinned keys). Any external tool, config or input drift still refuses."""
+    root = Path(root).resolve()
+    manifest = validate(load(root / 'manifest.json'), 'manifest')
+    check_pins(root, manifest['files'])
+    config = configuration(root / 'config.json')
+    require(sha(root / 'config.json') == manifest['configHash'], 'CONFIG_DRIFT')
+    changed = changed_pins(manifest['toolPins'], tool_pins(config))
+    external = sorted({k for k in changed if not k.startswith(OWN_PINS)})
+    require(not external, 'TOOL_DRIFT:' + ','.join(external) + ': run workflow.py repin --source ' + str(root) + ' deliberately')
+    if changed:
+        repin(SimpleNamespace(source=str(root)))
+    return (*source(root), changed)
+
+
 def extract(config, archive_path, requests, destination, stage, name):
     spec = stage / (name + '.json')
     write(spec, requests)
@@ -99,13 +127,19 @@ def extract(config, archive_path, requests, destination, stage, name):
 
 
 def prepare(args):
-    config = configuration(args.config)
+    """--config and --archive come from the machine settings file when absent (the config.json is then derived from it)."""
+    machine = load_settings() if not (args.config and args.archive) else None
+    config = configuration(args.config) if args.config else checked_config(sdk_config(machine))
+    args.archive = args.archive or machine['deadlock']['archive']
     out = workspace(config, args.output, archive_path=args.archive)
     model, skeleton = logical(args.model), logical(args.skeleton)
     graphs = [logical(args.default_graph), logical(args.ui_graph)]
     require(model.endswith('.vmdl_c') and skeleton.endswith('.vnmskel'), 'SOURCE_EXTENSION_INVALID')
     require(args.sha256 and len(args.sha256) == 64, 'SOURCE_HASH_REQUIRED')
-    shutil.copyfile(args.config, out / 'config.json')
+    if args.config:
+        shutil.copyfile(args.config, out / 'config.json')
+    else:
+        (out / 'config.json').write_bytes((json.dumps(sdk_config(machine), indent=2) + '\n').encode())
     inputs = out / 'inputs'
     inputs.mkdir()
     extract(config, args.archive, {model: args.sha256}, inputs, out, 'source-extract')
@@ -178,7 +212,7 @@ def repin(args):
     config = configuration(root / 'config.json')
     require(sha(root / 'config.json') == manifest['configHash'], 'CONFIG_DRIFT')
     old, new = manifest['toolPins'], tool_pins(config)
-    changed = sorted(k for k in old.keys() | new.keys() if old.get(k) != new.get(k))
+    changed = changed_pins(old, new)
     if not changed:
         return {'operation': 'sdk_repin@1', 'changed': []}
     previous = sha(root / 'manifest.json')
@@ -438,6 +472,11 @@ def environment(config, which, out, manifest, decompiled, dmx, restore_source=Fa
         # Preserve source UNORM UVs rather than widening the strict UV tolerance.
         retained[-1]['children'][0]['children'] = [
             {'_class':'RenderMeshMarkup','high_high_precision_texcoords':True}]
+    # The source's LOD levels, each the one body mesh: a model without LOD levels put game effects bound to
+    # attachments at the model origin (Holliday's Crackshot glow at her feet, 2026-10-31).
+    retained += [{'_class': 'LODGroupList', 'children': [
+        {'_class': 'LODGroup', 'switch_threshold': d, 'mesh_references': [{'mesh_name': 'body'}]}
+        for d in lod_distances(source_data)]}]
     if which == 'cs2':
         retained += [{'_class': 'NmSkeletonList', 'children': [{'_class': 'NmSkeletonReference',
                       'filename': manifest['skeletonPath'], 'do_not_discard_skeleton_bones': False}]},
@@ -448,6 +487,10 @@ def environment(config, which, out, manifest, decompiled, dmx, restore_source=Fa
     final.write_text(decompiled.read_text().splitlines()[0] + '\n' +
                      emit({'rootNode': {'_class': 'RootNode', 'children': retained}}))
     return final, game
+
+
+def lod_distances(source_data):
+    return field(source_data, 'm_lodGroupSwitchDistances') or [0.0]
 
 
 def build(args):
@@ -485,8 +528,9 @@ def verify(args):
     require(all(x in actual_refs for x in (manifest['skeletonPath'], manifest['defaultGraph'],
                                           manifest['uiGraph'])), 'COMPILED_RUNTIME_REFERENCES_MISSING')
     require(set(actual_refs) <= set(manifest['sourceRefs']), 'NEW_UNDECLARED_REFERENCE')
-    require(field(actual, 'm_refLODGroupMasks') == [255] and
-            field(actual, 'm_lodGroupSwitchDistances') == [] and
+    distances = lod_distances((root / 'source-data.log').read_text())
+    require(field(actual, 'm_refLODGroupMasks') == [(1 << len(distances)) - 1] and
+            field(actual, 'm_lodGroupSwitchDistances') == distances and
             field(actual, 'm_meshGroups') == [], 'COMPILED_LOD_PROFILE_INVALID')
     blender(config, 'verify', out, source=str(model), authored=str(exp / 'authored.json'))
     require(sha(out / 'addons.json') == manifest['addonHash'], 'ADDON_DRIFT')
@@ -559,7 +603,7 @@ def main():
     p.add_argument('--output', required=True)
     p = sub.add_parser('prepare')
     for key in ('config', 'archive', 'model', 'sha256', 'skeleton', 'default-graph', 'ui-graph', 'output'):
-        p.add_argument('--' + key, required=True)
+        p.add_argument('--' + key, required=key not in ('config', 'archive'))
     p = sub.add_parser('repin')
     p.add_argument('--source', required=True)
     p = sub.add_parser('export')
@@ -576,48 +620,18 @@ def main():
         p = sub.add_parser(command)
         p.add_argument('--' + key, required=True)
         p.add_argument('--output', required=True)
-    p = sub.add_parser('install')
-    for key in ('package', 'addons', 'name', 'receipts'):
-        p.add_argument('--' + key, required=True)
-    p = sub.add_parser('rollback')
-    p.add_argument('--receipt', required=True)
-    p.add_argument('--addons', required=True)
     args = parser.parse_args()
     try:
         functions = {'probe': lambda a: probe(a.config, a.output), 'prepare': prepare, 'repin': repin,
                      'prepare-surface':surface_prepare, 'return-surface':surface_return,
                      'review-surface':surface_review,
-                     'export': export, 'build': build, 'verify': verify, 'package': package,
-                     'install': install, 'rollback': lambda a: lifecycle.rollback(a.receipt, a.addons)}
+                     'export': export, 'build': build, 'verify': verify, 'package': package}
         result = functions[args.command](args)
         print(json.dumps({'ok': True, 'result': result}, allow_nan=False))
     except (ValueError, OSError, KeyError, IndexError, TypeError, TimeoutError) as error:
         print(json.dumps({'ok': False, 'error': str(error)}), file=sys.stderr)
         return 20
     return 0
-
-
-def install(args):
-    def preflight(report, package_root, addons):
-        require(report['operation'] == 'sdk_package@1' and report['productionAdmission'] is False,
-                'PACKAGE_PROFILE_INVALID')
-        config = configuration(report['config'])
-        logs = fresh(Path(args.receipts) / ('preflight-' + __import__('uuid').uuid4().hex))
-        ver = Path(report['verificationRoot'])
-        require(sha(ver / 'evidence.json') == report['evidenceHash'], 'PACKAGE_EVIDENCE_DRIFT')
-        evidence = validate(load(ver / 'evidence.json'), 'evidence')
-        check_pins(ver, evidence['files'])
-        build_root = Path(load(ver / 'binding.json')['buildRoot'])
-        plan = validate(load(build_root / 'plan.json'), 'plan')
-        _, _, _, manifest, _ = plan_source(plan['exportRoot'])
-        expected = {manifest['sourcePath']: evidence['modelHash'],
-                    manifest['skeletonPath'] + '_c': manifest['skeletonHash']}
-        write(logs / 'expected-entries.json', expected)
-        archive(config, 'verify', [package_root / 'diagnostic_dir.vpk', logs / 'expected-entries.json'],
-                logs / 'package-verify.log')
-        archive(config, 'check-source', [report['archive'], package_root / 'source-pins.json'], logs / 'current-source.log')
-        archive(config, 'collisions', [addons, package_root / 'paths.json'], logs / 'collisions.log')
-    return lifecycle.install(args.package, args.addons, args.name, args.receipts, preflight)
 
 
 if __name__ == '__main__':

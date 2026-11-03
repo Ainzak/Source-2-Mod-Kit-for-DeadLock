@@ -75,7 +75,7 @@ public sealed class HeroCatalogueVerificationTests
     }
 
     [Fact]
-    public async Task VerificationRejectsStalePinnedSource()
+    public async Task StaleSourceIsRecheckedAndOnlyTheRequestedHeroMustVerify()
     {
         var inventory = new FakeInventory(
             ContentHash.Compute("actual"u8),
@@ -97,8 +97,16 @@ public sealed class HeroCatalogueVerificationTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(HeroCatalogueVerificationContract.SourceStale, result.Source.Status);
-        var exception = Assert.Throws<S2ModKitException>(() => HeroCatalogueVerifier.RequireCurrent(result));
-        Assert.Equal("CATALOGUE_SOURCE_STALE", exception.Error.Code);
+        HeroCatalogueVerifier.RequireCurrent(result);
+        HeroCatalogueVerifier.RequireCurrent(result, "test");
+
+        var moved = await HeroCatalogueVerifier.VerifyAsync(
+            catalogue with { Heroes = [.. catalogue.Heroes, Hero("gone", "Gone", Resource("gone.primary", "Primary", "models/heroes/gone/gone.vmdl_c"))] },
+            inventory,
+            TestContext.Current.CancellationToken);
+        HeroCatalogueVerifier.RequireCurrent(moved, "test");
+        var exception = Assert.Throws<S2ModKitException>(() => HeroCatalogueVerifier.RequireCurrent(moved, "gone"));
+        Assert.Equal("CATALOGUE_RESOURCE_MISSING", exception.Error.Code);
         Assert.Equal(ErrorCategory.InputOrResolution, exception.Error.Category);
     }
 

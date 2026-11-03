@@ -500,7 +500,9 @@ Lists active addon archives and collision facts for a package. It does not chang
 
 ### `s2mod addons install`
 
-Explicitly installs a package into a safe empty addon slot and creates a receipt.
+Explicitly installs a package into a safe empty addon slot and creates a receipt. It refuses when any loaded
+archive also contains the package's path: the game loads the lower-numbered of two such archives, so a package in
+slots 90-99 could never win.
 
 | Option | Required | Meaning |
 |---|---:|---|
@@ -650,9 +652,10 @@ acknowledged. It does not touch any addon file.
 
 Combines several addon archives into one new archive; inputs are never changed and an existing output is never
 overwritten. Files of different resources merge freely. The same logical path with different content in two inputs is
-a conflict: the command stops and lists it until it is resolved with `--prefer` (an input whose files win every
+a conflict. When every input holding it is a `pakNN_dir.vpk`, the lower slot's file is kept, as the game itself
+loads it (reported as `game_load_order`); otherwise the command stops and lists it until it is resolved with `--prefer` (an input whose files win every
 conflict; repeat to set an order) or `--keep <logical path>=<input file name>` (one file). Identical copies are not
-conflicts. Which archive the game itself prefers is not assumed. A model in one input that uses a material or other
+conflicts. A model in one input that uses a material or other
 resource another input replaces is reported as a dependency note. Text output: one summary line plus one line per
 conflict and note.
 

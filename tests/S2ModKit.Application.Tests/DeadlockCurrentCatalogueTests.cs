@@ -6,9 +6,9 @@ namespace S2ModKit.Application.Tests;
 
 public sealed class DeadlockCurrentCatalogueTests
 {
-    private const string Revision = "2026-10-07.1";
+    private const string Revision = "2026-10-28.1";
     private static readonly ContentHash PinnedDirectoryHash =
-        new("76bc769d1c56e995bb535e4684c33646b55cc62d7a9198be5b0d075baf09f6b6");
+        new("d6e53045cae0efc675b52146a985c3294f961e339956e58942072932f84dc887");
 
     private static readonly (string HeroId, string DisplayName, string Alias, string LogicalPath, int SourceHeroId)[] AnnouncedHeroes =
     [

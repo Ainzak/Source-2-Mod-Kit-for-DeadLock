@@ -112,18 +112,13 @@ public static class HeroCatalogueVerifier
             heroes);
     }
 
-    public static void RequireCurrent(HeroCatalogueVerification verification)
+    /// <summary>A changed base VPK (a game update) is not an error by itself: every catalogued path is re-checked
+    /// against the current archive, and only the requested heroes' own resources must still verify.</summary>
+    public static void RequireCurrent(HeroCatalogueVerification verification, string? heroId = null)
     {
         ArgumentNullException.ThrowIfNull(verification);
-        if (string.Equals(verification.Source.Status, HeroCatalogueVerificationContract.SourceStale, StringComparison.Ordinal))
-        {
-            throw Errors.Input(
-                "CATALOGUE_SOURCE_STALE",
-                "The selected base VPK does not match the catalogue's expected directory identity.",
-                "Use the matching game build or deliberately update and re-verify the catalogue revision.");
-        }
-
         var problem = verification.Heroes
+            .Where(hero => heroId is null || string.Equals(hero.HeroId, heroId, StringComparison.Ordinal))
             .SelectMany(hero => hero.Resources.Select(resource => (Hero: hero, Resource: resource)))
             .Where(item => !string.Equals(
                 item.Resource.VerificationStatus,
@@ -249,10 +244,9 @@ public static class HeroCatalogueQueries
         IResourceCatalogInventory inventory,
         CancellationToken cancellationToken = default)
     {
-        var verification = await HeroCatalogueVerifier.VerifyAsync(catalogue, inventory, cancellationToken)
+        // Listing reports each hero's status (verified, moved, missing...) instead of failing on the first problem.
+        return await HeroCatalogueVerifier.VerifyAsync(catalogue, inventory, cancellationToken)
             .ConfigureAwait(false);
-        HeroCatalogueVerifier.RequireCurrent(verification);
-        return verification;
     }
 
     public static async Task<HeroCatalogueResolution> ResolveAsync(
@@ -264,7 +258,6 @@ public static class HeroCatalogueQueries
         ArgumentException.ThrowIfNullOrWhiteSpace(heroQuery);
         var verification = await HeroCatalogueVerifier.VerifyAsync(catalogue, inventory, cancellationToken)
             .ConfigureAwait(false);
-        HeroCatalogueVerifier.RequireCurrent(verification);
         var lookupKey = HeroCatalogueValidator.NormalizeLookupKey(heroQuery);
         var sourceHero = catalogue.Heroes.SingleOrDefault(hero =>
             string.Equals(hero.HeroId, lookupKey, StringComparison.Ordinal)
@@ -277,6 +270,8 @@ public static class HeroCatalogueQueries
                 $"No hero matches '{heroQuery}'.",
                 "Run 's2mod catalog heroes list' and use a listed hero ID, display name, or alias.");
         }
+
+        HeroCatalogueVerifier.RequireCurrent(verification, sourceHero.HeroId);
 
         var resolved = verification.Heroes.Single(hero =>
             string.Equals(hero.HeroId, sourceHero.HeroId, StringComparison.Ordinal));

@@ -29,7 +29,7 @@ jobs:
         run: dotnet build S2ModKit.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 1285
+        run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 1286
 
       - name: Test standalone geometry authoring contracts
         run: python -B -m unittest discover -s tools/blender/tests -q

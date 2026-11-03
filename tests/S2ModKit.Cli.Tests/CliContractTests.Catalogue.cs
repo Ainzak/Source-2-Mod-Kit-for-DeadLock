@@ -106,8 +106,8 @@ public sealed partial class CliContractTests
                 TestContext.Current.CancellationToken);
             using var staleDocument = JsonDocument.Parse(staleOutput.ToString());
 
-            Assert.Equal((int)ErrorCategory.InputOrResolution, staleExit);
-            Assert.Equal("CATALOGUE_SOURCE_STALE", staleDocument.RootElement.GetProperty("error").GetProperty("code").GetString());
+            Assert.Equal(0, staleExit);
+            Assert.Equal("stale", staleDocument.RootElement.GetProperty("result").GetProperty("source").GetProperty("status").GetString());
             Assert.Empty(staleError.ToString());
 
             var currentCli = new S2ModKitCli(

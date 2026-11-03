@@ -20,6 +20,21 @@ public sealed class DependencyBoundaryTests
     }
 
     [Fact]
+    public void PreviewAdapterDependsOnlyOnApplicationAndDomainAndStaysOutOfCore()
+    {
+        var references = typeof(S2ModKit.Adapters.Preview.PreviewSession).Assembly.GetReferencedAssemblies()
+            .Select(r => r.Name).Where(n => n?.StartsWith("S2ModKit.", StringComparison.Ordinal) == true).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(["S2ModKit.Application", "S2ModKit.Domain"], references);
+        foreach (var core in new[] { typeof(ContentHash).Assembly, typeof(S2ModKitApplication).Assembly })
+        {
+            var names = core.GetReferencedAssemblies().Select(r => r.Name).ToArray();
+            Assert.DoesNotContain("S2ModKit.Adapters.Preview", names);
+            Assert.DoesNotContain("Renderer", names);
+            Assert.DoesNotContain(names, name => name?.StartsWith("OpenTK", StringComparison.Ordinal) == true);
+        }
+    }
+
+    [Fact]
     public void DomainHasNoProjectOrValveDependencies()
     {
         var references = typeof(ContentHash).Assembly.GetReferencedAssemblies().Select(reference => reference.Name).ToArray();
@@ -155,6 +170,7 @@ public sealed class DependencyBoundaryTests
             "S2ModKit.Geometry",
             "S2ModKit.Application",
             "S2ModKit.Adapters.Source2",
+            "S2ModKit.Adapters.Preview",
         };
 
         var offendingFile = productionDirectories

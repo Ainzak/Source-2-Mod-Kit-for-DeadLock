@@ -308,6 +308,7 @@ public sealed partial class S2ModKitCli
         root.Subcommands.Add(CreateAddonsCommand(output, error));
         root.Subcommands.Add(CreateModsCommand(output, error));
         root.Subcommands.Add(CreateRuntimeCommand(output, error));
+        root.Subcommands.Add(CreatePreviewCommand(output, error));
         return root;
     }
 

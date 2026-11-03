@@ -17,11 +17,19 @@ MIT
 - ValvePak 5.0.2.177 — https://github.com/ValveResourceFormat/ValvePak
 - meshoptimizer 1.3 (bundled native codec, MIT, built from commit 9e1f07b1; licence text shipped as meshoptimizer-LICENSE.md) — https://github.com/zeux/meshoptimizer
 - ValveResourceFormat 20.1.7467 — https://github.com/ValveResourceFormat/ValveResourceFormat
+- ValveResourceFormat.Renderer 20.1.7467 (model preview) — https://github.com/ValveResourceFormat/ValveResourceFormat
+- OpenTK.Core, OpenTK.Graphics, OpenTK.Mathematics, OpenTK.Windowing.Common, OpenTK.Windowing.Desktop,
+  OpenTK.Windowing.GraphicsLibraryFramework 4.9.4 — https://github.com/opentk/opentk
+- Microsoft.Extensions.Logging.Abstractions and Microsoft.Extensions.DependencyInjection.Abstractions 10.0.10 — https://github.com/dotnet/dotnet
+- NLayer 2.0.1 — https://github.com/naudio/NLayer
 - Vortice.SPIRV 1.0.5 and Vortice.SpirvCross 1.5.4 — https://github.com/amerkoleci/Vortice.Vulkan
 - ZstdSharp.Port 0.8.8 — https://github.com/oleg-st/ZstdSharp
 
 BSD-2-Clause
 - Blake3 3.0.2 — https://github.com/xoofx/Blake3.NET
+
+Zlib
+- OpenTK.redist.glfw 3.4.0.44 (GLFW native library; package license file: COPYING.md) — https://www.glfw.org/
 
 The SkiaSharp Linux and macOS native-asset packages are present in the dependency graph for
 multi-runtime restore, but are not included in the win-x64 release package. Their package metadata

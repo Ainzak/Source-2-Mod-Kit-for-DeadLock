@@ -78,7 +78,7 @@ public sealed partial class S2ModKitCli
         output.WriteLine(result.Summary);
         foreach (var conflict in result.Conflicts.Where(item => !item.IdenticalPayloads))
         {
-            output.WriteLine($"  {(conflict.Chosen is null ? "?" : "=")} {conflict.LogicalPath} [{conflict.Kind}]  {string.Join(" / ", conflict.Inputs)}{(conflict.Chosen is null ? string.Empty : " -> " + conflict.Chosen)}");
+            output.WriteLine($"  {(conflict.Chosen is null ? "?" : "=")} {conflict.LogicalPath} [{conflict.Kind}]  {string.Join(" / ", conflict.Inputs)}{(conflict.Chosen is null ? string.Empty : $" -> {conflict.Chosen} ({conflict.ChosenBy})")}");
         }
 
         foreach (var notice in result.DependencyNotices)

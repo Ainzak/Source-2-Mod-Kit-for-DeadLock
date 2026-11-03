@@ -17,7 +17,7 @@ public sealed class AddonManagementApplicationTests
         var foreignPath = Path.Combine(fixture.AddonsRoot, "pak98_dir.vpk");
         await CompactVpkArchiveIO.WriteAsync(foreignPath, new Dictionary<string, ReadOnlyMemory<byte>>
         {
-            [fixture.TargetPath] = "foreign-model"u8.ToArray(),
+            ["sounds/unrelated.vsnd_c"] = "foreign-sound"u8.ToArray(),
         }, cancellationToken);
         var foreignBefore = ContentHash.Compute(await File.ReadAllBytesAsync(foreignPath, cancellationToken));
         var dmmPath = Path.Combine(fixture.AddonsRoot, ".dmm.json");
@@ -54,7 +54,7 @@ public sealed class AddonManagementApplicationTests
     }
 
     [Fact]
-    public async Task AutoInstallRejectsCollisionInHighestSlotWithoutWritingMarker()
+    public async Task InstallRefusesAnyCollidingLoadedArchiveWithoutWritingMarker()
     {
         using var directory = new TestDirectory();
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -71,7 +71,7 @@ public sealed class AddonManagementApplicationTests
             "auto",
             cancellationToken));
 
-        Assert.Equal("ADDON_NO_SAFE_SLOT", exception.Error.Code);
+        Assert.Equal("ADDON_FILE_COLLISION", exception.Error.Code);
         Assert.False(Directory.Exists(Path.Combine(fixture.AddonsRoot, ".s2modkit")));
         Assert.Empty(await fixture.Workspace.ListInstallationsAsync(fixture.ProjectRoot, cancellationToken));
     }

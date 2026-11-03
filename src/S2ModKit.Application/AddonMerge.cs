@@ -12,7 +12,7 @@ public sealed record AddonMergeRequest(
 public sealed record AddonMergeInput(string FileName, string FullPath, ContentHash Hash, int EntryCount, IReadOnlyDictionary<string, int> ResourceKinds);
 
 /// <summary>A logical path more than one input ships; <c>Chosen</c> is the input whose copy goes into the merge.</summary>
-public sealed record AddonMergeConflict(string LogicalPath, string Kind, IReadOnlyList<string> Inputs, bool IdenticalPayloads, string? Chosen);
+public sealed record AddonMergeConflict(string LogicalPath, string Kind, IReadOnlyList<string> Inputs, bool IdenticalPayloads, string? Chosen, string? ChosenBy = null);
 
 /// <summary>A model in one input that references a resource another input replaces: not a file conflict, but the
 /// two mods may not have been made for each other.</summary>
@@ -121,13 +121,13 @@ public sealed class AddonMergeApplication(
             }
 
             var identical = payloads.Skip(1).All(payload => payload.AsSpan().SequenceEqual(payloads[0]));
-            var pick = identical ? holders[0] : Resolve(logicalPath, holders, request);
+            var (pick, rule) = identical ? (holders[0], "identical") : Resolve(logicalPath, holders, request);
             if (pick is not null)
             {
                 chosen[logicalPath] = pick;
             }
 
-            conflicts.Add(new AddonMergeConflict(logicalPath, AddonResourceKinds.Classify(logicalPath), holders, identical, pick));
+            conflicts.Add(new AddonMergeConflict(logicalPath, AddonResourceKinds.Classify(logicalPath), holders, identical, pick, rule));
         }
 
         var notices = await DependencyNoticesAsync(trees, owners, cancellationToken).ConfigureAwait(false);
@@ -169,12 +169,12 @@ public sealed class AddonMergeApplication(
             $"Merged {inputs.Count} archives into {Path.GetFileName(outputPath)} ({chosen.Count} files, {conflicts.Count(item => !item.IdenticalPayloads)} conflict(s) resolved, {notices.Count} dependency notice(s)). Inputs were not changed.");
     }
 
-    private static string? Resolve(string logicalPath, string[] holders, AddonMergeRequest request)
+    private static (string? Pick, string? Rule) Resolve(string logicalPath, string[] holders, AddonMergeRequest request)
     {
         if (request.Keep.TryGetValue(logicalPath, out var kept))
         {
             return holders.Contains(kept, StringComparer.OrdinalIgnoreCase)
-                ? holders.First(holder => string.Equals(holder, kept, StringComparison.OrdinalIgnoreCase))
+                ? (holders.First(holder => string.Equals(holder, kept, StringComparison.OrdinalIgnoreCase)), "keep")
                 : throw Errors.InvalidRecipe("ADDON_MERGE_KEEP_NOT_HOLDER", $"--keep names '{kept}' for {logicalPath}, which that input does not contain.", "Pick one of the inputs that ship this file.");
         }
 
@@ -183,11 +183,16 @@ public sealed class AddonMergeApplication(
             var match = holders.FirstOrDefault(holder => string.Equals(holder, preferred, StringComparison.OrdinalIgnoreCase));
             if (match is not null)
             {
-                return match;
+                return (match, "prefer");
             }
         }
 
-        return null;
+        // The game loads the lower-numbered of two loaded addons that ship the same file (tested in game); that is the
+        // default when every holder is a pakNN_dir.vpk. Other names still need an explicit choice.
+        var slots = holders.Select(AddonFileApplication.TryParseSlot).ToArray();
+        return slots.All(slot => slot is not null)
+            ? (holders[Array.IndexOf(slots, slots.Min())], "game_load_order")
+            : (null, null);
     }
 
     private async Task<IReadOnlyList<AddonMergeDependencyNotice>> DependencyNoticesAsync(

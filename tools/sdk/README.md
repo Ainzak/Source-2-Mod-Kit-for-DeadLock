@@ -23,16 +23,30 @@ tools. Build the archive adapter once:
 dotnet build tools/sdk/archive/ArchiveTool.csproj -c Release --disable-build-servers -maxcpucount:1
 ```
 
-Copy `tests/fixtures/config.json` to a private configuration and replace every placeholder
-with an actual executable or SDK game root. SDK executables must belong to their corresponding
-game roots; CSDK and CS2 environments must differ. Both need their own core shader archives.
-Install/enable `SourceIO` and `io_scene_valvesource2` in the configured Blender profile first.
-No tool auto-discovery, installation or update is performed. Configure work roots on the data
-drive; commands require absent output directories with an existing parent.
+Keep every machine path in one private settings file (format `s2mk_settings@1`, contract
+`schemas/v1/settings.schema.json`): `.workspaces/settings.json` in the checkout (git-ignored), or
+the file named by the `S2MK_SETTINGS` environment variable. It holds `tools` (blender, vrf, csdk,
+cs2, dotnet), `gameRoots` (csdk, cs2), `deadlock` (`archive`: the game's `pak01_dir.vpk`, `addons`:
+its addons folder), `blenderAddons` (the Blender user addons folder) and optionally `s2mod` (the
+product CLI; default: the Release build in this checkout). SDK executables must belong to their
+corresponding game roots; CSDK and CS2 environments must differ. Both need their own core shader
+archives. Install/enable `SourceIO` and `io_scene_valvesource2` in the configured Blender profile
+first. No tool auto-discovery, installation or update is performed. Configure work roots on the
+data drive; commands require absent output directories with an existing parent.
+
+```powershell
+python tools/sdk/hero/pipeline.py settings
+```
+
+prints the resolved settings path and checks every path in it, failing closed with a list of
+every missing or invalid entry. `probe` still takes a `--config` (a copy of `tests/fixtures/config.json`
+with real paths). `prepare` derives that `sdk_config@1` from the settings when `--config` is omitted
+(the written `config.json` is deterministic) and uses `deadlock.archive` when `--archive` is omitted;
+an explicit `--config` or `--archive` behaves as before.
 
 ```powershell
 python tools/sdk/workflow.py probe --config sdk-config.json --output work/capabilities
-python tools/sdk/workflow.py prepare --config sdk-config.json --archive source/pak01_dir.vpk --model models/example/example.vmdl_c --sha256 SOURCE_SHA256 --skeleton models/example/example.vnmskel --default-graph animgraphs/example.vnmgraph --ui-graph animgraphs/example_ui.vnmgraph --output work/source
+python tools/sdk/workflow.py prepare --model models/example/example.vmdl_c --sha256 SOURCE_SHA256 --skeleton models/example/example.vnmskel --default-graph animgraphs/example.vnmgraph --ui-graph animgraphs/example_ui.vnmgraph --output work/source
 ```
 
 Archive entries are extracted exactly through the native reader, bypassing installed-addon
@@ -159,20 +173,25 @@ only to the exact prior delivered package; a new artifact cannot inherit its liv
 
 ## Separate installation and rollback
 
-Create a private receipt directory before using these commands. Installation rechecks current
-source/dependency hashes, actual verified package entries and addon collisions. It refuses an
-occupied slot and never overwrites it. Run only when installation is assigned.
-Copies are staged under a non-VPK extension, checked again and published without replacement;
-an interrupted copy cannot become an active partial VPK.
+Installation goes through the product CLI (`s2mod addons install-file` / `rollback-file`), never
+by copying files. The hero pipeline wraps it with the addons folder and `s2mod` from the settings
+file and the slot and label from the hero file:
 
 ```powershell
-python tools/sdk/workflow.py install --package work/package --addons GAME_ADDONS_DIRECTORY --name pak98_dir.vpk --receipts work/receipts
-python tools/sdk/workflow.py rollback --receipt RECEIPT_PATH_FROM_INSTALL --addons GAME_ADDONS_DIRECTORY
+python tools/sdk/hero/pipeline.py install --hero tools/heroes/ID.json --package work/package --check
+python tools/sdk/hero/pipeline.py install --hero tools/heroes/ID.json --package work/package
+python tools/sdk/hero/pipeline.py rollback --hero tools/heroes/ID.json --package work/package
 ```
 
-Rollback checks ownership/hash and renames only its own artifact to a unique `.disabled` name.
-Reported owner rollbacks do not trigger independent confirmation runs. No automatic installation,
-game launching, release publication or selection of another free slot occurs.
+Before installing, the package is re-verified: package files, report and evidence hashes, the
+verified entries (`ArchiveTool verify`) and the source pins against the current game archive
+(`ArchiveTool check-source`). `--check` does all of that plus a read-only `s2mod addons scan`,
+prints the exact install command line and changes nothing. Receipts default to `addon-receipts`
+beside the package folder (`--receipts` overrides; `rollback` needs `--package` or `--receipts`),
+the addon tree cache to a fixed private file (`--cache`). The CLI itself refuses an overlap with
+an enabled addon and an occupied slot, keeps a receipt and removes only the file it installed.
+Run only when installation is assigned. No automatic game launching, release publication or
+selection of another free slot occurs.
 
 ## Checks and limits
 
@@ -194,3 +213,15 @@ WeightListList retention requires actual compiled ASEQ mask order, named weights
 defaults/arrays to match source. SDK cloth-bone renaming or changed mask defaults reject even
 when source preparation and compilation succeed.
 The integration plan stops at a concrete go/defer decision, without another sculpting batch.
+
+## Hero pipeline
+
+`tools/sdk/hero/pipeline.py` runs the shared per-hero steps (export, DMX transport, materials, build, verify, package, material-only
+variant, combination) from `tools/heroes/<id>.json` with explicit scene, output and texture arguments. Blender-side work runs through the
+Blender named in the workspace `source/config.json`; each step records its time in `timings.jsonl`.
+
+A step repins its prepared source automatically when only this repository's own files changed since
+preparation (adapter scripts, schemas, archive helper): it uses the same backup and `tool-repins.jsonl`
+record as `workflow.py repin` and lists the keys as `repinned` in the step result. A changed external
+tool (Blender, VRF, SDK compilers, dotnet), config or input still stops (`TOOL_DRIFT` names the tools;
+run `workflow.py repin --source DIR` deliberately). The single-shot `workflow.py` commands stay strict.

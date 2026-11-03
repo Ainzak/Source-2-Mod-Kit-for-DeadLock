@@ -12,7 +12,6 @@ from kv import emit, field, metadata, parse
 from verify import compare, rig, animation_masks, compare_animation_masks
 from authoring import compare_authored
 from skinned import derive, compare_skinned
-from lifecycle import install, rollback
 from blender_job import verify_geometry
 from workflow import workspace
 
@@ -308,30 +307,6 @@ class Tests(unittest.TestCase):
                 for uv in second['uv']: uv[0] += 0.00048828125
             with self.subTest(mode=mode):
                 self.assertEqual(2, verify_geometry(expected, expected)['triangles'])
-
-    def test_receipt_lifecycle_and_failed_preflight(self):
-        package, addons, receipts = [fresh(self.root / name) for name in ('package', 'addons', 'receipts')]
-        (package / 'diagnostic_dir.vpk').write_bytes(b'fixture package')
-        write(package / 'package.json', {'packageHash': sha(package / 'diagnostic_dir.vpk'), 'files': pins(package)})
-        def reject(*args): raise ValueError('SOURCE_CHANGED')
-        with self.assertRaises(ValueError): install(package, addons, 'pak98_dir.vpk', receipts, reject)
-        self.assertFalse((addons / 'pak98_dir.vpk').exists())
-        calls = []
-        def reject_after_copy(*args):
-            calls.append(True)
-            if len(calls) == 2: raise ValueError('SOURCE_CHANGED_AFTER_COPY')
-        with self.assertRaises(ValueError): install(package, addons, 'pak98_dir.vpk', receipts, reject_after_copy)
-        self.assertFalse((addons / 'pak98_dir.vpk').exists())
-        self.assertEqual([], list(addons.glob('*.staging')))
-        installed = install(package, addons, 'pak98_dir.vpk', receipts, lambda *args: None)
-        with self.assertRaises(ValueError): install(package, addons, 'pak98_dir.vpk', receipts, lambda *args: None)
-        target = addons / 'pak98_dir.vpk'
-        target.write_bytes(b'foreign change')
-        with self.assertRaises(ValueError): rollback(installed['receipt'], addons)
-        target.write_bytes(b'fixture package')
-        rolled = rollback(installed['receipt'], addons)
-        self.assertTrue(Path(rolled['disabled']).exists())
-        self.assertFalse(target.exists())
 
 
 if __name__ == '__main__':
