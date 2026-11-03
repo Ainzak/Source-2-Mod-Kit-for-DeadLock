@@ -680,6 +680,42 @@ installation.
 | `--observation` | Yes | Runtime-observation JSON input. |
 | `--help` | No | Print help. |
 
+### `s2mod recolor textures`
+
+Lists a model's colour textures as the archives resolve them (mods first, then the game): one line per draw call with the
+mesh, the material and its `g_tColor` texture, and the archive that texture comes from. Read-only.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--game` | Yes | Deadlock `game` folder (contains `citadel` and `core`). |
+| `--addon` | No | Mod VPK searched before the game; repeatable, first wins. |
+| `--model` | Yes | Model path, for example `models/heroes_staging/hornet_v3/hornet.vmdl`. |
+| `--format` | No | `text` (default) or `json`. |
+
+### `s2mod recolor apply`
+
+Recolors parts of colour textures into a new texture-only mod (operation `recolor@1`); inputs are never changed and the
+output folder must not exist. Each texture is decoded, its parts applied in order (each through an optional mask image
+in the texture's space: red channel, 0 untouched to 1 full change), compiled with the Source 2 SDK resource compiler
+from the texture's own definition at its own path (same size and format, at least its mips; verified) and packaged as
+`recolor_dir.vpk`. The game loads the lower pak number first, so install the recolor in a lower slot than the mod it
+recolors (or merge the two with `addons merge --prefer`). Evidence: `recolor.json` (input and output hashes, texels and
+mean colours per part) and the recolored images as PNG.
+
+Recipe JSON: `{"addons": ["<mod VPK>"...], "parts": [{"name", "texture", "mask"?, "hueShift"?, "saturation"?,
+"brightness"?, "tint"?, "tintStrength"?, "colorize"?, "colorizeStrength"?}]}`. Colours are `#rrggbb`; hue shift in
+degrees; saturation and brightness are multipliers (0-4); strengths 0-1. Colorize takes the colour's hue and
+saturation and keeps each texel's brightness. Mask paths are relative to the recipe.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--game` | Yes | Deadlock `game` folder. |
+| `--recipe` | Yes | Recipe JSON. |
+| `--output` | Yes | New output folder. |
+| `--resourcecompiler` | Unless set | SDK `resourcecompiler.exe` (default `S2MODKIT_RESOURCECOMPILER`). |
+| `--sdk-game` | Unless set | The SDK's `game` folder with `citadel` and `core` (default `S2MODKIT_SDK_GAME`). |
+| `--format` | No | `text` (default) or `json`. |
+
 ## Position authoring
 
 The `authoring` commands return JSON. `import-recipe` prepares a source-checked recipe for the normal
@@ -702,6 +738,8 @@ compiled build/verify/package lifecycle. See [position authoring](POSITION-AUTHO
 | `S2MODKIT_MESHOPTIMIZER_PATH` | Source 2 transform discovery, planning, and rewrite codec (optional: the release ships `meshoptimizer.dll` next to `s2mod.exe`). |
 | `S2MODKIT_SOURCE2_VIEWER_PATH` | Optional external Source 2 Viewer verifier. |
 | `S2MODKIT_EXTERNAL_VERIFY_ROOT` | Workspace-local scratch root for the external verifier. |
+| `S2MODKIT_RESOURCECOMPILER` | `recolor apply`: the Source 2 SDK resource compiler. |
+| `S2MODKIT_SDK_GAME` | `recolor apply`: the SDK's `game` folder (citadel and core mounted for the compiler). |
 
 The CLI has no implicit game path, installation step, or global working-directory cache. Supply
 roots explicitly.

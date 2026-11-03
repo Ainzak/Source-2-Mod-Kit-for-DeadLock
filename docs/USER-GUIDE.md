@@ -481,6 +481,41 @@ While the receipt is still active, record what the player actually tested. Copy 
 Rollback renames only the exact-hash owned VPK to a receipt-specific inactive filename. It never
 deletes the candidate and refuses to touch a changed or foreign file.
 
+## 7. Desktop app (preview and mod list)
+
+`S2ModKit.exe` (next to `s2mod.exe`) previews mods without starting the game. It needs a GPU with OpenGL 4.6.
+
+1. Start `S2ModKit.exe`. It finds Deadlock in the usual Steam folders; otherwise click **Game folder...** and pick the
+   `game` folder (the one with `citadel`). Settings and install receipts are kept next to the app (`data`).
+2. The left list shows every addon in `citadel/addons` as one mod (a Deadlock Mod Manager mod split into several files
+   is one entry). Filter by name, hero or kind (model, sound, ui, particles, other).
+3. Click a model mod to preview it in the game's hero-select lighting with the ink outline:
+   - **Show**: this mod, vanilla, or another mod for the same hero; the pose and camera stay.
+   - **Include my enabled mods**: also load every mod the game currently loads beneath this one.
+   - Animation: filter and pick a clip, pause, drag the timeline.
+   - Camera: left drag orbits, right or middle drag pans, the wheel zooms; Front, Side, Back, Below and Close-up.
+   Mods without a model (sound, UI, particles) list their files.
+4. **Install VPK...** installs a finished mod into a free slot. **Disable** takes a mod the app installed out of the
+   addons folder (it stays in the list) and **Enable** puts it back. Mods managed by Deadlock Mod Manager or installed
+   another way are read-only here; switch them in their own tool.
+
+Previews are offline evidence: they are close to the game but not a game test.
+
+## 8. Recolor (texture-only mods)
+
+`s2mod recolor` changes the colours of textures and writes a small new mod; the original mod and the game files are
+never changed. It needs the Source 2 SDK resource compiler (`S2MODKIT_RESOURCECOMPILER`, `S2MODKIT_SDK_GAME`).
+
+```powershell
+s2mod recolor textures --game <Deadlock game folder> --addon <mod VPK> --model models/heroes_staging/hornet_v3/hornet.vmdl
+s2mod recolor apply --game <Deadlock game folder> --recipe red.json --output <new folder>
+```
+
+A recipe names each part's texture (from `recolor textures`), an optional mask image in that texture's space, and the
+change (`hueShift`, `saturation`, `brightness`, `tint`, `colorize` with strengths); see the
+[CLI reference](CLI-REFERENCE.md#s2mod-recolor-apply). The game loads the lower pak number first: install the recolor
+in a lower slot than the mod it recolors, or merge both with `s2mod addons merge --prefer recolor_dir.vpk`.
+
 ## Reading failures
 
 Expected failures contain a stable `error.code`, `error.boundary`, summary, and remediation. In

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>S2ModKit</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S2ModKit.Adapters.Preview\S2ModKit.Adapters.Preview.csproj" />
+    <ProjectReference Include="..\S2ModKit.Adapters.Vpk\S2ModKit.Adapters.Vpk.csproj" />
+    <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
+    <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
+    <ProjectReference Include="..\S2ModKit.Infrastructure\S2ModKit.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\catalogues\deadlock-current.json" Link="catalogues\deadlock-current.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="S2ModKit.Desktop.Tests" />
+  </ItemGroup>
+</Project>

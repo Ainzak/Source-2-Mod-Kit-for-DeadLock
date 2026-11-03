@@ -183,30 +183,7 @@ public sealed partial class PreviewSession : IDisposable
     /// <summary>Renders one frame from the camera and returns top-down RGBA8 pixels.</summary>
     public PreviewImage Capture(PreviewView view, int width, int height, float fieldOfView = 30f)
     {
-        ArgumentNullException.ThrowIfNull(view);
-        EnsureTargets(width, height);
-        var camera = renderer.Camera;
-        camera.FieldOfView = fieldOfView;
-        camera.SetViewportSize(width, height);
-        var center = new Vector3(Bounds.Center.X, Bounds.Center.Y, Bounds.Min.Z + Bounds.Size.Z * view.Height);
-        var size = Bounds.Size;
-        var vertical = camera.GetFOV();                                   // effective vertical angle (radians) after the viewport is set
-        var horizontal = 2 * MathF.Atan(MathF.Tan(vertical / 2) * width / height);
-        var fit = 0.72f * MathF.Max(size.Z / MathF.Tan(vertical / 2), MathF.Max(size.X, size.Y) / MathF.Tan(horizontal / 2));
-        var yaw = view.YawDegrees * MathF.PI / 180f;
-        var pitch = view.PitchDegrees * MathF.PI / 180f;
-        var direction = new Vector3(MathF.Cos(yaw) * MathF.Cos(pitch), MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch));
-        camera.SetLocation(center + direction * fit / view.Zoom);
-        camera.LookAt(center);
-
-        var update = new Scene.UpdateContext { Camera = camera, TextRenderer = text, Timestep = 0, Uptime = time };
-        renderer.Uptime = time;
-        renderer.DeltaTime = 0;
-        node.AnimationController.Time = time;
-        renderer.Update(update);
-        renderer.Render(main!);
-        ink.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, OutlineThickness);
-        renderer.PostprocessRender(main!, display!, false);
+        RenderFrame(view, width, height, fieldOfView);
         GL.Finish();
 
         var bytes = new byte[width * height * 4];
@@ -233,6 +210,60 @@ public sealed partial class PreviewSession : IDisposable
         return new PreviewImage(width, height, flipped);
     }
 
+    /// <summary>
+    /// Renders one frame and copies it into <paramref name="targetFramebuffer"/> (a host control's framebuffer, bottom-up
+    /// like OpenGL); for a live view. Leaves that framebuffer bound.
+    /// </summary>
+    public void Present(int targetFramebuffer, PreviewView view, int width, int height, float fieldOfView = 30f, Vector2 pan = default)
+    {
+        RenderFrame(view, width, height, fieldOfView, pan);
+        GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, display!.FboHandle);
+        GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);
+        GL.BlitFramebuffer(0, 0, width, height, 0, 0, width, height, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
+    }
+
+    /// <summary>Animation names the model can play (embedded clips and loaded .vnmclip files).</summary>
+    public IReadOnlyList<string> Animations => [.. node.Animations.Keys];
+
+    /// <summary>Multiplies part <paramref name="index"/> (order of <see cref="Parts"/>) by an RGBA tint; (1,1,1,1) clears it.</summary>
+    public void SetPartTint(int index, Vector4 tint)
+    {
+        var draw = node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
+        draw.TintColor = tint;
+    }
+
+    private void RenderFrame(PreviewView view, int width, int height, float fieldOfView, Vector2 pan = default)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        EnsureTargets(width, height);
+        var camera = renderer.Camera;
+        camera.FieldOfView = fieldOfView;
+        camera.SetViewportSize(width, height);
+        var center = new Vector3(Bounds.Center.X, Bounds.Center.Y, Bounds.Min.Z + Bounds.Size.Z * view.Height);
+        var size = Bounds.Size;
+        var vertical = camera.GetFOV();                                   // effective vertical angle (radians) after the viewport is set
+        var horizontal = 2 * MathF.Atan(MathF.Tan(vertical / 2) * width / height);
+        var fit = 0.72f * MathF.Max(size.Z / MathF.Tan(vertical / 2), MathF.Max(size.X, size.Y) / MathF.Tan(horizontal / 2));
+        var yaw = view.YawDegrees * MathF.PI / 180f;
+        var pitch = view.PitchDegrees * MathF.PI / 180f;
+        var direction = new Vector3(MathF.Cos(yaw) * MathF.Cos(pitch), MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch));
+        var right = Vector3.Normalize(Vector3.Cross(direction, Vector3.UnitZ));
+        var up = Vector3.Cross(right, direction);
+        center += (right * pan.X + up * pan.Y) * size.Z;                  // pan in model heights, along the screen axes
+        camera.SetLocation(center + direction * fit / view.Zoom);
+        camera.LookAt(center);
+
+        var update = new Scene.UpdateContext { Camera = camera, TextRenderer = text, Timestep = 0, Uptime = time };
+        renderer.Uptime = time;
+        renderer.DeltaTime = 0;
+        node.AnimationController.Time = time;
+        renderer.Update(update);
+        renderer.Render(main!);
+        ink.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, OutlineThickness);
+        renderer.PostprocessRender(main!, display!, false);
+    }
+
     private void EnsureTargets(int width, int height)
     {
         if (main is not null && main.Width == width && main.Height == height)
@@ -240,8 +271,13 @@ public sealed partial class PreviewSession : IDisposable
             return;
         }
 
-        main?.Delete();
-        display?.Delete();
+        if (main is not null && display is not null)                   // a live view resizes often: keep the post-processing
+        {                                                               // and renderer resources (reloading them took about 1 s)
+            main.Resize(width, height);
+            display.Resize(width, height);
+            return;
+        }
+
         main = Framebuffer.Prepare("S2ModKit preview HDR", width, height, Samples, ImageFormat.RGBA16161616F, ImageFormat.D32);
         main.Initialize();
         renderer.MainFramebuffer = main;

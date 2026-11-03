@@ -3,6 +3,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="NJsonSchema" Version="11.6.1" />
     <PackageVersion Include="OpenTK.Windowing.Desktop" Version="4.9.4" />
     <PackageVersion Include="System.CommandLine" Version="2.0.2" />

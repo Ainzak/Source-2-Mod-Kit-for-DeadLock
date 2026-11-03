@@ -35,6 +35,22 @@ public sealed class DependencyBoundaryTests
     }
 
     [Fact]
+    public void CoreAndAdaptersDoNotDependOnTheDesktopApp()
+    {
+        var assemblies = new[]
+        {
+            typeof(ContentHash).Assembly, typeof(S2ModKitApplication).Assembly, typeof(S2ModKit.Adapters.Preview.PreviewSession).Assembly,
+            typeof(PngPreviewImageEncoder).Assembly,
+        };
+        foreach (var assembly in assemblies)
+        {
+            var names = assembly.GetReferencedAssemblies().Select(r => r.Name).ToArray();
+            Assert.DoesNotContain("S2ModKit", names);                  // the desktop app's assembly name
+            Assert.DoesNotContain(names, name => name?.StartsWith("Avalonia", StringComparison.Ordinal) == true);
+        }
+    }
+
+    [Fact]
     public void DomainHasNoProjectOrValveDependencies()
     {
         var references = typeof(ContentHash).Assembly.GetReferencedAssemblies().Select(reference => reference.Name).ToArray();
