@@ -116,7 +116,7 @@ public sealed class RecolorApplication(ITextureWorkshop workshop, IAddonArchiveW
             var compiled = await workshop.CompileAsync(texture, rgba, Path.Combine(work, "t" + textures.Count.ToString(CultureInfo.InvariantCulture)), cancellationToken).ConfigureAwait(false);
             var facts = workshop.Inspect(compiled);
             if (facts.Width != texture.Width || facts.Height != texture.Height || facts.Format != texture.Format || facts.MipLevels < texture.MipLevels)   // a fuller mip chain is allowed:
-                                                                                    // some mods ship a single level (shimmers at a distance)
+                                                                                                                                                           // some mods ship a single level (shimmers at a distance)
             {
                 throw Errors.Verification("RECOLOR_TEXTURE_CHANGED_LAYOUT",
                     $"'{group.Key}' compiled as {facts.Width}x{facts.Height} {facts.Format} {facts.MipLevels} mips; the source is {texture.Width}x{texture.Height} {texture.Format} {texture.MipLevels} mips.",
@@ -129,8 +129,16 @@ public sealed class RecolorApplication(ITextureWorkshop workshop, IAddonArchiveW
             await File.WriteAllBytesAsync(png, workshop.EncodePng(texture.Width, texture.Height, rgba), cancellationToken).ConfigureAwait(false);
             textures.Add(new
             {
-                path = logical, sourceArchive = texture.Archive, sourceHash = texture.CompiledHash.Value, outputHash = ContentHash.Compute(compiled).Value,
-                texture.Width, texture.Height, texture.Format, texture.MipLevels, outputMipLevels = facts.MipLevels, image = Path.GetFileName(png),
+                path = logical,
+                sourceArchive = texture.Archive,
+                sourceHash = texture.CompiledHash.Value,
+                outputHash = ContentHash.Compute(compiled).Value,
+                texture.Width,
+                texture.Height,
+                texture.Format,
+                texture.MipLevels,
+                outputMipLevels = facts.MipLevels,
+                image = Path.GetFileName(png),
             });
         }
 
@@ -189,7 +197,13 @@ public sealed class RecolorApplication(ITextureWorkshop workshop, IAddonArchiveW
 
     private static object Describe(ColorAdjustment c) => new
     {
-        c.HueShiftDegrees, c.Saturation, c.Brightness, tint = c.Tint?.ToString(), c.TintStrength, colorize = c.Colorize?.ToString(), c.ColorizeStrength,
+        c.HueShiftDegrees,
+        c.Saturation,
+        c.Brightness,
+        tint = c.Tint?.ToString(),
+        c.TintStrength,
+        colorize = c.Colorize?.ToString(),
+        c.ColorizeStrength,
     };
 }
 

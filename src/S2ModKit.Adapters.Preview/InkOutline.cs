@@ -283,7 +283,7 @@ internal sealed class InkOutline : IDisposable
             var allNormals = VBIB.GetNormalTangentArray(buffer, Field("NORMAL")).Item1;
             var texcoord = Field("TEXCOORD");
             var uvs = texcoord.SemanticName is null ? null : VBIB.GetVector2AttributeArray(buffer, texcoord);
-                var blend = Field("BLENDINDICES");
+            var blend = Field("BLENDINDICES");
             var weightField = Field("BLENDWEIGHT");
             if (weightField.SemanticName is null)
             {

@@ -20,8 +20,14 @@ internal static class Program
             var mods = new ModCatalog(AppSettings.Load(null)).LoadAsync().GetAwaiter().GetResult();
             File.WriteAllText(args[1], System.Text.Json.JsonSerializer.Serialize(mods.Select(mod => new
             {
-                mod.Name, Source = mod.Source.ToString(), mod.Loaded, Files = mod.Files.Select(Path.GetFileName), mod.Models, mod.KindText,
-                Entries = mod.Entries.Count, Install = mod.Install?.Receipt.Status,
+                mod.Name,
+                Source = mod.Source.ToString(),
+                mod.Loaded,
+                Files = mod.Files.Select(Path.GetFileName),
+                mod.Models,
+                mod.KindText,
+                Entries = mod.Entries.Count,
+                Install = mod.Install?.Receipt.Status,
             })));
             return 0;
         }
