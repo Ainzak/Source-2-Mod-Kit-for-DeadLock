@@ -1,20 +1,16 @@
 # S2ModKit user guide
 
-S2ModKit is a safety-first command-line workbench for narrowly scoped Deadlock compiled-model
-changes. Its supported lifecycle is:
-
-`import -> discover -> scaffold recipe -> plan -> build -> package -> explicit install -> player observation -> rollback`
-
-This guide explains the implemented path. It does not promise that every visual request is
-possible.
+S2ModKit is a Deadlock mod manager with a desktop app and a command-line toolkit.
+Start with [the desktop app](#7-desktop-app-preview-and-mod-list) for the mod list,
+model preview and installation. Features vary by version; see your release notes.
+The sections below also document the CLI for scripts and advanced model work.
 
 ## Before you begin
 
-Advanced directional body editing is currently an agent workflow. An agent chooses exact source
-components, authors XYZ factors and keep-fixed assertions, and uses `directional review` to show
-a matched source/predicted comparison before building.
-It does not automatically select a hand, chest or clothing, and offline verification does not
-establish live appearance or animated fit. [Agent authoring](AI-USAGE.md#agent-rules) describes the route.
+Geometry shaping and Blender position imports are currently CLI-only. They require explicit source
+selections and parameters; the app does not automatically select or reshape body parts or fit clothing.
+The [automation guide](AI-USAGE.md#agent-rules) describes advanced command workflows.
+Offline verification does not establish live appearance or animated fit.
 
 Use a verified Release build of the CLI and keep project data under an ignored workspace. Do not
 place game assets, generated VPKs, or reports in Git.
@@ -322,7 +318,7 @@ After review, use the ordinary plan/build/verify/package lifecycle.
 ### Protected directional and paired shaping (agent workflow)
 
 Advanced region shaping uses the `directional` or `paired` agent commands. See
-[AI usage](AI-USAGE.md) for source inspection, exact options, scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
+[CLI automation](AI-USAGE.md) for source inspection, exact options, scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
 evidence 12 and requires explicit disjoint fields, protected records and compatibility policies.
 Structural discovery is not anatomical selection or admission: authored options must pass the
 exact planner with complete all-LOD members before building. Review front/side silhouettes and
@@ -535,7 +531,7 @@ JSON mode, consume the code rather than localized prose.
 | `CLI_NUMBER_INVALID` | Use finite invariant numbers such as `1.25` or `-3.5`. |
 | `POST_WRITE_VERIFICATION_FAILED` | No candidate was published; inspect evidence and do not install. |
 
-## Giving the workflow to another agent
+## Optional: using a coding assistant
 
 Give a new coding agent this guide, [CLI-REFERENCE.md](CLI-REFERENCE.md), and
 [AI-USAGE.md](AI-USAGE.md), plus the exact project root, reviewed catalogue and base VPK, and desired

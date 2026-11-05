@@ -366,7 +366,7 @@ plus `previewPath` and `proofPath`. This is a bind-space prediction; runtime beh
 
 ### `s2mod paired discover`
 
-Agent-first JSON structural discovery (`component-discovery@7`). Labels select exact buffers,
+JSON structural discovery (`component-discovery@7`). Labels select exact buffers,
 not anatomy. Mapping alone is unsupported until authored fields pass the exact planner.
 
 | Option | Required | Meaning |

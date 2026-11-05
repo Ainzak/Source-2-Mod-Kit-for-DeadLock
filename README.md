@@ -1,13 +1,46 @@
 # Source 2 Mod Kit for Deadlock
 
-S2ModKit is a Windows CLI for deterministic, inspectable edits to Deadlock/Source 2 compiled
-character models. It discovers structural components, creates a typed recipe, rewrites only a
-verified selection, reopens and verifies the result, and can package it as a minimal VPK.
+S2ModKit is a Windows mod manager for Deadlock with a desktop interface and a command-line toolkit.
+Use **S2ModKit.exe** to browse installed mods, preview models and animations, and install or manage mods.
+Use **s2mod.exe** for command-line workflows, scripts and advanced model operations.
 
-This is pre-alpha software. It is independent community software and is not affiliated with Valve.
-It does not distribute Deadlock assets, models, textures, VPKs, or compiled game resources.
+The desktop app is the main interface. Geometry shaping and Blender position-import workflows are
+currently available through the CLI only. Routine mod management does not require an AI assistant.
 
-## Supported operations
+This is pre-alpha community software, independent of Valve. Game assets are not included.
+
+## Desktop app
+
+- Browse mods in the Deadlock addons folder and filter by name, hero or kind.
+- Preview models with animations, pause and seek through a clip, and compare a mod with the game's model.
+- Install finished VPK mods and manage mods installed through the app.
+
+**In development for 0.7.0:** management of all installed mods, a per-hero view, archive installation
+(zip/7z/rar), conflict and load-order controls, update checks and repair copies, part hiding,
+live recoloring, and mod/original sound playback. Check the release notes for the features in your download.
+
+## Getting started
+
+Download the [latest Windows release](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest),
+extract the portable zip, and run `S2ModKit.exe`. The app looks for Deadlock through Steam;
+use **Game folder...** if it cannot find the installation. The 3D preview needs OpenGL 4.6.
+
+See [the desktop guide](docs/USER-GUIDE.md#7-desktop-app-preview-and-mod-list) for the app,
+[the CLI reference](docs/CLI-REFERENCE.md) for commands, and
+[the compatibility matrix](docs/COMPATIBILITY.md) for model-editing limitations.
+The [automation guide](docs/AI-USAGE.md) is optional reference for scripts and coding assistants.
+
+## Command-line toolkit
+
+The CLI provides archive and model inspection, recipes, build verification, packaging and addon
+workflows. Advanced geometry operations require explicit selections and parameters; they do not
+automatically infer body parts or fit clothing. They remain available for technical users, with
+no geometry-shaping controls in the desktop app at present.
+
+<details>
+<summary>Advanced geometry operations and compatibility limits</summary>
+
+### Geometry and authoring commands (CLI only)
 
 - Remove complete draw-call components across every present LOD.
 - Uniformly scale and/or translate exclusively owned vertex components.
@@ -17,7 +50,7 @@ It does not distribute Deadlock assets, models, textures, VPKs, or compiled game
 - Opt into experimental complete-buffer scaling or axis-ramp region scaling on eligible parts.
 - Shape an eligible buffer with a local ellipsoid or disjoint mirrored pair, or apply one common
   field atomically to several eligible ordinary buffers.
-- Author experimental protected directional fields or disjoint pairs with source-backed agent
+- Author experimental protected directional fields or disjoint pairs with source-backed CLI
   commands and matched region/silhouette previews across every LOD.
 - Preview selected and excluded geometry across every LOD before building.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
@@ -36,18 +69,9 @@ sphere containment, occlusion proxies or collision correspondence. It is not ana
 hair, clothing and animation may not follow an enlarged part. See the compatibility matrix before
 using an experimental edit.
 
-Local, mirrored, coordinated and protected directional/paired actions are included in
-[v0.3.0, the recommended Windows download](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest).
-Advanced shaping uses the agent commands in [AI usage](docs/AI-USAGE.md). The older v0.2.0
-prerelease includes whole-buffer and axis-ramp actions. See [the user guide](docs/USER-GUIDE.md)
-for explicit field parameters and coordinated options.
+</details>
 
-**Breaking change in 0.4.0:** the interactive terminal mode (`s2mod interactive`) is retired. Use the
-non-interactive commands documented below and in the [CLI reference](docs/CLI-REFERENCE.md).
-
-## Quick start
-
-Check the configured adapter and codec, then list the verified heroes in the packaged catalogue:
+### CLI quick start
 
 ```powershell
 $s2mod = '.\s2mod.exe'
@@ -57,12 +81,8 @@ $s2mod = '.\s2mod.exe'
   --source-vpk '<Deadlock game>\citadel\pak01_dir.vpk'
 ```
 
-The catalogue contains portable logical paths only; the local VPK path is always supplied by the
-user. Only `addons install`, `addons install-current` and `addons rollback` can change a game addon
-root, and each requires explicit authorization.
-
-See [the user guide](docs/USER-GUIDE.md), [the CLI reference](docs/CLI-REFERENCE.md),
-[the AI usage guide](docs/AI-USAGE.md), and [the compatibility matrix](docs/COMPATIBILITY.md).
+JSON output supports scripts and other tools. The CLI is non-interactive;
+the former `s2mod interactive` terminal mode was retired in 0.4.0.
 
 ## Building from source
 
@@ -80,7 +100,7 @@ codec ships with the release (`meshoptimizer.dll` next to `s2mod.exe`; `S2MODKIT
 ## Safety and scope
 
 Imported inputs are never overwritten. Game-directory changes require explicit user authorization and
-are limited to the receipt-backed addon lifecycle. Offline verification is not proof that Deadlock
+use the addon management commands and their verification checks. Offline verification is not proof that Deadlock
 will render or behave correctly; live player testing remains a separate step.
 
 ## License

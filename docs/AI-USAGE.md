@@ -1,8 +1,11 @@
-# AI usage guide
+# CLI automation guide
 
-S2ModKit is designed so an AI agent can inspect and plan a change without guessing Source 2
-identities. The non-interactive commands are the automation contract and the only supported command
-surface; the former `interactive` terminal mode was retired in 0.4.0.
+The desktop app covers everyday mod management. This optional guide covers advanced CLI workflows
+for technical users, scripts and coding assistants. No AI service is required to run S2ModKit.
+
+Non-interactive commands and JSON output support reproducible automation. Geometry shaping and
+Blender position imports currently use the CLI; the former `interactive` terminal mode was retired
+in 0.4.0. This page keeps its existing URL for compatibility with older links.
 
 For an existing-mesh Blender sculpt, use the [position authoring commands](POSITION-AUTHORING.md).
 Keep the trusted bundle hash separate, return every selected LOD and validate against immutable source.
@@ -10,8 +13,7 @@ Keep the trusted bundle hash separate, return every selected LOD and validate ag
 Use normal `plan`, `build`, `verify` and minimal packaging: complete compiled reopen verification
 is required before publication. For one disjoint all-LOD draw removal, use `authoring compose-recipe`
 to create recipe 13; it resolves both operations against the original input and merges compatible
-metadata writes. Consumer/pose/runtime behavior stays untested. Interactive parity
-is not required for this agent workflow.
+metadata writes. Consumer/pose/runtime behavior stays untested. These authoring commands are currently CLI-only.
 
 Paired directional intent has strict operation-10 / recipe-11 / plan-7 / evidence-12 contracts
 and a separate `paired_directional_field_options@1` artifact. Explicit recipe-11 intent can now be
@@ -47,7 +49,7 @@ separate authorized action. See [the experimental workflow](USER-GUIDE.md#experi
 
 ## Agent rules
 
-Directional editing is agent-first. Use `components list --experimental --directional`, choose
+Directional editing uses CLI commands and explicit option files. Use `components list --experimental --directional`, choose
 source-derived schema-6 IDs, and run `directional inspect` with an ignored `--output-root`.
 Its source report contains complete member maps, selected points, excluded context and optional
 root-bone assertion candidates. `DIRECTIONAL_OPTIONS_REQUIRED` means structural mapping only;
