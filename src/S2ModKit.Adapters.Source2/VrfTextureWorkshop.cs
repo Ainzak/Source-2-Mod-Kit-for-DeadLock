@@ -14,12 +14,17 @@ namespace S2ModKit.Adapters.Source2;
 public sealed record ColorTextureUse(string Mesh, string Material, string Texture, string Archive);
 
 /// <summary>
-/// Texture work with ValveResourceFormat (decode, the compiler definition) and the Source 2 SDK resource compiler
-/// (<paramref name="resourceCompiler"/>, with the SDK's <c>game</c> folder <paramref name="sdkGame"/> mounted for its
-/// citadel and core files). A texture is rebuilt from its own definition (TextureExtract.ToValveTexture) under its own
-/// name, so the compiled file lands on the original path with the original format and mips.
+/// Texture work with ValveResourceFormat (decode, the compiler definition). Recolored pixels are written back in one of
+/// two ways:
+/// <list type="bullet">
+/// <item>in place (default, no Valve tools): the original compiled texture is kept and only its pixel data is replaced,
+/// every mip level re-encoded in the texture's own format with BCnEncoder.NET;</item>
+/// <item>with the Source 2 SDK resource compiler (<paramref name="resourceCompiler"/>, with the SDK's <c>game</c> folder
+/// <paramref name="sdkGame"/> mounted for its citadel and core files): the texture is rebuilt from its own definition
+/// (TextureExtract.ToValveTexture) under its own name.</item>
+/// </list>
 /// </summary>
-public sealed class VrfTextureWorkshop(string resourceCompiler, string sdkGame) : ITextureWorkshop
+public sealed class VrfTextureWorkshop(string? resourceCompiler = null, string? sdkGame = null) : ITextureWorkshop
 {
     public Task<DecodedTexture> DecodeAsync(IReadOnlyList<string> archives, string texturePath, CancellationToken cancellationToken = default)
     {
@@ -72,6 +77,13 @@ public sealed class VrfTextureWorkshop(string resourceCompiler, string sdkGame) 
     public async Task<byte[]> CompileAsync(DecodedTexture texture, byte[] rgba, string workDirectory, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(texture);
+        if (resourceCompiler is null || sdkGame is null)
+        {
+            return InPlaceTexture.Write(Find([texture.Archive], texture.Path + "_c")?.Bytes
+                ?? throw Errors.Input("RECOLOR_TEXTURE_MISSING", $"'{texture.Path}_c' is no longer in '{texture.Archive}'.", "Run the recolor again."),
+                texture.Path + "_c", texture.Width, texture.Height, rgba);
+        }
+
         var content = Path.Combine(workDirectory, "content", "lab");
         var game = Path.Combine(workDirectory, "game", "lab");
         Directory.CreateDirectory(game);
@@ -207,5 +219,5 @@ public sealed class VrfTextureWorkshop(string resourceCompiler, string sdkGame) 
         return (Path.IsPathRooted(relative) ? Path.GetFullPath(to) : relative).Replace('\\', '/');
     }
 
-    public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{resourceCompiler} ({sdkGame})");
+    public override string ToString() => resourceCompiler is null ? "in place (BCnEncoder.NET)" : string.Create(CultureInfo.InvariantCulture, $"{resourceCompiler} ({sdkGame})");
 }

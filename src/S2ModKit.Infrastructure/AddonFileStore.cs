@@ -190,7 +190,7 @@ public sealed class AddonFileStore : IAddonFileStore
         }
     }
 
-    private static string RequireSafeRoot(string addonsRoot)
+    internal static string RequireSafeRoot(string addonsRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(addonsRoot);
         var root = Path.GetFullPath(addonsRoot);
@@ -207,7 +207,7 @@ public sealed class AddonFileStore : IAddonFileStore
         return root;
     }
 
-    private static string ResolveChild(string root, string fileName)
+    internal static string ResolveChild(string root, string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)
             || fileName.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0
@@ -223,7 +223,7 @@ public sealed class AddonFileStore : IAddonFileStore
             : throw Errors.Input("ADDON_PATH_ESCAPE", $"'{fileName}' escapes '{root}'.", "Use a single safe file name.");
     }
 
-    private static string RequireRegularFile(string path)
+    internal static string RequireRegularFile(string path)
     {
         var full = Path.GetFullPath(path);
         if (!File.Exists(full) || (File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
@@ -241,14 +241,17 @@ public sealed class AddonFileStore : IAddonFileStore
 }
 
 /// <summary>Reads Deadlock Mod Manager records without changing them: <c>.dmm.json</c> in the addons folder (mod id to
-/// file names) and the manager's <c>state.json</c> (mod names, installed files).</summary>
-public sealed class ModManagerStateReader : IModManagerStateReader
+/// file names) and the manager's <c>state.json</c> (mod names, installed files). Two weaker sources name files those records
+/// do not list: HELLCAT's <c>.godhand-manifest.json</c> (names only; HELLCAT reserves no slots for S2ModKit), and
+/// <paramref name="appRecords"/>, what the app's own rename journals say a file is (file name to mod id and name), so a mod
+/// keeps its name after a manager forgets the file. A mod id found there still takes its name from the manager's state.</summary>
+public sealed class ModManagerStateReader(IReadOnlyDictionary<string, ManagedModInfo>? appRecords = null) : IModManagerStateReader
 {
     public async Task<ModManagerView> ReadAsync(string addonsRoot, string? managerStatePath, CancellationToken cancellationToken = default)
     {
         var mods = new Dictionary<string, ManagedModInfo>(StringComparer.OrdinalIgnoreCase);
         var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        var known = new Dictionary<string, ManagedModInfo>(StringComparer.Ordinal);   // by mod id, from the state file
         var found = false;
         using (var state = await TryReadAsync(managerStatePath, cancellationToken).ConfigureAwait(false))
         {
@@ -259,9 +262,11 @@ public sealed class ModManagerStateReader : IModManagerStateReader
                 {
                     var name = Text(mod, "name");
                     var remoteId = Text(mod, "remoteId");
-                    if (remoteId is not null && name is not null)
+                    var hero = Text(mod, "hero");
+                    var added = Time(mod, "downloadedAt") ?? Time(mod, "createdAt");
+                    if (remoteId is not null)
                     {
-                        names[remoteId] = name;
+                        known[remoteId] = new ManagedModInfo(remoteId, name, false, hero, added);
                     }
 
                     foreach (var file in Strings(mod, "installedVpks"))
@@ -269,7 +274,7 @@ public sealed class ModManagerStateReader : IModManagerStateReader
                         reserved.Add(file);
                         if (Text(mod, "status") == "installed")
                         {
-                            mods[file] = new ManagedModInfo(remoteId ?? Text(mod, "id") ?? "?", name, true);
+                            mods[file] = new ManagedModInfo(remoteId ?? Text(mod, "id") ?? "?", name, true, hero, added);
                         }
                     }
                 }
@@ -283,11 +288,11 @@ public sealed class ModManagerStateReader : IModManagerStateReader
                 found = true;
                 foreach (var entry in dmmMods.EnumerateObject())
                 {
-                    names.TryGetValue(entry.Name, out var name);
+                    known.TryGetValue(entry.Name, out var record);
                     var enabled = entry.Value.TryGetProperty("enabled", out var flag) && flag.ValueKind == JsonValueKind.True;
                     foreach (var file in Strings(entry.Value, "currentVpks").Concat(Strings(entry.Value, "disabledVpks")))
                     {
-                        mods[file] = new ManagedModInfo(entry.Name, name, enabled);
+                        mods[file] = new ManagedModInfo(entry.Name, record?.Name, enabled, record?.Hero, record?.AddedUtc);
                     }
 
                     foreach (var file in Strings(entry.Value, "currentVpks").Concat(Strings(entry.Value, "originalVpkNames")))
@@ -298,8 +303,52 @@ public sealed class ModManagerStateReader : IModManagerStateReader
             }
         }
 
+        var hellcat = new Dictionary<string, ManagedModInfo>(StringComparer.Ordinal);
+        using (var manifest = await TryReadAsync(Path.Combine(Path.GetFullPath(addonsRoot), ".godhand-manifest.json"), cancellationToken).ConfigureAwait(false))
+        {
+            if (manifest is not null && manifest.RootElement.TryGetProperty("mods", out var godhandMods) && godhandMods.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var entry in godhandMods.EnumerateObject())
+                {
+                    var enabled = entry.Value.TryGetProperty("enabled", out var flag) && flag.ValueKind == JsonValueKind.True;
+                    hellcat[entry.Name] = new ManagedModInfo(entry.Name, Text(entry.Value, "name"), false, null, Time(entry.Value, "deployedAt"));
+                    foreach (var file in Strings(entry.Value, "installedVpks"))
+                    {
+                        mods.TryAdd(file, hellcat[entry.Name] with { Enabled = enabled });
+                    }
+                }
+            }
+        }
+
+        // Managers park a disabled mod's files as <mod id>_<original name>.vpk; take those the records above do not list.
+        if ((known.Count > 0 || hellcat.Count > 0) && Directory.Exists(addonsRoot))
+        {
+            foreach (var path in Directory.EnumerateFiles(addonsRoot, "*.vpk"))
+            {
+                var file = Path.GetFileName(path);
+                var separator = file.IndexOf('_', StringComparison.Ordinal);
+                if (separator > 0 && !mods.ContainsKey(file)
+                    && (known.TryGetValue(file[..separator], out var record) || hellcat.TryGetValue(file[..separator], out record)))
+                {
+                    mods[file] = record;
+                }
+            }
+        }
+
+        foreach (var (file, record) in appRecords ?? new Dictionary<string, ManagedModInfo>())
+        {
+            if (!mods.ContainsKey(file))
+            {
+                var manager = known.GetValueOrDefault(record.ModId) ?? hellcat.GetValueOrDefault(record.ModId);
+                mods[file] = manager is null ? record : manager with { Enabled = record.Enabled };
+            }
+        }
+
         return new ModManagerView(mods, reserved, found);
     }
+
+    private static DateTimeOffset? Time(JsonElement element, string name) =>
+        DateTimeOffset.TryParse(Text(element, name), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var time) ? time : null;
 
     private static bool TryGetLocalMods(JsonElement root, out JsonElement localMods)
     {

@@ -11,21 +11,23 @@ This is pre-alpha community software, independent of Valve. Game assets are not 
 
 ## Desktop app
 
-- Browse mods in the Deadlock addons folder and filter by name, hero or kind.
-- Preview models with animations, pause and seek through a clip, and compare a mod with the game's model.
-- Install finished VPK mods and manage mods installed through the app.
-
-**In development for 0.7.0:** management of all installed mods, a per-hero view, archive installation
-(zip/7z/rar), conflict and load-order controls, update checks and repair copies, part hiding,
-live recoloring, and mod/original sound playback. Check the release notes for the features in your download.
+- Every mod in the Deadlock addons folder in one list or grouped by hero; filter by name, hero or kind.
+- Enable, disable and delete any mod (renamed in place, nothing copied); install from VPK, zip, 7z or rar.
+- See which mods replace the same files and which one wins; change the load order.
+- After a game update, check every mod and repair the ones that only need stale files removed.
+- Preview models with animations and compare a mod with the game's model.
+- Hide parts of a model, recolor parts with a live preview, and build the edited copy; no Valve tools needed.
+- Play a sound mod's sounds next to the game's originals.
+- Installer with a free choice of folder, and new versions offered in the app.
 
 ## Getting started
 
-Download the [latest Windows release](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest),
-extract the portable zip, and run `S2ModKit.exe`. The app looks for Deadlock through Steam;
-use **Game folder...** if it cannot find the installation. The 3D preview needs OpenGL 4.6.
+Download the [latest Windows release](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest):
+run the setup program and choose where to install it (the app then offers new versions itself), or extract the
+portable zip anywhere you can write. The app looks for Deadlock through Steam; use **Settings > Game folder...** if it
+cannot find the installation. The 3D preview needs OpenGL 4.6.
 
-See [the desktop guide](docs/USER-GUIDE.md#7-desktop-app-preview-and-mod-list) for the app,
+See [the desktop guide](docs/USER-GUIDE.md#7-desktop-app-mod-manager-preview-parts-and-colours) for the app,
 [the CLI reference](docs/CLI-REFERENCE.md) for commands, and
 [the compatibility matrix](docs/COMPATIBILITY.md) for model-editing limitations.
 The [automation guide](docs/AI-USAGE.md) is optional reference for scripts and coding assistants.

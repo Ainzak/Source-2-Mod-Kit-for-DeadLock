@@ -6,8 +6,10 @@
     <PackageVersion Include="Avalonia" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="BCnEncoder.Net" Version="2.3.0" />
     <PackageVersion Include="NJsonSchema" Version="11.6.1" />
     <PackageVersion Include="OpenTK.Windowing.Desktop" Version="4.9.4" />
+    <PackageVersion Include="SharpCompress" Version="1.0.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.2" />
     <PackageVersion Include="ValvePak" Version="5.0.2.177" />
     <PackageVersion Include="ValveResourceFormat" Version="20.1.7467" />

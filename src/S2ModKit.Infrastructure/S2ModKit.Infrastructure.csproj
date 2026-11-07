@@ -3,5 +3,7 @@
     <ProjectReference Include="..\S2ModKit.Application\S2ModKit.Application.csproj" />
     <ProjectReference Include="..\S2ModKit.Domain\S2ModKit.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" />
+  </ItemGroup>
 </Project>
-

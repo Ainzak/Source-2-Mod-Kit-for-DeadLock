@@ -91,6 +91,34 @@ public sealed class AddonFileApplicationTests
     }
 
     [Fact]
+    public async Task ArchiveRootFilesNeverCollideAndSharedFilesAreAllowedOnRequestButNotAnIdenticalCopy()
+    {
+        using var directory = new TestDirectory();
+        var token = TestContext.Current.CancellationToken;
+        var fixture = await Fixture.CreateAsync(directory, token);
+        await WriteVpkAsync(Path.Combine(fixture.Addons, "pak03_dir.vpk"), token, "README.txt", Sound);
+        var readmeOnly = await fixture.PackageAsync(token, Model, "README.txt");
+
+        var installed = await fixture.Application.InstallAsync(fixture.Request(readmeOnly, "auto"), token);   // README.txt in both: no conflict
+        Assert.Equal("installed", installed.Status);
+
+        using var second = new TestDirectory();
+        var other = await Fixture.CreateAsync(second, token);
+        await WriteVpkAsync(Path.Combine(other.Addons, "pak03_dir.vpk"), token, Model);
+        var sharing = await other.PackageAsync(token, Model, Texture);
+        await Assert.ThrowsAsync<S2ModKitException>(() => other.Application.InstallAsync(other.Request(sharing, "auto"), token));
+        var allowed = await other.Application.InstallAsync(other.Request(sharing, "auto") with { AllowSharedFiles = true }, token);
+        Assert.Equal("installed", allowed.Status);
+
+        using var third = new TestDirectory();
+        var copy = await Fixture.CreateAsync(third, token);
+        var package = await copy.PackageAsync(token, Model);
+        File.Copy(package, Path.Combine(copy.Addons, "pak03_dir.vpk"));
+        var duplicate = await Assert.ThrowsAsync<S2ModKitException>(() => copy.Application.InstallAsync(copy.Request(package, "auto") with { AllowSharedFiles = true }, token));
+        Assert.Equal("ADDON_FILE_COLLISION", duplicate.Error.Code);            // an identical copy is still refused
+    }
+
+    [Fact]
     public async Task InactiveManagerCopiesAndOtherResourceKindsDoNotBlockInstall()
     {
         using var directory = new TestDirectory();

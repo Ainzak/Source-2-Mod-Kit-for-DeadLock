@@ -36,7 +36,7 @@ internal sealed class PreviewControl : OpenGlControlBase
     private Vector2 pan;
     private string? clip;
     private double lastFrame, lastProgress, fpsWindowStart;
-    private int frames, highlighted = -1;
+    private int frames;
 
     /// <summary>A session opened (parts, animations, open time) or failed (message).</summary>
     public event Action<PreviewSession?, TimeSpan, string?>? Opened;
@@ -56,6 +56,33 @@ internal sealed class PreviewControl : OpenGlControlBase
 
     public int Highlight { get; set; } = -1;
 
+    /// <summary>Parts (indices into the session's parts) to hide; cleared when another model opens.</summary>
+    public HashSet<int> Hidden { get; } = [];
+
+    private (Point At, Action<int?> Done)? pick;
+    private readonly Dictionary<int, S2ModKit.Application.ColorAdjustment?> colorRequests = [];
+
+    /// <summary>Recolors a part in the preview at the next frame (null: original colours).</summary>
+    public void RequestPartColor(int part, S2ModKit.Application.ColorAdjustment? change) => colorRequests[part] = change;
+
+    private readonly Dictionary<int, (S2ModKit.Application.RgbColor? Target, float Tolerance)> rangeRequests = [];
+    private (Point At, Action<(int Part, S2ModKit.Application.RgbColor Color)?> Done)? sample;
+
+    /// <summary>Limits a part's recolor to colours near <paramref name="target"/> at the next frame (null: the whole part).</summary>
+    public void RequestColorRange(int part, S2ModKit.Application.RgbColor? target, float tolerance) => rangeRequests[part] = (target, tolerance);
+
+    /// <summary>Samples the part and its original texture colour under <paramref name="at"/> after the next frame.</summary>
+    public void RequestSample(Point at, Action<(int Part, S2ModKit.Application.RgbColor Color)?> done) => sample = (at, done);
+
+    /// <summary>Parts recolored in the preview, with their change.</summary>
+    public Dictionary<int, S2ModKit.Application.ColorAdjustment> PartColors { get; } = [];
+
+    /// <summary>The open session (UI thread: the app renders on it).</summary>
+    public PreviewSession? Session => session;
+
+    /// <summary>Finds the visible part under <paramref name="at"/> (control coordinates) after the next frame.</summary>
+    public void RequestPick(Point at, Action<int?> done) => pick = (at, done);
+
     /// <summary>Emulated ink outline thickness (model units before the material mask); 0 = off.</summary>
     public float Outline { get; set; } = PreviewSession.DefaultOutlineThickness;
 
@@ -70,6 +97,10 @@ internal sealed class PreviewControl : OpenGlControlBase
     /// <summary>Opens (or swaps to) a session on the next frame; the camera, clip and time are kept where possible.</summary>
     public void Open(PreviewSessionOptions options)
     {
+        Hidden.Clear();
+        PartColors.Clear();
+        colorRequests.Clear();
+        rangeRequests.Clear();
         pending = options;
         loadingFrameShown = false;
         RequestNextFrameRendering();
@@ -209,8 +240,47 @@ internal sealed class PreviewControl : OpenGlControlBase
         session.OutlineThickness = Outline;
         ApplyHighlight(now);
         var view = new PreviewView("live", yaw, pitch, zoom, height);
+        foreach (var index in Enumerable.Range(0, session.Parts.Count))
+        {
+            if (Hidden.Contains(index) != session.HiddenParts.Contains(index))
+            {
+                session.SetPartHidden(index, Hidden.Contains(index));
+            }
+        }
+
+        foreach (var (part, range) in rangeRequests)
+        {
+            if (part >= 0 && part < session.Parts.Count)
+            {
+                session.SetPartColorRange(part, range.Target, range.Tolerance);
+            }
+        }
+
+        rangeRequests.Clear();
+        foreach (var (part, change) in colorRequests)
+        {
+            if (part >= 0 && part < session.Parts.Count)
+            {
+                session.SetPartColor(part, change);
+            }
+        }
+
+        colorRequests.Clear();
         session.Present(fb, view, width, heightPx, pan: pan);
         AfterFrame?.Invoke(session, view, width, heightPx, now);
+        if (sample is { } sampling)
+        {
+            sample = null;
+            var sampled = session.SamplePartColor((float)(sampling.At.X * scale), (float)(sampling.At.Y * scale), width, heightPx);
+            Post(() => sampling.Done(sampled));
+        }
+
+        if (pick is { } request)
+        {
+            pick = null;
+            var picked = session.PickPart((float)(request.At.X * scale), (float)(request.At.Y * scale), width, heightPx);
+            Post(() => request.Done(picked));
+        }
 
         frames++;
         if (now - fpsWindowStart >= 1.0)
@@ -236,7 +306,6 @@ internal sealed class PreviewControl : OpenGlControlBase
         var started = Stopwatch.StartNew();
         session?.Dispose();
         session = null;
-        highlighted = -1;
         try
         {
             session = PreviewSession.Open(options);
@@ -284,25 +353,9 @@ internal sealed class PreviewControl : OpenGlControlBase
 
     private void ApplyHighlight(double now)
     {
-        if (session is null)
+        if (session is not null)
         {
-            return;
-        }
-
-        if (Highlight != highlighted)
-        {
-            if (highlighted >= 0 && highlighted < session.Parts.Count)
-            {
-                session.SetPartTint(highlighted, Vector4.One);
-            }
-
-            highlighted = Highlight;
-        }
-
-        if (highlighted >= 0 && highlighted < session.Parts.Count)
-        {
-            var k = 0.5f + 0.5f * MathF.Sin((float)now * 6f);
-            session.SetPartTint(highlighted, new Vector4(1f + k, 1f + 0.6f * k, 0.4f, 1f));
+            session.HighlightPart = Highlight;                               // drawn as an overlay: works for every material
         }
     }
 

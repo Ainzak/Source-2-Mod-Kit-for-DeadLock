@@ -15,13 +15,16 @@ namespace S2ModKit.Adapters.Preview;
 /// every vertex pushed along its own normal by thickness x the red channel of the material's g_tNprOutlineMask, drawn
 /// with front faces culled into the scene depth, multiplying the colour behind it by the material's solid outline
 /// colour (g_vSolidOutlineTint + g_vSolidOutlineAdditive; near black otherwise). Materials with F_DISABLE_NPR_OUTLINE=1
-/// get none. Alpha-tested materials (F_ALPHA_TEST) lose the triangles whose colour texture is transparent at all three
+/// get none, nor do translucent or additive ones (F_TRANSLUCENT, F_ADDITIVE_BLEND): a shell behind Paige's lenses showed
+/// through them as dark glasses (2026-11-04). Alpha-tested materials (F_ALPHA_TEST) lose the triangles whose colour texture is transparent at all three
 /// corners: mods hide clothes with a transparent material, and the game shows no outline there (a shell drawn from them
 /// put black clothes with holes on Bottom Heavy Vindicta, 2026-11-03). Where the shell pokes through the surface
 /// (creases, tight folds) it shows as dark lines, as in game.
 /// </summary>
 internal sealed class InkOutline : IDisposable
 {
+    private static readonly string[] NoOutlineFlags = ["F_DISABLE_NPR_OUTLINE", "F_TRANSLUCENT", "F_ADDITIVE_BLEND"];
+
     private const string VertexSource = """
         #version 460 core
         layout(location = 0) in vec3 aPosition;
@@ -53,6 +56,7 @@ internal sealed class InkOutline : IDisposable
         this.node = node;
         var active = node.RenderableMeshes.Select(mesh => mesh.MeshIndex).ToHashSet();
         var indices = new List<uint>();
+        var drawIndex = 0;                                                  // every draw call counts, as in PreviewSession.Parts
         foreach (var (mesh, meshIndex, _, _) in model.GetEmbeddedMeshesForLod(0))
         {
             if (!active.Contains(meshIndex))
@@ -68,10 +72,12 @@ internal sealed class InkOutline : IDisposable
                     var style = OutlineStyle.Read(loader, draw["m_material"].ToString(CultureInfo.InvariantCulture));
                     if (style is null)
                     {
+                        drawIndex++;
                         continue;
                     }
 
                     var part = Part.Read(mesh.VBIB, draw, remap, style, vertexCount, indices);
+                    part.DrawIndex = drawIndex++;
                     parts.Add(part);
                     vertexCount += part.Positions.Length;
                 }
@@ -99,6 +105,9 @@ internal sealed class InkOutline : IDisposable
 
     public int Parts => parts.Count;
 
+    /// <summary>Draw calls (in <see cref="PreviewSession.Parts"/> order) whose shell is not drawn: hidden parts.</summary>
+    public HashSet<int> Hidden { get; } = [];
+
     /// <summary>Skins the current pose, then draws the shell into <paramref name="framebuffer"/> (its depth is the scene's).</summary>
     public void Draw(int framebuffer, int width, int height, Matrix4x4 viewProjectionMatrix, float thickness)
     {
@@ -115,7 +124,11 @@ internal sealed class InkOutline : IDisposable
         var offset = 0;
         foreach (var part in parts)
         {
-            part.Write(bones, transform, thickness, data, offset);
+            if (!Hidden.Contains(part.DrawIndex))
+            {
+                part.Write(bones, transform, thickness, data, offset);      // a hidden part's vertices stay at zero: no area, nothing drawn
+            }
+
             offset += part.Positions.Length * 6;
         }
 
@@ -202,9 +215,9 @@ internal sealed class InkOutline : IDisposable
                 return new OutlineStyle(new Vector3(0.05f), _ => 1f, null, 0f);
             }
 
-            if (material.IntParams.TryGetValue("F_DISABLE_NPR_OUTLINE", out var disabled) && disabled != 0)
+            if (NoOutlineFlags.Any(flag => material.IntParams.TryGetValue(flag, out var on) && on != 0))
             {
-                return null;
+                return null;                                                 // see-through materials (glasses) get no outline either
             }
 
             var color = new Vector3(0.05f);
@@ -265,6 +278,8 @@ internal sealed class InkOutline : IDisposable
         public required Vector4[] Weights { get; init; }
         public required int BonesPerVertex { get; init; }
         public required Vector3 Color { get; init; }
+
+        public int DrawIndex { get; set; }
 
         public static Part Read(VBIB vbib, KVObject draw, int[] remap, OutlineStyle style, int vertexBase, List<uint> indices)
         {

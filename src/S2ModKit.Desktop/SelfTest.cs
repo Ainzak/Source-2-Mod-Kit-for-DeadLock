@@ -20,6 +20,9 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
     private int frames;
     private double second = 1;
     private int stage;
+    private int hiddenPart = -1;
+    private int? pickedAtCentre, pickedAfterHide;
+    private string? sampleInfo;
     private double openSeconds;
     private string? error;
 
@@ -59,6 +62,26 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
         else if (stage == 1 && now > 4)
         {
             File.WriteAllBytes(prefix + "-highlight.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+            session.HighlightPart = -1;                                          // the control clears it only at the next frame: the captures below need it off
+            pickedAtCentre = session.PickPart(width / 2f, height / 2f, width, height);   // the frame just drawn at this size
+            hiddenPart = preview.Highlight;
+            session.SetPartHidden(hiddenPart, true);
+            File.WriteAllBytes(prefix + "-hidden.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+            pickedAfterHide = session.PickPart(width / 2f, height / 2f, width, height);
+            session.SetPartHidden(hiddenPart, false);
+            session.SetPartColor(hiddenPart, new S2ModKit.Application.ColorAdjustment(Colorize: new S2ModKit.Application.RgbColor(0.8f, 0.1f, 0.15f), Brightness: 1.4f));
+            File.WriteAllBytes(prefix + "-recolor.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+            if (session.SamplePartColor(width * 0.54f, height * 0.40f, width, height) is { } sampled)   // clothes painted on the same mesh: limit to one colour
+            {
+                session.SetPartColorRange(sampled.Part, sampled.Color, 0.12f);
+                sampleInfo = $"part {sampled.Part} colour {sampled.Color}; mask {(session.PartColorMask(sampled.Part) is { } m ? $"{m.Mask.Count(v => v > 0.99f)} full, {m.Mask.Count(v => v > 0 && v <= 0.99f)} partial of {m.Mask.Length}" : "none")}";
+                session.SetPartColor(sampled.Part, new S2ModKit.Application.ColorAdjustment(Colorize: new S2ModKit.Application.RgbColor(0.8f, 0.1f, 0.15f), Brightness: 1.4f));
+                File.WriteAllBytes(prefix + "-range.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                session.SetPartColorRange(sampled.Part, null, 0);
+                session.SetPartColor(sampled.Part, null);
+            }
+
+            session.SetPartColor(hiddenPart, null);
             preview.Highlight = -1;
             preview.Playing = true;
             preview.ForcedSize = (1920, 1080);                     // the pass criterion's size, whatever the window
@@ -87,6 +110,10 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
             frameSizes = sizes,
             longestFrameMs = longest,
             parts = session?.Parts.Count,
+            hiddenPart,
+            pickedAtCentre,
+            pickedAfterHide,
+            sampleInfo,
             animations = session?.Animations.Count,
         };
         File.WriteAllText(prefix + ".json", JsonSerializer.Serialize(record, Indented));

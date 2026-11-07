@@ -38,8 +38,8 @@
     { "heroId": "dynamo", "displayName": "Dynamo", "aliases": [], "rosterStatus": "active", "resources": [
       { "resourceId": "dynamo.primary", "displayName": "Dynamo", "role": "primary_model", "logicalPath": "models/heroes_wip/dynamo/dynamo.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 11 } },
-    { "heroId": "familiar", "displayName": "Familiar", "aliases": [], "rosterStatus": "active", "resources": [
-      { "resourceId": "familiar.primary", "displayName": "Familiar", "role": "primary_model", "logicalPath": "models/heroes_wip/familiar/familiar_wip.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
+    { "heroId": "familiar", "displayName": "Rem", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "familiar.primary", "displayName": "Rem", "role": "primary_model", "logicalPath": "models/heroes_wip/familiar/familiar_wip.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 79 } },
     { "heroId": "grey-talon", "displayName": "Grey Talon", "aliases": ["orion"], "rosterStatus": "active", "resources": [
       { "resourceId": "grey-talon.primary", "displayName": "Grey Talon", "role": "primary_model", "logicalPath": "models/heroes_staging/archer/archer.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
@@ -93,8 +93,8 @@
     { "heroId": "pocket", "displayName": "Pocket", "aliases": ["synth"], "rosterStatus": "active", "resources": [
       { "resourceId": "pocket.primary", "displayName": "Pocket", "role": "primary_model", "logicalPath": "models/heroes_wip/pocket/pocket.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 50 } },
-    { "heroId": "priest", "displayName": "Priest", "aliases": [], "rosterStatus": "active", "resources": [
-      { "resourceId": "priest.primary", "displayName": "Priest", "role": "primary_model", "logicalPath": "models/heroes_wip/priest/priest.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
+    { "heroId": "priest", "displayName": "Venator", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "priest.primary", "displayName": "Venator", "role": "primary_model", "logicalPath": "models/heroes_wip/priest/priest.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 65 } },
     { "heroId": "rat-king", "displayName": "Rat King", "aliases": ["ratking"], "rosterStatus": "active", "resources": [
       { "resourceId": "rat-king.primary", "displayName": "Rat King", "role": "primary_model", "logicalPath": "models/heroes_wip/ratking/ratking.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
@@ -111,8 +111,8 @@
     { "heroId": "solomon", "displayName": "Solomon", "aliases": ["chessmaster"], "rosterStatus": "experimental", "resources": [
       { "resourceId": "solomon.primary", "displayName": "Solomon", "role": "primary_model", "logicalPath": "models/heroes_wip/chessmaster/chessmaster.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 85 } },
-    { "heroId": "unicorn", "displayName": "Unicorn", "aliases": [], "rosterStatus": "active", "resources": [
-      { "resourceId": "unicorn.primary", "displayName": "Unicorn", "role": "primary_model", "logicalPath": "models/heroes_wip/unicorn/unicorn.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
+    { "heroId": "unicorn", "displayName": "Celeste", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "unicorn.primary", "displayName": "Celeste", "role": "primary_model", "logicalPath": "models/heroes_wip/unicorn/unicorn.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 81 } },
     { "heroId": "victor", "displayName": "Victor", "aliases": ["frank"], "rosterStatus": "active", "resources": [
       { "resourceId": "victor.primary", "displayName": "Victor", "role": "primary_model", "logicalPath": "models/heroes_wip/frank/frank.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
@@ -132,8 +132,8 @@
     { "heroId": "warden", "displayName": "Warden", "aliases": [], "rosterStatus": "active", "resources": [
       { "resourceId": "warden.primary", "displayName": "Warden", "role": "primary_model", "logicalPath": "models/heroes_staging/warden/warden.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 25 } },
-    { "heroId": "werewolf", "displayName": "Werewolf", "aliases": [], "rosterStatus": "active", "resources": [
-      { "resourceId": "werewolf.primary", "displayName": "Werewolf", "role": "primary_model", "logicalPath": "models/heroes_wip/werewolf/werewolf.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
+    { "heroId": "werewolf", "displayName": "Silver", "aliases": [], "rosterStatus": "active", "resources": [
+      { "resourceId": "werewolf.primary", "displayName": "Silver", "role": "primary_model", "logicalPath": "models/heroes_wip/werewolf/werewolf.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 80 } },
     { "heroId": "wraith", "displayName": "Wraith", "aliases": [], "rosterStatus": "active", "resources": [
       { "resourceId": "wraith.primary", "displayName": "Wraith", "role": "primary_model", "logicalPath": "models/heroes_wip/wraith/wraith.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }

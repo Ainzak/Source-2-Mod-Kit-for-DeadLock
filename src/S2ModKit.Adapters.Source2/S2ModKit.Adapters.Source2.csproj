@@ -8,6 +8,7 @@
     <ProjectReference Include="..\S2ModKit.Geometry\S2ModKit.Geometry.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="BCnEncoder.Net" />
     <PackageReference Include="ValveResourceFormat" />
   </ItemGroup>
   <ItemGroup>

@@ -26,7 +26,9 @@ public readonly record struct RgbColor(float R, float G, float B)
 /// <summary>
 /// Per-part colour change, applied in this order: hue shift (degrees), saturation and brightness (multipliers), tint
 /// (multiply by a colour, by <see cref="TintStrength"/>), colorize (take a colour's hue and saturation, keep the
-/// brightness, by <see cref="ColorizeStrength"/>). Defaults change nothing.
+/// brightness, by <see cref="ColorizeStrength"/>). With <see cref="ColorizeLightness"/> the colorize also moves each texel's
+/// brightness toward the colour's lightness (HSL), keeping the shading: a mid colour (pure red, lightness 0.5) keeps the
+/// brightness, black darkens the texel and white lightens it, so black and white can be painted. Defaults change nothing.
 /// </summary>
 public sealed record ColorAdjustment(
     float HueShiftDegrees = 0,
@@ -35,7 +37,8 @@ public sealed record ColorAdjustment(
     RgbColor? Tint = null,
     float TintStrength = 1,
     RgbColor? Colorize = null,
-    float ColorizeStrength = 1);
+    float ColorizeStrength = 1,
+    bool ColorizeLightness = false);
 
 /// <summary>One part: a colour texture (path in the archives), an optional mask image in that texture's space (red
 /// channel, 0 = untouched, 1 = full change; none = the whole texture) and the change.</summary>
@@ -204,6 +207,7 @@ public sealed class RecolorApplication(ITextureWorkshop workshop, IAddonArchiveW
         c.TintStrength,
         colorize = c.Colorize?.ToString(),
         c.ColorizeStrength,
+        c.ColorizeLightness,
     };
 }
 
@@ -254,6 +258,12 @@ public static class RecolorMath
         {
             var (th, ts, _) = ToHsv(target.R, target.G, target.B);
             var (_, _, cv) = ToHsv(r, g, b);
+            if (change.ColorizeLightness)
+            {
+                var lightness = (MathF.Max(target.R, MathF.Max(target.G, target.B)) + MathF.Min(target.R, MathF.Min(target.G, target.B))) / 2f;
+                cv = lightness < 0.5f ? cv * lightness * 2f : cv + ((1f - cv) * ((lightness * 2f) - 1f));
+            }
+
             var (cr, cg, cb) = FromHsv(th, ts, cv);
             r += (cr - r) * change.ColorizeStrength;
             g += (cg - g) * change.ColorizeStrength;

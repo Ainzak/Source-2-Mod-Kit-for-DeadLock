@@ -17,18 +17,43 @@ internal static class Program
     {
         if (args.Length == 2 && args[0] == "--list-mods")                // the mod list as JSON, without a window (checks)
         {
-            var mods = new ModCatalog(AppSettings.Load(null)).LoadAsync().GetAwaiter().GetResult();
+            var catalog = new ModCatalog(AppSettings.Load(null));
+            var mods = catalog.LoadAsync().GetAwaiter().GetResult();
             File.WriteAllText(args[1], System.Text.Json.JsonSerializer.Serialize(mods.Select(mod => new
             {
                 mod.Name,
                 Source = mod.Source.ToString(),
                 mod.Loaded,
                 Files = mod.Files.Select(Path.GetFileName),
+                mod.Slots,
+                Conflicts = mod.ConflictInfo.With.Select(with => new
+                {
+                    Mod = with.OtherName,
+                    with.Wins,
+                    with.Loses,
+                    Result = with.Loses > 0 ? (with.Wins > 0 ? "wins some, loses some" : "loses") : "wins",
+                    ByKind = with.ByKind.Select(item => $"{item.Kind}: wins {item.Wins}, loses {item.Loses}"),
+                    with.Notes,
+                    Examples = with.Paths.Take(5).Select(path => $"{(path.Wins ? "wins" : "loses")} {path.Path}"),
+                }),
+                ModelWarnings = mod.ConflictInfo.ModelWarnings,
                 mod.Models,
                 mod.KindText,
+                mod.Group,
+                Heroes = mod.HeroKinds?.Select(pair => $"{pair.Key}: {string.Join(", ", pair.Value)}"),
+                Added = mod.Added.ToString("u", System.Globalization.CultureInfo.InvariantCulture),
                 Entries = mod.Entries.Count,
                 Install = mod.Install?.Receipt.Status,
+                Toggle = catalog.PlanToggleAsync(mod).GetAwaiter().GetResult().Select(item => $"{item.From} -> {item.To}"),   // dry run: nothing is renamed
             })));
+            return 0;
+        }
+
+        if (args.Length == 2 && args[0] == "--check-mods")               // the mod doctor without a window (checks); read-only for addons
+        {
+            var catalog = new ModCatalog(AppSettings.Load(null));
+            var report = catalog.CheckModsAsync(catalog.LoadAsync().GetAwaiter().GetResult()).GetAwaiter().GetResult();
+            File.WriteAllText(args[1], System.Text.Json.JsonSerializer.Serialize(report));
             return 0;
         }
 

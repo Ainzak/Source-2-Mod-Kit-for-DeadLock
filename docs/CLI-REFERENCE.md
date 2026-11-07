@@ -575,7 +575,7 @@ optional cache keeps them by file size and modification time.
 ### `s2mod addons install-file`
 
 Installs one finished VPK (from any build route) into a free slot. It refuses, naming the mods, when an addon the
-game loads changes any of the same files; it never takes a slot a mod-manager record uses; it copies and hashes the
+game loads changes any of the same files (files in the archive root, such as `README.txt`, do not count); it never takes a slot a mod-manager record uses; it copies and hashes the
 package in one pass and records a receipt. Running it again with the same package changes nothing; a different package
 needs `rollback-file` first. Text output is one line.
 
@@ -696,24 +696,26 @@ mesh, the material and its `g_tColor` texture, and the archive that texture come
 
 Recolors parts of colour textures into a new texture-only mod (operation `recolor@1`); inputs are never changed and the
 output folder must not exist. Each texture is decoded, its parts applied in order (each through an optional mask image
-in the texture's space: red channel, 0 untouched to 1 full change), compiled with the Source 2 SDK resource compiler
-from the texture's own definition at its own path (same size and format, at least its mips; verified) and packaged as
-`recolor_dir.vpk`. The game loads the lower pak number first, so install the recolor in a lower slot than the mod it
+in the texture's space: red channel, 0 untouched to 1 full change), written back into a copy of the compiled texture at
+its own path (every mip level re-encoded in the texture's own format, same sizes; no Valve tools needed) and packaged as
+`recolor_dir.vpk`. Formats: BC7, DXT1, DXT5, ATI1N, ATI2N, RGBA8888, BGRA8888; other layouts are refused and can be
+compiled with the Source 2 SDK instead (`--resourcecompiler` with `--sdk-game`). The game loads the lower pak number first, so install the recolor in a lower slot than the mod it
 recolors (or merge the two with `addons merge --prefer`). Evidence: `recolor.json` (input and output hashes, texels and
 mean colours per part) and the recolored images as PNG.
 
 Recipe JSON: `{"addons": ["<mod VPK>"...], "parts": [{"name", "texture", "mask"?, "hueShift"?, "saturation"?,
-"brightness"?, "tint"?, "tintStrength"?, "colorize"?, "colorizeStrength"?}]}`. Colours are `#rrggbb`; hue shift in
+"brightness"?, "tint"?, "tintStrength"?, "colorize"?, "colorizeStrength"?, "colorizeLightness"?}]}`. Colours are `#rrggbb`; hue shift in
 degrees; saturation and brightness are multipliers (0-4); strengths 0-1. Colorize takes the colour's hue and
-saturation and keeps each texel's brightness. Mask paths are relative to the recipe.
+saturation and keeps each texel's brightness; with `"colorizeLightness": true` the brightness also follows the
+colour's lightness (shading kept), so black and white can be painted (the desktop app's "Paint a colour"). Mask paths are relative to the recipe.
 
 | Option | Required | Meaning |
 |---|---:|---|
 | `--game` | Yes | Deadlock `game` folder. |
 | `--recipe` | Yes | Recipe JSON. |
 | `--output` | Yes | New output folder. |
-| `--resourcecompiler` | Unless set | SDK `resourcecompiler.exe` (default `S2MODKIT_RESOURCECOMPILER`). |
-| `--sdk-game` | Unless set | The SDK's `game` folder with `citadel` and `core` (default `S2MODKIT_SDK_GAME`). |
+| `--resourcecompiler` | No | Compile with this Source 2 SDK `resourcecompiler.exe` instead of writing in place (with `--sdk-game`). |
+| `--sdk-game` | No | With `--resourcecompiler`: the SDK's `game` folder with `citadel` and `core`. |
 | `--format` | No | `text` (default) or `json`. |
 
 ## Position authoring
@@ -738,8 +740,6 @@ compiled build/verify/package lifecycle. See [position authoring](POSITION-AUTHO
 | `S2MODKIT_MESHOPTIMIZER_PATH` | Source 2 transform discovery, planning, and rewrite codec (optional: the release ships `meshoptimizer.dll` next to `s2mod.exe`). |
 | `S2MODKIT_SOURCE2_VIEWER_PATH` | Optional external Source 2 Viewer verifier. |
 | `S2MODKIT_EXTERNAL_VERIFY_ROOT` | Workspace-local scratch root for the external verifier. |
-| `S2MODKIT_RESOURCECOMPILER` | `recolor apply`: the Source 2 SDK resource compiler. |
-| `S2MODKIT_SDK_GAME` | `recolor apply`: the SDK's `game` folder (citadel and core mounted for the compiler). |
 
 The CLI has no implicit game path, installation step, or global working-directory cache. Supply
 roots explicitly.

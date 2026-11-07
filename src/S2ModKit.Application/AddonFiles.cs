@@ -4,7 +4,9 @@ namespace S2ModKit.Application;
 
 public sealed record AddonFileInfo(string FileName, string FullPath, long Size, long LastWriteUtcTicks, bool IsReparsePoint);
 
-public sealed record ManagedModInfo(string ModId, string? Name, bool Enabled);
+/// <summary>A Mod Manager record for one addon file: its mod id and name, whether it is enabled, and the manager's own
+/// hero and download (else creation) time when its state file lists the mod.</summary>
+public sealed record ManagedModInfo(string ModId, string? Name, bool Enabled, string? Hero = null, DateTimeOffset? AddedUtc = null);
 
 /// <summary>Read-only view of Deadlock Mod Manager records: which addon file belongs to which mod, and every
 /// <c>pakNN_dir.vpk</c> name a record uses (loaded or not), which S2ModKit must never take as a slot.</summary>
@@ -21,7 +23,9 @@ public sealed record AddonArchiveSummary(
     string? ModId,
     string? ModName,
     int EntryCount,
-    IReadOnlyDictionary<string, int> ResourceKinds);
+    IReadOnlyDictionary<string, int> ResourceKinds,
+    string? ModHero = null,
+    DateTimeOffset? ModAddedUtc = null);
 
 public sealed record AddonScan(
     string AddonsRoot,
@@ -44,6 +48,10 @@ public sealed record AddonFileInstallReceipt
     public string TargetFileName { get; init; } = string.Empty;
 
     public string StagingFileName { get; init; } = string.Empty;
+
+    /// <summary>The installed archive's name in the addons folder after the app renamed it (disable and enable keep the receipt
+    /// <c>installed</c>); null while it still has <see cref="TargetFileName"/>.</summary>
+    public string? CurrentFileName { get; init; }
 
     public string PackagePath { get; init; } = string.Empty;
 
@@ -115,7 +123,8 @@ public sealed record AddonFileInstallRequest(
     string ReceiptsRoot,
     string Label,
     string? ManagerStatePath,
-    string? CachePath);
+    string? CachePath,
+    bool AllowSharedFiles = false);
 
 /// <summary>Installs one finished VPK (from any build route) into a free addon slot and removes it again. It never
 /// renames, moves or deletes a file it did not install and never edits mod-manager state.</summary>
@@ -144,7 +153,9 @@ public sealed class AddonFileApplication(
                 mod?.ModId,
                 mod?.Name,
                 tree.Paths.Count,
-                AddonResourceKinds.Count(tree.Paths));
+                AddonResourceKinds.Count(tree.Paths),
+                mod?.Hero,
+                mod?.AddedUtc);
         }).ToArray();
         return new AddonScan(Path.GetFullPath(addonsRoot), manager.ManagerStateFound, cached, archives);
     }
@@ -180,7 +191,7 @@ public sealed class AddonFileApplication(
 
         var manager = await managerReader.ReadAsync(request.AddonsRoot, request.ManagerStatePath, cancellationToken).ConfigureAwait(false);
         var (trees, _) = await treeLoader.ReadAsync(request.AddonsRoot, request.CachePath, loadedOnly: true, cancellationToken).ConfigureAwait(false);
-        var wanted = new HashSet<string>(packagePaths, StringComparer.Ordinal);
+        var wanted = new HashSet<string>(packagePaths.Where(path => path.Contains('/', StringComparison.Ordinal)), StringComparer.Ordinal);   // files in the archive root (README.txt) are never loaded by the game
         var collisions = new List<AddonFileCollision>();
         foreach (var tree in trees)
         {
@@ -197,6 +208,11 @@ public sealed class AddonFileApplication(
             collisions.Add(new AddonFileCollision(tree.File.FileName, name, hits, identical));
         }
 
+        if (request.AllowSharedFiles)
+        {
+            collisions.RemoveAll(item => !item.IdenticalToPackage);         // the caller shows conflicts itself; a duplicate copy is still refused
+        }
+
         if (collisions.Count > 0)
         {
             var lines = collisions.Select(item => item.IdenticalToPackage
@@ -205,7 +221,7 @@ public sealed class AddonFileApplication(
             throw Errors.Verification(
                 "ADDON_FILE_COLLISION",
                 $"These enabled mods change the same files as the {label} package: {string.Join("; ", lines)}.",
-                "Turn them off in Deadlock Mod Manager, then install again. No game files changed.");
+                "Disable them (in S2ModKit or Deadlock Mod Manager), then install again. No game files changed.");
         }
 
         var gameBuild = gameBuildReader is null ? null : await gameBuildReader.TryReadForAddonsRootAsync(request.AddonsRoot, cancellationToken).ConfigureAwait(false);

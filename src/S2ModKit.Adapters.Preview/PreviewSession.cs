@@ -40,6 +40,9 @@ public sealed partial class PreviewSession : IDisposable
     private readonly ModelSceneNode node;
     private readonly TextRenderer text;
     private readonly InkOutline ink;
+    private readonly PartPicker picker;
+    private readonly HighlightOverlay highlight = new();
+    private readonly Dictionary<int, int> hiddenIndexCounts = [];
     private Framebuffer? main;
     private Framebuffer? display;
     private float time;
@@ -90,6 +93,7 @@ public sealed partial class PreviewSession : IDisposable
         node.SetOverrideLod(0);
         scene.Add(node, true);
         ink = new InkOutline(loader, model, node);
+        picker = new PartPicker(model, node.RenderableMeshes.Select(mesh => mesh.MeshIndex).ToHashSet());
         scene.Initialize();
         text = new TextRenderer(context, renderer.Camera);
         text.Load();
@@ -233,6 +237,59 @@ public sealed partial class PreviewSession : IDisposable
         draw.TintColor = tint;
     }
 
+    /// <summary>The part drawn with a pulsing highlight over the model (-1: none).</summary>
+    public int HighlightPart { get; set; } = -1;
+
+    /// <summary>Parts (indices into <see cref="Parts"/>) currently hidden.</summary>
+    public IReadOnlyCollection<int> HiddenParts => hiddenIndexCounts.Keys;
+
+    /// <summary>Hides or shows part <paramref name="index"/> (its draw call and its outline shell); the model is not changed.</summary>
+    public void SetPartHidden(int index, bool hidden)
+    {
+        var draw = node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
+        if (hidden && !hiddenIndexCounts.ContainsKey(index))
+        {
+            hiddenIndexCounts[index] = draw.IndexCount;
+            draw.IndexCount = 0;
+            ink.Hidden.Add(index);
+        }
+        else if (!hidden && hiddenIndexCounts.Remove(index, out var count))
+        {
+            draw.IndexCount = count;
+            ink.Hidden.Remove(index);
+        }
+    }
+
+    /// <summary>The visible part under pixel (<paramref name="x"/>, <paramref name="y"/>) of the last frame drawn at
+    /// <paramref name="width"/> x <paramref name="height"/>, in the current pose; null when the point hits nothing.</summary>
+    public int? PickPart(float x, float y, int width, int height)
+    {
+        return PickWithUv(x, y, width, height)?.Part;
+    }
+
+    private (int Part, Vector2 Uv)? PickWithUv(float x, float y, int width, int height)
+    {
+        if (picker.Count != Parts.Count || width <= 0 || height <= 0
+            || !Matrix4x4.Invert(renderer.Camera.ViewProjectionMatrix, out var inverse))
+        {
+            return null;
+        }
+
+        var ndc = new Vector2(x / width * 2 - 1, 1 - y / height * 2);
+        Vector3 Unproject(float depth)
+        {
+            var point = Vector4.Transform(new Vector4(ndc, depth, 1), inverse);
+            return new Vector3(point.X, point.Y, point.Z) / point.W;
+        }
+
+        var (a, b) = (Unproject(0.25f), Unproject(0.75f));
+        var origin = renderer.Camera.Location;
+        var direction = Vector3.Normalize(Vector3.Distance(a, origin) < Vector3.Distance(b, origin) ? b - a : a - b);
+        var bones = new Matrix4x4[Math.Max(1, node.AnimationController.Skeleton.Bones.Length)];
+        node.AnimationController.GetSkinningMatrices(bones);
+        return picker.PickWithUv(origin, direction, bones, node.Transform, hiddenIndexCounts.Keys.ToHashSet());
+    }
+
     private void RenderFrame(PreviewView view, int width, int height, float fieldOfView, Vector2 pan = default)
     {
         ArgumentNullException.ThrowIfNull(view);
@@ -261,6 +318,14 @@ public sealed partial class PreviewSession : IDisposable
         renderer.Update(update);
         renderer.Render(main!);
         ink.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, OutlineThickness);
+        if (HighlightPart >= 0 && HighlightPart < picker.Count && picker.Count == Parts.Count && !hiddenIndexCounts.ContainsKey(HighlightPart))
+        {
+            var bones = new Matrix4x4[Math.Max(1, node.AnimationController.Skeleton.Bones.Length)];
+            node.AnimationController.GetSkinningMatrices(bones);
+            var occluders = Enumerable.Range(0, picker.Count).Where(part => !hiddenIndexCounts.ContainsKey(part)).SelectMany(part => picker.Posed(part, bones, node.Transform)).ToArray();
+            highlight.Draw(main.FboHandle, width, height, camera.ViewProjectionMatrix, picker.Posed(HighlightPart, bones, node.Transform), occluders,
+                0.5f + (0.5f * MathF.Sin((float)Environment.TickCount64 / 160f)));
+        }
         renderer.PostprocessRender(main!, display!, false);
     }
 
@@ -308,6 +373,8 @@ public sealed partial class PreviewSession : IDisposable
     public void Dispose()
     {
         ink.Dispose();
+        highlight.Dispose();
+        DeleteRecolored();
         main?.Delete();
         display?.Delete();
         modelResource.Dispose();

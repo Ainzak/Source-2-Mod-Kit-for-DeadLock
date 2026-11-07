@@ -477,30 +477,62 @@ While the receipt is still active, record what the player actually tested. Copy 
 Rollback renames only the exact-hash owned VPK to a receipt-specific inactive filename. It never
 deletes the candidate and refuses to touch a changed or foreign file.
 
-## 7. Desktop app (preview and mod list)
+<a id="7-desktop-app-preview-and-mod-list"></a>
 
-`S2ModKit.exe` (next to `s2mod.exe`) previews mods without starting the game. It needs a GPU with OpenGL 4.6.
+## 7. Desktop app (mod manager, preview, parts and colours)
 
-1. Start `S2ModKit.exe`. It finds Deadlock in the usual Steam folders; otherwise click **Game folder...** and pick the
-   `game` folder (the one with `citadel`). Settings and install receipts are kept next to the app (`data`).
-2. The left list shows every addon in `citadel/addons` as one mod (a Deadlock Mod Manager mod split into several files
-   is one entry). Filter by name, hero or kind (model, sound, ui, particles, other).
-3. Click a model mod to preview it in the game's hero-select lighting with the ink outline:
-   - **Show**: this mod, vanilla, or another mod for the same hero; the pose and camera stay.
-   - **Include my enabled mods**: also load every mod the game currently loads beneath this one.
-   - Animation: filter and pick a clip, pause, drag the timeline.
-   - Camera: left drag orbits, right or middle drag pans, the wheel zooms; Front, Side, Back, Below and Close-up.
-   Mods without a model (sound, UI, particles) list their files.
-4. **Install VPK...** installs a finished mod into a free slot. **Disable** takes a mod the app installed out of the
-   addons folder (it stays in the list) and **Enable** puts it back. Mods managed by Deadlock Mod Manager or installed
-   another way are read-only here; switch them in their own tool.
+This section describes the 0.7.0 development build. Released downloads may have fewer controls.
+
+`S2ModKit.exe` (next to `s2mod.exe`) manages every mod in Deadlock's `citadel/addons` folder and previews it without
+starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder are refused while the game runs.
+
+1. **Install and start.** Run `S2ModKit-<version>-setup.exe` and choose where to install it, or unzip the portable
+   zip anywhere you can write. `S2ModKit.exe` finds Deadlock in the usual Steam folders; otherwise use
+   **Settings > Game folder...** and pick the `game` folder (the one with `citadel`). An installed app keeps its
+   settings, journals and caches in `%LocalAppData%\S2ModKit` (**Settings > Data folder...** moves them, for example
+   to another drive); the portable copy keeps them in `data` beside the app. On start the app asks GitHub whether a
+   newer version exists and offers **Update now** (installed app) or the release page (portable copy); turn this off
+   under **Settings**.
+2. **The list.** **All mods** shows every mod (one entry per mod, also when Deadlock Mod Manager split it into several
+   files), sorted by name, date added or load order. **By hero** groups mods under each hero (heroes are read from the
+   game's own data), plus Objects, World, Interface and Other; a hero without mods shows the game's own model. Filter by
+   name, hero or kind (model, animation, sound, UI, particles). Names, heroes and dates from Deadlock Mod Manager and
+   HELLCAT are read, never written.
+3. **Manage.** **Enable** and **Disable** rename the mod's files in place (nothing is moved or copied); **Delete** sends
+   them to the Recycle Bin; **Install mod...** (or dropping a file on the window) installs a `.vpk`, `.zip`, `.7z` or
+   `.rar`, asking which variant when an archive has several; the new mod is selected, and a note names the enabled mods
+   it shares files with. **Show in folder** and **Open addons folder** open
+   Explorer.
+4. **Conflicts and load order.** A badge marks mods that replace the same game files; the panel lists the shared files
+   and which mod wins (the lower pak number). Two model mods for one hero may both be enabled; the app warns that only
+   one shows. Enabling a mod that would replace the same files as an enabled mod asks first. Sort by **Load order** to move a mod earlier or later; the app renumbers the files.
+5. **After a game update.** A banner appears when Steam's build changes. **Check mods** compares each mod with the game
+   (files it replaces, references and bones) and marks mods that work, are worth a look, can be repaired or need their
+   author; the list then shows only the mods that are not marked as working (kind filter **Flagged by Check mods**; click one for the reasons).
+   **Repair** makes a fixed copy and keeps the original as a disabled old version; nothing is disabled by
+   itself.
+6. **Preview.** A model mod opens in the game's hero-select lighting with the ink outline:
+   - **Show**: this mod, the game's model, or another mod for the same hero; **Include my enabled mods** also loads
+     what the game loads beneath it.
+   - Animation: filter and pick a clip, pause, drag the timeline. Camera: left drag orbits, right or middle drag pans,
+     the wheel zooms; Front, Side, Back, Below and Close-up.
+7. **Parts.** The parts list beside the preview highlights a part on hover; clicking the model selects the part under
+   the cursor. Untick parts to hide them, then **Build edited mod**: a copy without those parts is installed as a new
+   version of the mod (or as a new small mod for the game's own model).
+8. **Colours.** Select a part to recolor it live: hue shift, saturation, brightness, or **Paint a colour** with the
+   picker (black and white work; shading is kept) and its strength. For clothes painted on the same texture as skin,
+   tick **Only colours like**, **Pick on model** (Esc cancels) and set the tolerance. **Reset part** or **Cancel all
+   changes** undo; **Build recolored mod** installs the new colours as a version of the mod. No Valve tools are needed.
+9. **Sounds.** A sound mod opens its sound list (a model mod with sounds has a **Sounds** button): the sound events it
+   changes or adds and the sound files it ships. **▶ Mod** plays the mod's sound and **▶ Game's** the game's
+   original, to compare; an event plays its sounds in turn on repeated clicks. Nothing is changed.
 
 Previews are offline evidence: they are close to the game but not a game test.
 
 ## 8. Recolor (texture-only mods)
 
 `s2mod recolor` changes the colours of textures and writes a small new mod; the original mod and the game files are
-never changed. It needs the Source 2 SDK resource compiler (`S2MODKIT_RESOURCECOMPILER`, `S2MODKIT_SDK_GAME`).
+never changed. No Valve tools are needed: the new colours are written into a copy of each texture in its own format.
 
 ```powershell
 s2mod recolor textures --game <Deadlock game folder> --addon <mod VPK> --model models/heroes_staging/hornet_v3/hornet.vmdl

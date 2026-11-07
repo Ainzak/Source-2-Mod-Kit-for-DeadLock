@@ -17,6 +17,19 @@ public sealed class RecolorTests
     }
 
     [Fact]
+    public void ColorizeWithLightnessPaintsBlackAndWhiteAndKeepsShading()
+    {
+        Assert.Equal((0.4f, 0.4f, 0.4f), RecolorMath.Change(0.4f, 0.4f, 0.4f, new ColorAdjustment(Colorize: RgbColor.Parse("#000000"))));   // without: black is only grey
+        var dark = RecolorMath.Change(0.4f, 0.4f, 0.4f, new ColorAdjustment(Colorize: RgbColor.Parse("#141416"), ColorizeLightness: true));
+        var darkLit = RecolorMath.Change(0.8f, 0.8f, 0.8f, new ColorAdjustment(Colorize: RgbColor.Parse("#141416"), ColorizeLightness: true));
+        Assert.True(dark.R < 0.08f && darkLit.R > dark.R);                     // near black, lit texels still lighter
+        var white = RecolorMath.Change(0.4f, 0.4f, 0.4f, new ColorAdjustment(Colorize: RgbColor.Parse("#ffffff"), ColorizeLightness: true));
+        Assert.Equal(1f, white.R, 3);
+        var red = RecolorMath.Change(0.4f, 0.4f, 0.4f, new ColorAdjustment(Colorize: RgbColor.Parse("#ff0000"), ColorizeLightness: true));
+        Assert.Equal(0.4f, red.R, 3);                                          // a mid colour keeps the brightness
+    }
+
+    [Fact]
     public void HueShiftOfHalfATurnInvertsTheHue()
     {
         var (r, g, b) = RecolorMath.Change(1f, 0f, 0f, new ColorAdjustment(HueShiftDegrees: 180));

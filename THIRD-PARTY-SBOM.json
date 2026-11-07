@@ -4,7 +4,7 @@
   "serialNumber": "urn:uuid:6c783f01-4e51-4a48-a8d3-6b9c5e6c0a01",
   "version": 1,
   "metadata": {
-    "component": { "type": "application", "name": "S2ModKit", "version": "0.2.0" },
+    "component": { "type": "application", "name": "S2ModKit", "version": "0.7.0" },
     "properties": [
       { "name": "targetFramework", "value": "net10.0" },
       { "name": "targetRuntime", "value": "win-x64" },
@@ -49,6 +49,9 @@
     { "type": "library", "name": "SkiaSharp.NativeAssets.Win32", "version": "4.151.1", "purl": "pkg:nuget/SkiaSharp.NativeAssets.Win32@4.151.1", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/mono/SkiaSharp" }] },
     { "type": "library", "name": "System.CommandLine", "version": "2.0.2", "purl": "pkg:nuget/System.CommandLine@2.0.2", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/dotnet/command-line-api" }] },
     { "type": "library", "name": "System.IO.Hashing", "version": "10.0.10", "purl": "pkg:nuget/System.IO.Hashing@10.0.10", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/dotnet/dotnet" }] },
+    { "type": "library", "name": "BCnEncoder.Net", "version": "2.3.0", "purl": "pkg:nuget/BCnEncoder.Net@2.3.0", "licenses": [{ "expression": "MIT OR Unlicense" }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/Nominom/BCnEncoder.NET" }] },
+    { "type": "library", "name": "CommunityToolkit.HighPerformance", "version": "8.4.0", "purl": "pkg:nuget/CommunityToolkit.HighPerformance@8.4.0", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/CommunityToolkit/dotnet" }] },
+    { "type": "library", "name": "SharpCompress", "version": "1.0.0", "purl": "pkg:nuget/SharpCompress@1.0.0", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/adamhathcock/sharpcompress" }] },
     { "type": "library", "name": "TinyBCSharp", "version": "0.1.2", "purl": "pkg:nuget/TinyBCSharp@0.1.2", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/jandk/TinyBCSharp" }] },
     { "type": "library", "name": "TinyEXR.NET", "version": "1.1.0", "purl": "pkg:nuget/TinyEXR.NET@1.1.0", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ksgfk/TinyEXR.NET" }] },
     { "type": "library", "name": "ValveKeyValue", "version": "0.70.0.499", "purl": "pkg:nuget/ValveKeyValue@0.70.0.499", "licenses": [{ "license": { "id": "MIT" } }], "externalReferences": [{ "type": "vcs", "url": "https://github.com/ValveResourceFormat/ValveKeyValue" }] },
