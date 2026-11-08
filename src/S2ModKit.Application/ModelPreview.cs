@@ -55,6 +55,74 @@ public sealed record RenderedPreview(
 
 public sealed record PreviewPart(string Mesh, string Material, string Shader, int Indices);
 
+/// <summary>Where a part is scaled and rotated around: its bind-pose box centre, the middle of its bottom face or of its top face.</summary>
+public enum ShapePivot
+{
+    Centre,
+    Base,
+    Top,
+}
+
+/// <summary>
+/// A whole-part shape change in model space (X forward, Y left, Z up), applied in bind pose: scale per axis around the pivot,
+/// then rotation around the pivot (roll about X, tilt about Y, turn about Z, in degrees), then a move (model units).
+/// </summary>
+public sealed record PartShape(System.Numerics.Vector3 Scale, System.Numerics.Vector3 RotationDegrees, System.Numerics.Vector3 Move, ShapePivot Pivot = ShapePivot.Centre)
+{
+    public static PartShape Identity { get; } = new(System.Numerics.Vector3.One, System.Numerics.Vector3.Zero, System.Numerics.Vector3.Zero);
+
+    public bool IsIdentity => Scale == System.Numerics.Vector3.One && RotationDegrees == System.Numerics.Vector3.Zero && Move == System.Numerics.Vector3.Zero;
+
+    /// <summary>The model-space pivot for the part's bind-pose box: its centre, or the middle of its bottom or top face.</summary>
+    public System.Numerics.Vector3 PivotPoint(System.Numerics.Vector3 boundsMin, System.Numerics.Vector3 boundsMax)
+    {
+        var centre = (boundsMin + boundsMax) / 2;
+        return Pivot switch
+        {
+            ShapePivot.Base => centre with { Z = boundsMin.Z },
+            ShapePivot.Top => centre with { Z = boundsMax.Z },
+            _ => centre,
+        };
+    }
+
+    /// <summary>The three slider rotations as the single axis-angle rotation the CLI's operations take (axis of unit length,
+    /// degrees in (-180, 180]); null when they cancel out.</summary>
+    public (System.Numerics.Vector3 Axis, float Degrees)? AxisAngle()
+    {
+        static float Radians(float degrees) => degrees * MathF.PI / 180f;
+        var rotation = System.Numerics.Matrix4x4.CreateRotationX(Radians(RotationDegrees.X))
+            * System.Numerics.Matrix4x4.CreateRotationY(Radians(RotationDegrees.Y))
+            * System.Numerics.Matrix4x4.CreateRotationZ(Radians(RotationDegrees.Z));
+        var q = System.Numerics.Quaternion.Normalize(System.Numerics.Quaternion.CreateFromRotationMatrix(rotation));
+        if (q.W < 0)
+        {
+            q = -q;                                                         // the shorter way round: angle in [0, 180]
+        }
+
+        var half = MathF.Acos(Math.Clamp(q.W, -1f, 1f));
+        var degrees = 2 * half * 180f / MathF.PI;
+        var sine = MathF.Sin(half);
+        if (degrees < 1e-3f || sine < 1e-6f)
+        {
+            return null;
+        }
+
+        return (System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(q.X, q.Y, q.Z) / sine), MathF.Min(degrees, 180f));
+    }
+
+    /// <summary>The matrix for row vectors (<c>p * M</c>) given the part's bind-pose box.</summary>
+    public System.Numerics.Matrix4x4 Matrix(System.Numerics.Vector3 boundsMin, System.Numerics.Vector3 boundsMax)
+    {
+        var pivot = PivotPoint(boundsMin, boundsMax);
+        static float Radians(float degrees) => degrees * MathF.PI / 180f;
+        var rotation = System.Numerics.Matrix4x4.CreateRotationX(Radians(RotationDegrees.X))
+            * System.Numerics.Matrix4x4.CreateRotationY(Radians(RotationDegrees.Y))
+            * System.Numerics.Matrix4x4.CreateRotationZ(Radians(RotationDegrees.Z));
+        return System.Numerics.Matrix4x4.CreateTranslation(-pivot) * System.Numerics.Matrix4x4.CreateScale(Scale) * rotation
+            * System.Numerics.Matrix4x4.CreateTranslation(pivot + Move);
+    }
+}
+
 public sealed record ModelPreviewResult(string OutputDirectory, IReadOnlyList<string> Files, float ClipSeconds, int Frames, string Renderer);
 
 /// <summary>Renders frames of a compiled model (adapter: OpenGL renderer).</summary>

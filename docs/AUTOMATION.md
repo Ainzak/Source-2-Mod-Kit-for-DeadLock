@@ -1,11 +1,11 @@
 # CLI automation guide
 
 The desktop app covers everyday mod management. This optional guide covers advanced CLI workflows
-for technical users, scripts and coding assistants. No AI service is required to run S2ModKit.
+for technical users and scripts.
 
 Non-interactive commands and JSON output support reproducible automation. Geometry shaping and
 Blender position imports currently use the CLI; the former `interactive` terminal mode was retired
-in 0.4.0. This page keeps its existing URL for compatibility with older links.
+in 0.4.0.
 
 For an existing-mesh Blender sculpt, use the [position authoring commands](POSITION-AUTHORING.md).
 Keep the trusted bundle hash separate, return every selected LOD and validate against immutable source.
@@ -47,7 +47,7 @@ strict rejection. Whole-part and axis-ramp region scaling preserve unresolved ru
 offline passes do not qualify culling, collision, clothing fit or hair. Installation is still a
 separate authorized action. See [the experimental workflow](USER-GUIDE.md#experimental-whole-part-and-region-editing).
 
-## Agent rules
+## Rules for scripted workflows
 
 Directional editing uses CLI commands and explicit option files. Use `components list --experimental --directional`, choose
 source-derived schema-6 IDs, and run `directional inspect` with an ignored `--output-root`.
@@ -87,7 +87,7 @@ closure or mutation permission. Exact input-bound planning remains required. See
 5. Keep project, recipe, plan, build, package, and receipt paths in the configured workspace. Never
    overwrite an imported input or an active addon.
 6. A successful offline verify is not live-game evidence. Installation requires explicit user
-   authorization, and the agent must preserve and report the printed rollback command.
+   authorization; keep and report the printed rollback command.
    For a current-source minimal-package checkpoint, use `addons install-current` with the reviewed
    package SHA-256 and explicit current `--base-vpk`. It blocks on model/dependency/read/linkage
    failures in the same workflow before addon writes. A separately saved passed preflight is never

@@ -5,7 +5,7 @@ Use **S2ModKit.exe** to browse installed mods, preview models and animations, an
 Use **s2mod.exe** for command-line workflows, scripts and advanced model operations.
 
 The desktop app is the main interface. Geometry shaping and Blender position-import workflows are
-currently available through the CLI only. Routine mod management does not require an AI assistant.
+currently available through the CLI only.
 
 This is pre-alpha community software, independent of Valve. Game assets are not included.
 
@@ -30,7 +30,7 @@ cannot find the installation. The 3D preview needs OpenGL 4.6.
 See [the desktop guide](docs/USER-GUIDE.md#7-desktop-app-mod-manager-preview-parts-and-colours) for the app,
 [the CLI reference](docs/CLI-REFERENCE.md) for commands, and
 [the compatibility matrix](docs/COMPATIBILITY.md) for model-editing limitations.
-The [automation guide](docs/AI-USAGE.md) is optional reference for scripts and coding assistants.
+The [automation guide](docs/AUTOMATION.md) covers scripted CLI workflows.
 
 ## Command-line toolkit
 

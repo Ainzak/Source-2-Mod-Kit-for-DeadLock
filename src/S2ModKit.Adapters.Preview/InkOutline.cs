@@ -108,6 +108,17 @@ internal sealed class InkOutline : IDisposable
     /// <summary>Draw calls (in <see cref="PreviewSession.Parts"/> order) whose shell is not drawn: hidden parts.</summary>
     public HashSet<int> Hidden { get; } = [];
 
+    /// <summary>Gives draw call <paramref name="drawIndex"/>'s shell the part's shape change (bind pose), so the outline follows a reshaped part.</summary>
+    public void SetShape(int drawIndex, Matrix4x4 shape)
+    {
+        var normals = Matrix4x4.Invert(shape, out var inverse) ? Matrix4x4.Transpose(inverse) : Matrix4x4.Identity;
+        foreach (var part in parts.Where(part => part.DrawIndex == drawIndex))
+        {
+            part.Shape = shape;
+            part.NormalShape = normals;
+        }
+    }
+
     /// <summary>Skins the current pose, then draws the shell into <paramref name="framebuffer"/> (its depth is the scene's).</summary>
     public void Draw(int framebuffer, int width, int height, Matrix4x4 viewProjectionMatrix, float thickness)
     {
@@ -281,6 +292,10 @@ internal sealed class InkOutline : IDisposable
 
         public int DrawIndex { get; set; }
 
+        public Matrix4x4 Shape { get; set; } = Matrix4x4.Identity;
+
+        public Matrix4x4 NormalShape { get; set; } = Matrix4x4.Identity;
+
         public static Part Read(VBIB vbib, KVObject draw, int[] remap, OutlineStyle style, int vertexBase, List<uint> indices)
         {
             var bufferRef = draw["m_vertexBuffers"][0];
@@ -357,8 +372,11 @@ internal sealed class InkOutline : IDisposable
 
         public void Write(Matrix4x4[] skin, Matrix4x4 transform, float thickness, float[] data, int offset)
         {
+            var shaped = !Shape.IsIdentity;
             for (var v = 0; v < Positions.Length; v++)
             {
+                var position = shaped ? Vector3.Transform(Positions[v], Shape) : Positions[v];
+                var normal = shaped ? Vector3.TransformNormal(Normals[v], NormalShape) : Normals[v];
                 var weights = Weights[v];
                 var p = Vector3.Zero;
                 var n = Vector3.Zero;
@@ -373,15 +391,15 @@ internal sealed class InkOutline : IDisposable
 
                     var bone = Bones[v * BonesPerVertex + k];
                     var m = bone < skin.Length ? skin[bone] : Matrix4x4.Identity;
-                    p += w * Vector3.Transform(Positions[v], m);
-                    n += w * Vector3.TransformNormal(Normals[v], m);
+                    p += w * Vector3.Transform(position, m);
+                    n += w * Vector3.TransformNormal(normal, m);
                     total += w;
                 }
 
                 if (total <= 0)
                 {
-                    p = Positions[v];
-                    n = Normals[v];
+                    p = position;
+                    n = normal;
                 }
                 else
                 {

@@ -23,8 +23,12 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
     private int hiddenPart = -1;
     private int? pickedAtCentre, pickedAfterHide;
     private string? sampleInfo;
+    private string? shapeInfo;
     private double openSeconds;
     private string? error;
+
+    /// <summary>The ability buttons of the preview, for the record.</summary>
+    public Func<IReadOnlyList<(int Slot, string Name, IReadOnlyList<string> Clips)>>? Abilities { get; set; }
 
     public void Opened(PreviewSession? session, TimeSpan elapsed, string? failure)
     {
@@ -82,6 +86,22 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
             }
 
             session.SetPartColor(hiddenPart, null);
+            var shaped = Enumerable.Range(0, session.Parts.Count).Where(part => session.PartShapeRefusal(part) is null)
+                .OrderByDescending(part => session.Parts[part].Indices).Cast<int?>().FirstOrDefault();
+            if (shaped is { } shapedPart)                                   // a whole-part shape change: bigger, raised and turned
+            {
+                var refusal = session.SetPartShape(shapedPart, new S2ModKit.Application.PartShape(new System.Numerics.Vector3(1.6f, 1.6f, 1.6f),
+                    new System.Numerics.Vector3(0, 0, 25), new System.Numerics.Vector3(0, 0, 6)));
+                File.WriteAllBytes(prefix + "-shape.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                session.SetPartShape(shapedPart, null);
+                File.WriteAllBytes(prefix + "-shape-reset.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                shapeInfo = $"part {shapedPart} ({session.Parts[shapedPart].Material}): {refusal ?? "reshaped"}";
+            }
+            else
+            {
+                shapeInfo = "no part can be reshaped in the preview: " + string.Join("; ", Enumerable.Range(0, session.Parts.Count).Select(part => session.PartShapeRefusal(part)).Distinct());
+            }
+
             preview.Highlight = -1;
             preview.Playing = true;
             preview.ForcedSize = (1920, 1080);                     // the pass criterion's size, whatever the window
@@ -114,7 +134,10 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
             pickedAtCentre,
             pickedAfterHide,
             sampleInfo,
+            shapeInfo,
             animations = session?.Animations.Count,
+            animationNames = session?.Animations.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+            abilities = Abilities?.Invoke().Select(item => new { item.Slot, item.Name, item.Clips }).ToArray(),
         };
         File.WriteAllText(prefix + ".json", JsonSerializer.Serialize(record, Indented));
         close();

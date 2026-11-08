@@ -47,6 +47,9 @@ internal sealed class PartPicker
     public int? Pick(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform, IReadOnlySet<int> hidden) =>
         PickWithUv(origin, direction, skin, transform, hidden)?.Part;
 
+    /// <summary>Sets part <paramref name="index"/>'s shape change (bind pose) so picking and the highlight follow the preview.</summary>
+    public void SetShape(int index, Matrix4x4 shape) => parts[index].Shape = shape;
+
     /// <summary>Part <paramref name="index"/>'s triangles in the current pose (three positions per triangle) for the highlight overlay.</summary>
     public Vector3[] Posed(int index, Matrix4x4[] skin, Matrix4x4 transform) => parts[index].Posed(skin, transform);
 
@@ -131,6 +134,11 @@ internal sealed class PartPicker
             };
         }
 
+        /// <summary>The part's shape change in bind pose (identity: as compiled); picking and the highlight follow it.</summary>
+        public Matrix4x4 Shape { get; set; } = Matrix4x4.Identity;
+
+        private Vector3 Shaped(int v) => Shape.IsIdentity ? positions[v] : Vector3.Transform(positions[v], Shape);
+
         public Vector3[] Posed(Matrix4x4[] skin, Matrix4x4 transform)
         {
             var posed = new Vector3[positions.Length];
@@ -161,12 +169,12 @@ internal sealed class PartPicker
                 var bone = bones[(v * perVertex) + k];
                 if (w > 0)
                 {
-                    p += w * Vector3.Transform(positions[v], bone < skin.Length ? skin[bone] : Matrix4x4.Identity);
+                    p += w * Vector3.Transform(Shaped(v), bone < skin.Length ? skin[bone] : Matrix4x4.Identity);
                     total += w;
                 }
             }
 
-            return Vector3.Transform(total > 0 ? p / total : positions[v], transform);
+            return Vector3.Transform(total > 0 ? p / total : Shaped(v), transform);
         }
 
         public float[] Mask(int width, int height, int grow)
@@ -245,12 +253,12 @@ internal sealed class PartPicker
                     var bone = bones[v * perVertex + k];
                     if (w > 0)
                     {
-                        p += w * Vector3.Transform(positions[v], bone < skin.Length ? skin[bone] : Matrix4x4.Identity);
+                        p += w * Vector3.Transform(Shaped(v), bone < skin.Length ? skin[bone] : Matrix4x4.Identity);
                         total += w;
                     }
                 }
 
-                return posed[v] = Vector3.Transform(total > 0 ? p / total : positions[v], transform);
+                return posed[v] = Vector3.Transform(total > 0 ? p / total : Shaped(v), transform);
             }
 
             (float Distance, Vector2 Uv)? best = null;

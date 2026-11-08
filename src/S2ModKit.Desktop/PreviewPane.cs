@@ -4,44 +4,59 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using S2ModKit.Adapters.Preview;
+using S2ModKit.Application;
 
 namespace S2ModKit.Desktop;
 
 /// <summary>
 /// Preview of one mod on its model: compare this mod / vanilla / another mod on the same model (camera, clip and time
-/// kept), alone or with the other enabled mods; hero-select lighting (a studio light was rejected); animation picker with a
-/// filter, play/pause, timeline; camera presets. Opening a session takes a moment; the overlay says so.
+/// kept), alone or with the other enabled mods; hero-select lighting; animation picker with a filter, play/pause, timeline;
+/// camera presets over the view. Beside it the part tools: the picked part above three tabs (Parts: hide and show; Colour:
+/// recolor; Shape: size, move and rotate where the CLI's checked operations allow), and one "Build edited mod" for all changes.
 /// </summary>
 internal sealed class PreviewPane : UserControl
 {
     private const string Vanilla = "Vanilla";
+    private static readonly IBrush Muted = Brushes.Gray;
+    private static readonly IBrush Good = new SolidColorBrush(Color.FromRgb(90, 190, 100));
+    private static readonly IBrush Warn = new SolidColorBrush(Color.FromRgb(240, 170, 70));
     private readonly AppSettings settings;
     private readonly PreviewControl preview = new();
     private readonly TextBlock overlay = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 16 };
-    private readonly ComboBox compare = new() { MinWidth = 260 };
-    private readonly ComboBox model = new() { MinWidth = 260 };
+    private readonly ComboBox compare = new() { MinWidth = 220 };
+    private readonly ComboBox model = new() { MinWidth = 220 };
     private readonly CheckBox withLoaded = new() { Content = "Include my enabled mods" };
-    private readonly TextBox filter = new() { PlaceholderText = "Filter animations", Width = 180 };
-    private readonly ComboBox animations = new() { MinWidth = 320 };
-    private readonly ToggleButton play = new() { Content = "Play", IsChecked = true, Width = 70 };
-    private readonly Slider timeline = new() { Minimum = 0, Maximum = 1, MinWidth = 300 };
-    private readonly TextBlock timeText = new() { VerticalAlignment = VerticalAlignment.Center, Width = 110 };
-    private readonly TextBlock stats = new() { Foreground = Brushes.Gray };
+    private readonly TextBox filter = new() { PlaceholderText = "Filter animations", Width = 160 };
+    private readonly ComboBox animations = new() { MinWidth = 280 };
+    private readonly ToggleButton play = new() { Content = "Pause", IsChecked = true, Width = 70 };
+    private readonly Slider timeline = new() { Minimum = 0, Maximum = 1, MinWidth = 200 };
+    private readonly TextBlock timeText = new() { VerticalAlignment = VerticalAlignment.Center, Width = 100 };
+    private readonly TextBlock stats = new() { Foreground = Muted, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(8) };
+
+    // part tools
+    private readonly ComboBox partPicker = new() { MinWidth = 250 };
     private readonly ListBox partList = new() { SelectionMode = SelectionMode.Single };
-    private readonly TextBlock partsTitle = new() { Text = "Parts", FontWeight = FontWeight.SemiBold, Margin = new Thickness(8, 6) };
+    private readonly ToggleButton partsTab = new() { Content = "Parts" };
+    private readonly ToggleButton colourTab = new() { Content = "Colour" };
+    private readonly ToggleButton shapeTab = new() { Content = "Shape" };
+    private readonly ContentControl toolHost = new();
+    private readonly TextBlock changeSummary = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+    private readonly Button buildEdited = new() { Content = "Build edited mod", IsEnabled = false };
     private IReadOnlyList<PartRow> parts = [];
+    private PartRow? selected;
+    private bool selecting;
     private Point pressedAt;
-    private readonly Button buildEdited = new() { Content = "Build edited mod", IsEnabled = false, Margin = new Thickness(8, 0, 8, 6) };
+
+    // colour
     private readonly StackPanel colorPanel = new() { Spacing = 2, Margin = new Thickness(8, 6), IsVisible = false };
     private readonly TextBlock colorTitle = new() { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock colorHint = new() { Text = "Pick a part to recolor it.", Foreground = Muted, Margin = new Thickness(8, 10), TextWrapping = TextWrapping.Wrap };
     private readonly Slider hue = new() { Minimum = -180, Maximum = 180, Value = 0 };
     private readonly Slider saturation = new() { Minimum = 0, Maximum = 2, Value = 1 };
     private readonly Slider brightness = new() { Minimum = 0, Maximum = 3, Value = 1 };
     private readonly CheckBox paint = new() { Content = "Paint a colour" };
     private readonly ColorPicker paintColor = new();
     private readonly Slider paintStrength = new() { Minimum = 0, Maximum = 1, Value = 1 };
-    private readonly ScrollViewer colorScroll = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-    private readonly Button buildRecolor = new() { Content = "Build recolored mod", IsEnabled = false };
     private readonly Avalonia.Threading.DispatcherTimer colorDelay = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private bool settingSliders;
     private bool sampling;
@@ -49,14 +64,32 @@ internal sealed class PreviewPane : UserControl
     private readonly Border sampleSwatch = new() { Width = 40, Height = 16, CornerRadius = new CornerRadius(3), Background = Brushes.Gray };
     private readonly Button pickColor = new() { Content = "Pick on model" };
     private readonly Slider tolerance = new() { Minimum = 0.02, Maximum = 0.5, Value = 0.15 };
-    private readonly Dictionary<int, (S2ModKit.Application.RgbColor Target, float Tolerance)> ranges = [];
+    private readonly Dictionary<int, (RgbColor Target, float Tolerance)> ranges = [];
 
-    /// <summary>Raised by "Build recolored mod": the shown mod (null for the base game), its model and the recolored parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlyDictionary<int, S2ModKit.Application.ColorAdjustment>>? BuildRecolorRequested;
+    // shape
+    private readonly TextBlock shapeStatus = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
+    private readonly CheckBox keepProportions = new() { Content = "Keep proportions", IsChecked = true };
+    private readonly Slider[] size = [Shape(0.25, 4, 1), Shape(0.25, 4, 1), Shape(0.25, 4, 1)];        // width (Y), height (Z), depth (X)
+    private readonly Slider[] move = [Shape(-40, 40, 0), Shape(-40, 40, 0), Shape(-40, 40, 0)];        // left/right (Y), up/down (Z), fwd/back (X)
+    private readonly Slider[] turn = [Shape(-180, 180, 0), Shape(-180, 180, 0), Shape(-180, 180, 0)];  // tilt (about Y), turn (about Z), roll (about X)
+    private readonly ComboBox pivot = new() { ItemsSource = new[] { "the part's centre", "the part's base", "the part's top" }, SelectedIndex = 0, MinWidth = 170 };
+    private readonly StackPanel shapeControls = new() { Spacing = 2 };
+    private readonly Avalonia.Threading.DispatcherTimer shapeDelay = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    private IReadOnlyDictionary<string, PartShapeCapability> capabilities = new Dictionary<string, PartShapeCapability>();
+    private string? modelRefusal = "Checking which parts can be reshaped...";
+    private readonly Dictionary<int, string> previewRefusals = [];
+    private int capabilityRequest;
 
-    /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model and the hidden parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>>? BuildEditedRequested;
+    /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
+    /// parts and the reshaped parts.</summary>
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>>? BuildRequested;
+
     private IReadOnlyList<string> allAnimations = [];
+    private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
+    private Task<IReadOnlyDictionary<string, IReadOnlyList<HeroAbility>>?>? abilityData;
+
+    /// <summary>The ability buttons of the open model: slot, name and the clip each plays (null: no matching clip, no button).</summary>
+    public IReadOnlyList<(int Slot, string Name, IReadOnlyList<string> Clips)> AbilityClips { get; private set; } = [];
     private ModEntry? mod;
     private IReadOnlyList<ModEntry> others = [];
     private bool updating;
@@ -64,70 +97,49 @@ internal sealed class PreviewPane : UserControl
     public PreviewPane(AppSettings settings)
     {
         this.settings = settings;
+        preview.MaxFps = settings.PreviewFps;
         var top = Row(new TextBlock { Text = "Show", VerticalAlignment = VerticalAlignment.Center }, compare, model, withLoaded);
         var anim = Row(filter, animations, play, timeline, timeText);
-        var cameras = Row([.. PreviewControl.Presets.Select(preset => Button(preset.Name, () => preview.SetCamera(preset))), stats]);
+        var cameras = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        foreach (var preset in PreviewControl.Presets)
+        {
+            cameras.Children.Add(Button(preset.Name, () => preview.SetCamera(preset)));
+        }
+
         var view = new Grid { Background = new SolidColorBrush(Color.FromRgb(30, 31, 34)) };
         view.Children.Add(preview);
         view.Children.Add(overlay);
+        view.Children.Add(cameras);
+        view.Children.Add(abilityBar);
+        view.Children.Add(stats);
         var root = new DockPanel();
-        foreach (var bar in new[] { top, anim, cameras })
+        foreach (var bar in new[] { top, anim })
         {
             DockPanel.SetDock(bar, Dock.Top);
             root.Children.Add(bar);
         }
 
-        // Two full-height columns: the parts list and, beside it, the colour of the selected part (no stacking, no squeezed list).
-        var side = new Grid { ColumnDefinitions = new ColumnDefinitions("240,1,270") };
-        var partsColumn = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        partsColumn.Children.Add(new StackPanel
-        {
-            Children =
-            {
-                partsTitle,
-                Wrap(Button("Show all", () => SetHidden(parts.Select(part => part.Index), false)), Button("Hide selected", () => ToggleSelected()), Button("Cancel all changes", CancelAll)),
-                new TextBlock { Text = "Hover a part to highlight it, or click the model to find one. Untick to hide.", Foreground = Brushes.Gray, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(8, 0, 8, 6) },
-                buildEdited,
-            },
-        });
-        Grid.SetRow(partList, 1);
-        partsColumn.Children.Add(partList);
-        side.Children.Add(partsColumn);
-        var divider = new Border { Background = new SolidColorBrush(Color.FromRgb(60, 62, 66)) };
-        Grid.SetColumn(divider, 1);
-        side.Children.Add(divider);
-        colorPanel.Children.Add(colorTitle);
-        foreach (var (label, slider) in new[] { ("Hue shift", hue), ("Saturation", saturation), ("Brightness", brightness) })
-        {
-            colorPanel.Children.Add(Labelled(label, slider));
-        }
-
-        colorPanel.Children.Add(paint);
-        colorPanel.Children.Add(paintColor);
-        colorPanel.Children.Add(Labelled("Strength", paintStrength));
-        colorPanel.Children.Add(Wrap(onlyLike, sampleSwatch, pickColor));
-        colorPanel.Children.Add(Labelled("Tolerance", tolerance));
-        colorPanel.Children.Add(Wrap(Button("Reset part", ResetColor), buildRecolor));
-        var colorHint = new TextBlock { Text = "Select a part to recolor it.", Foreground = Brushes.Gray, Margin = new Thickness(8, 10), TextWrapping = TextWrapping.Wrap };
-        colorPanel.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == IsVisibleProperty)
-            {
-                colorHint.IsVisible = !colorPanel.IsVisible;
-            }
-        };
-        colorScroll.Content = new StackPanel { Children = { colorHint, colorPanel } };   // scrolls only in a very small window
-        Grid.SetColumn(colorScroll, 2);
-        side.Children.Add(colorScroll);
-        DockPanel.SetDock(side, Dock.Right);
-        root.Children.Add(side);
+        var tools = BuildTools();
+        DockPanel.SetDock(tools, Dock.Right);
+        root.Children.Add(tools);
         root.Children.Add(view);
+        Content = root;
+
         partList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<PartRow>((row, _) => row is null ? new StackPanel() : PartItem(row));   // null while a recycled row is cleared
-        partList.SelectionChanged += (_, _) =>
+        partPicker.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<PartRow>((row, _) =>
         {
-            preview.Highlight = -1;                                         // the selected part is being recoloured: show its real colours
-            ShowColor();
-        };
+            var text = new TextBlock { Text = row is null ? string.Empty : $"{row.Index + 1}. {row.Name}", Background = Brushes.Transparent };
+            if (row is not null)
+            {
+                text.PointerEntered += (_, _) => preview.Highlight = partPicker.IsDropDownOpen && !ReferenceEquals(selected, row) ? row.Index : -1;   // hovering a dropdown item shows that part
+                text.PointerExited += (_, _) => preview.Highlight = -1;
+            }
+
+            return text;
+        });
+        partPicker.DropDownClosed += (_, _) => preview.Highlight = -1;
+        partList.SelectionChanged += (_, _) => SelectPart(partList.SelectedItem as PartRow);
+        partPicker.SelectionChanged += (_, _) => SelectPart(partPicker.SelectedItem as PartRow);
         foreach (var slider in new[] { hue, saturation, brightness, paintStrength })
         {
             slider.PropertyChanged += (_, e) =>
@@ -183,21 +195,45 @@ internal sealed class PreviewPane : UserControl
             colorDelay.Stop();
             ApplyColor();
         };
-        buildRecolor.Click += (_, _) =>
+        for (var axis = 0; axis < 3; axis++)
         {
-            if (model.SelectedItem is string modelPath && preview.PartColors.Count > 0 && compare.SelectedIndex <= (mod is null ? 0 : 1))
+            var index = axis;
+            size[axis].PropertyChanged += (_, e) =>
             {
-                BuildRecolorRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, new Dictionary<int, S2ModKit.Application.ColorAdjustment>(preview.PartColors));
-            }
+                if (e.Property == RangeBase.ValueProperty && !settingSliders)
+                {
+                    if (keepProportions.IsChecked == true)
+                    {
+                        settingSliders = true;                              // one size drives the other two
+                        foreach (var other in size.Where((_, i) => i != index))
+                        {
+                            other.Value = size[index].Value;
+                        }
+
+                        settingSliders = false;
+                    }
+
+                    QueueShape();
+                }
+            };
+            move[axis].PropertyChanged += (_, e) => ShapeSliderChanged(e);
+            turn[axis].PropertyChanged += (_, e) => ShapeSliderChanged(e);
+        }
+
+        pivot.SelectionChanged += (_, _) => QueueShape();
+        shapeDelay.Tick += (_, _) =>
+        {
+            shapeDelay.Stop();
+            ApplyShape();
         };
         buildEdited.Click += (_, _) =>
         {
-            if (model.SelectedItem is string modelPath && compare.SelectedIndex <= (mod is null ? 0 : 1))
+            if (model.SelectedItem is string modelPath && CanBuild)
             {
-                BuildEditedRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet());
+                BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes));
             }
         };
-        Content = root;
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
             + " beneath it, to see how this mod looks together with them, for example with a texture or animation mod for the same hero.");
         view.AddHandler(PointerPressedEvent, (_, e) =>
@@ -211,7 +247,8 @@ internal sealed class PreviewPane : UserControl
         {
             preview.EndDrag();
             var at = e.GetPosition(view);
-            if (sampling && e.InitialPressMouseButton == Avalonia.Input.MouseButton.Left && Math.Abs(at.X - pressedAt.X) + Math.Abs(at.Y - pressedAt.Y) < 4)
+            var click = e.InitialPressMouseButton == Avalonia.Input.MouseButton.Left && Math.Abs(at.X - pressedAt.X) + Math.Abs(at.Y - pressedAt.Y) < 4;
+            if (click && sampling)
             {
                 SetSampling(false);
                 preview.RequestSample(at, sampled =>
@@ -222,23 +259,16 @@ internal sealed class PreviewPane : UserControl
                     }
 
                     ranges[hit.Part] = (hit.Color, (float)tolerance.Value);
-                    partList.SelectedItem = parts.FirstOrDefault(part => part.Index == hit.Part);
+                    SelectPart(parts.FirstOrDefault(part => part.Index == hit.Part));
                     settingSliders = true;
                     onlyLike.IsChecked = true;
                     settingSliders = false;
                     ApplyRange();
                 });
             }
-            else if (e.InitialPressMouseButton == Avalonia.Input.MouseButton.Left && Math.Abs(at.X - pressedAt.X) + Math.Abs(at.Y - pressedAt.Y) < 4)
+            else if (click)
             {
-                preview.RequestPick(at, picked =>                          // a click, not a drag: select the part under it
-                {
-                    partList.SelectedItem = picked is { } index ? parts.FirstOrDefault(part => part.Index == index) : null;
-                    if (partList.SelectedItem is { } item)
-                    {
-                        partList.ScrollIntoView(item);
-                    }
-                });
+                preview.RequestPick(at, picked => SelectPart(picked is { } index ? parts.FirstOrDefault(part => part.Index == index) : null));   // a click, not a drag
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
         view.AddHandler(PointerWheelChangedEvent, (_, e) => preview.Zoom(e.Delta.Y),
@@ -272,16 +302,42 @@ internal sealed class PreviewPane : UserControl
         preview.Opened += OnOpened;
         preview.Progress += (t, length) =>
         {
+            if (!ReferenceEquals(animations.SelectedItem, preview.ClipName) && (animations.SelectedItem as string) != preview.ClipName)
+            {
+                ApplyFilter();                                             // an ability played once and the clip before it is back
+            }
+
             updating = true;
             timeline.Maximum = Math.Max(length, 0.001);
             timeline.Value = t;
             timeText.Text = $"{t:F2} / {length:F2} s";
             updating = false;
         };
-        preview.FrameStats += (fps, w, h) => stats.Text = $"   {fps:F0} fps, {w} x {h}, {preview.GlInfo}";
+        preview.FrameStats += (fps, w, h) => stats.Text = $"{fps:F0} fps, {w} x {h}, {preview.GlInfo}";
+        ShowTab(partsTab);
     }
 
     public PreviewControl Control => preview;
+
+    /// <summary>For window pictures: opens tool <paramref name="tab"/> (Parts, Colour or Shape) with part number <paramref name="part"/> picked.</summary>
+    public void ShowForShot(string? tab, int? part)
+    {
+        if (part is { } number)
+        {
+            SelectPart(parts.FirstOrDefault(row => row.Index == number - 1));
+        }
+
+        ShowTab(tab?.ToUpperInvariant() switch { "COLOUR" or "COLOR" => colourTab, "SHAPE" => shapeTab, _ => partsTab });
+    }
+
+    /// <summary>The parts currently hidden in the preview (indices into the session's parts).</summary>
+    public IReadOnlyCollection<int> HiddenParts => preview.Hidden;
+
+    /// <summary>The parts of the open model, in draw order.</summary>
+    public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
+
+    private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShapes.Count > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
@@ -299,6 +355,125 @@ internal sealed class PreviewPane : UserControl
         compare.SelectedIndex = 0;
         updating = false;
         Reopen();
+    }
+
+    private Grid BuildTools()
+    {
+        var tools = new Grid { Width = 380, RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Background = new SolidColorBrush(Color.FromRgb(43, 45, 49)) };
+        var picked = new StackPanel { Margin = new Thickness(10, 8), Spacing = 4 };
+        picked.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Part", VerticalAlignment = VerticalAlignment.Center, Foreground = Muted }, partPicker } });
+        picked.Children.Add(new TextBlock { Text = "Hover a part in the list to highlight it; click the model to pick one.", Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+        tools.Children.Add(picked);
+
+        var tabs = new UniformGrid { Columns = 3, Margin = new Thickness(10, 0, 10, 6) };
+        foreach (var tab in new[] { partsTab, colourTab, shapeTab })
+        {
+            tab.HorizontalAlignment = HorizontalAlignment.Stretch;
+            tab.HorizontalContentAlignment = HorizontalAlignment.Center;
+            tab.Click += (_, _) => ShowTab(tab);
+            tabs.Children.Add(tab);
+        }
+
+        Grid.SetRow(tabs, 1);
+        tools.Children.Add(tabs);
+        Grid.SetRow(toolHost, 2);
+        tools.Children.Add(toolHost);
+
+        var footer = new StackPanel { Margin = new Thickness(10, 8) };
+        footer.Children.Add(changeSummary);
+        footer.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Button("Cancel all", CancelAll), buildEdited } });
+        Grid.SetRow(footer, 3);
+        tools.Children.Add(footer);
+
+        // colour
+        colorPanel.Children.Add(colorTitle);
+        foreach (var (label, slider) in new[] { ("Hue shift", hue), ("Saturation", saturation), ("Brightness", brightness) })
+        {
+            colorPanel.Children.Add(Labelled(label, slider));
+        }
+
+        colorPanel.Children.Add(paint);
+        colorPanel.Children.Add(paintColor);
+        colorPanel.Children.Add(Labelled("Strength", paintStrength));
+        colorPanel.Children.Add(Wrap(onlyLike, sampleSwatch, pickColor));
+        colorPanel.Children.Add(Labelled("Tolerance", tolerance));
+        colorPanel.Children.Add(Wrap(Button("Reset colour", ResetColor)));
+
+        // shape
+        shapeControls.Children.Add(Section("Size", keepProportions));
+        foreach (var (label, slider) in new[] { ("Width", size[0]), ("Height", size[1]), ("Depth", size[2]) })
+        {
+            shapeControls.Children.Add(Labelled(label, slider, "0.00x"));
+        }
+
+        shapeControls.Children.Add(Section("Position"));
+        foreach (var (label, slider) in new[] { ("Left/right", move[0]), ("Up/down", move[1]), ("Fwd/back", move[2]) })
+        {
+            shapeControls.Children.Add(Labelled(label, slider, "+0;-0;0"));
+        }
+
+        shapeControls.Children.Add(Section("Rotation"));
+        foreach (var (label, slider) in new[] { ("Tilt", turn[0]), ("Turn", turn[1]), ("Roll", turn[2]) })
+        {
+            shapeControls.Children.Add(Labelled(label, slider, "+0°;-0°;0°"));
+        }
+
+        shapeControls.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 6, 0, 0), Children = { new TextBlock { Text = "Around", Foreground = Muted, VerticalAlignment = VerticalAlignment.Center }, pivot } });
+        shapeControls.Children.Add(Wrap(Button("Reset shape", ResetShape)));
+        return tools;
+    }
+
+    private void ShowTab(ToggleButton tab)
+    {
+        foreach (var other in new[] { partsTab, colourTab, shapeTab })
+        {
+            other.IsChecked = other == tab;
+        }
+
+        if (tab == partsTab)
+        {
+            var view = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+            view.Children.Add(Wrap(Button("Show all", () => SetHidden(parts.Select(part => part.Index), false)), Button("Hide picked part", () => ToggleSelected())));
+            Grid.SetRow(partList, 1);
+            partList.Margin = new Thickness(4, 0);
+            Detach(partList);
+            view.Children.Add(partList);
+            toolHost.Content = view;
+        }
+        else if (tab == colourTab)
+        {
+            Detach(colorHint);
+            Detach(colorPanel);
+            toolHost.Content = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = new StackPanel { Children = { colorHint, colorPanel } } };
+            ShowColor();
+        }
+        else
+        {
+            Detach(shapeStatus);
+            Detach(shapeControls);
+            toolHost.Content = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new StackPanel { Margin = new Thickness(10, 4), Children = { shapeStatus, shapeControls } },
+            };
+            ShowShape();
+        }
+    }
+
+    private static void Detach(Control control)
+    {
+        switch (control.Parent)
+        {
+            case Panel panel:
+                panel.Children.Remove(control);
+                break;
+            case ContentControl host:
+                host.Content = null;
+                break;
+            case Decorator decorator:
+                decorator.Child = null;
+                break;
+        }
     }
 
     private void Reopen()
@@ -333,6 +508,38 @@ internal sealed class PreviewPane : UserControl
         overlay.Text = $"Loading {(shown?.Name ?? Vanilla)}...";
         overlay.IsVisible = true;
         preview.Open(new PreviewSessionOptions(archives, modelPath, SceneMap: "maps/ui/hero_select.vmap"));
+        _ = ReadCapabilitiesAsync(archives, modelPath);
+    }
+
+    /// <summary>Asks the CLI's checked operations, in the background, which parts of the opened model can be reshaped.</summary>
+    private async Task ReadCapabilitiesAsync(IReadOnlyList<string> archives, string modelPath)
+    {
+        var request = ++capabilityRequest;
+        capabilities = new Dictionary<string, PartShapeCapability>();
+        modelRefusal = "Checking which parts can be reshaped...";
+        ShowShape();
+        try
+        {
+            var (byMaterial, refusal) = await Task.Run(() => ShapeCapabilities.ReadAsync(archives, modelPath)).ConfigureAwait(true);
+            if (request != capabilityRequest)
+            {
+                return;                                                     // another model opened meanwhile
+            }
+
+            (capabilities, modelRefusal) = (byMaterial, refusal);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException or InvalidOperationException)
+        {
+            if (request == capabilityRequest)
+            {
+                modelRefusal = "Could not check this model for reshaping: " + exception.Message;
+            }
+        }
+
+        if (request == capabilityRequest)
+        {
+            ShowShape();
+        }
     }
 
     private void OnOpened(PreviewSession? session, TimeSpan elapsed, string? error)
@@ -344,15 +551,53 @@ internal sealed class PreviewPane : UserControl
         }
 
         overlay.IsVisible = false;
-        stats.Text = $"   opened in {elapsed.TotalSeconds:F1} s";
+        stats.Text = $"opened in {elapsed.TotalSeconds:F1} s";
         parts = [.. session.Parts.Select((part, index) => new PartRow(index, part))];
-        colorPanel.IsVisible = false;
         ranges.Clear();
-        buildEdited.IsEnabled = false;
-        partsTitle.Text = $"Parts ({parts.Count})";
+        previewRefusals.Clear();
+        selected = null;
         partList.ItemsSource = parts;
+        partPicker.ItemsSource = parts;
         allAnimations = [.. session.Animations.Order(StringComparer.OrdinalIgnoreCase)];
         ApplyFilter();
+        _ = ShowAbilitiesAsync(session.Animations);
+        SelectPart(null);
+    }
+
+    /// <summary>Buttons 1-4 over the preview for the hero's abilities whose animation the model has (the game's own data names them).</summary>
+    private async Task ShowAbilitiesAsync(IReadOnlyList<string> clips)
+    {
+        abilityBar.Children.Clear();
+        AbilityClips = [];
+        if (model.SelectedItem is not string modelPath)
+        {
+            return;
+        }
+
+        abilityData ??= Task.Run(() => HeroAbilities.Read(settings.Game, Path.Combine(settings.Data, "hero-abilities.json")));
+        var abilities = HeroAbilities.Of(await abilityData.ConfigureAwait(true), modelPath);
+        if (model.SelectedItem as string != modelPath)
+        {
+            return;                                                         // another model was opened meanwhile
+        }
+
+        AbilityClips = [.. abilities.Select(ability => (ability.Slot, ability.Name, ability.PlayList is { Count: > 0 } list ? list : HeroAbilities.PhasesFor(ability, clips)))];
+        foreach (var (slot, name, phases) in AbilityClips)
+        {
+            if (phases.Count == 0)
+            {
+                continue;
+            }
+
+            var button = new Button { Content = $"{slot}  {name}", Opacity = 0.9 };
+            ToolTip.SetTip(button, $"Plays the {name} animation once: {string.Join(", then ", phases.Select(Path.GetFileNameWithoutExtension))}.");
+            button.Click += (_, _) =>
+            {
+                preview.PlaySequence(phases);
+                play.IsChecked = true;
+            };
+            abilityBar.Children.Add(button);
+        }
     }
 
     private void ApplyFilter()
@@ -365,17 +610,34 @@ internal sealed class PreviewPane : UserControl
         updating = false;
     }
 
-    /// <summary>The parts currently hidden in the preview (indices into the session's parts).</summary>
-    public IReadOnlyCollection<int> HiddenParts => preview.Hidden;
+    /// <summary>Makes <paramref name="row"/> the picked part everywhere (picker, list, colour and shape tools).</summary>
+    private void SelectPart(PartRow? row)
+    {
+        if (selecting)
+        {
+            return;
+        }
 
-    /// <summary>The parts of the open model, in draw order.</summary>
-    public IReadOnlyList<S2ModKit.Application.PreviewPart> Parts => [.. parts.Select(row => row.Part)];
+        selecting = true;
+        selected = row;
+        partPicker.SelectedItem = row;
+        partList.SelectedItem = row;
+        if (row is not null)
+        {
+            partList.ScrollIntoView(row);
+        }
+
+        selecting = false;
+        preview.Highlight = -1;                                             // the picked part shows its real colours and shape
+        ShowColor();
+        ShowShape();
+        UpdateSummary();
+    }
 
     private StackPanel PartItem(PartRow row)
     {
         var visible = new CheckBox { IsChecked = !preview.Hidden.Contains(row.Index), VerticalAlignment = VerticalAlignment.Center };
         visible.IsCheckedChanged += (_, _) => SetHidden([row.Index], visible.IsChecked != true);
-        var material = row.Part.Material[(row.Part.Material.LastIndexOf('/') + 1)..];
         var item = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -387,14 +649,14 @@ internal sealed class PreviewPane : UserControl
                 {
                     Children =
                     {
-                        new TextBlock { Text = $"{row.Index + 1}. {material}", FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 230 },
-                        new TextBlock { Text = $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Brushes.Gray, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 230 },
+                        new TextBlock { Text = $"{row.Index + 1}. {row.Name}", FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
+                        new TextBlock { Text = $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Muted, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
                     },
                 },
             },
         };
-        item.PointerEntered += (_, _) => preview.Highlight = ReferenceEquals(partList.SelectedItem, row) ? -1 : row.Index;   // never over the part being recoloured
-        item.PointerExited += (_, _) => preview.Highlight = -1;            // only hovering highlights; selection never pulses
+        item.PointerEntered += (_, _) => preview.Highlight = ReferenceEquals(selected, row) ? -1 : row.Index;   // never over the picked part
+        item.PointerExited += (_, _) => preview.Highlight = -1;
         return item;
     }
 
@@ -405,22 +667,51 @@ internal sealed class PreviewPane : UserControl
             _ = hidden ? preview.Hidden.Add(index) : preview.Hidden.Remove(index);
         }
 
+        selecting = true;
         partList.ItemsSource = null;                                        // redraw the check boxes
         partList.ItemsSource = parts;
-        buildEdited.IsEnabled = preview.Hidden.Count > 0 && compare.SelectedIndex <= (mod is null ? 0 : 1);   // this mod, or the base game
+        partList.SelectedItem = selected;
+        selecting = false;
+        UpdateSummary();
+    }
+
+    private void UpdateSummary()
+    {
+        var changes = new List<string>();
+        if (preview.Hidden.Count > 0)
+        {
+            changes.Add($"{preview.Hidden.Count} hidden");
+        }
+
+        if (preview.PartColors.Count > 0)
+        {
+            changes.Add($"{preview.PartColors.Count} recolored");
+        }
+
+        if (preview.PartShapes.Count > 0)
+        {
+            changes.Add($"{preview.PartShapes.Count} reshaped");
+        }
+
+        changeSummary.Text = changes.Count == 0 ? "No changes yet." : "Changes: " + string.Join(" · ", changes);
+        buildEdited.IsEnabled = CanBuild;
+        ToolTip.SetTip(buildEdited, "Builds one edited version with every change (reshaped parts through the checked model operations); the original stays as a disabled version.");
     }
 
     private void ShowColor()
     {
-        if (partList.SelectedItem is not PartRow row || preview.Session?.PartColorTexture(row.Index) is not { } texture)
+        if (selected is not { } row || preview.Session?.PartColorTexture(row.Index) is not { } texture)
         {
             colorPanel.IsVisible = false;
+            colorHint.IsVisible = true;
+            colorHint.Text = selected is null ? "Pick a part to recolor it." : "This part has no colour texture to recolor.";
             return;
         }
 
         colorPanel.IsVisible = true;
+        colorHint.IsVisible = false;
         colorTitle.Text = $"Colour of part {row.Index + 1} ({texture[(texture.LastIndexOf('/') + 1)..]})";
-        var change = preview.PartColors.GetValueOrDefault(row.Index) ?? new S2ModKit.Application.ColorAdjustment();
+        var change = preview.PartColors.GetValueOrDefault(row.Index) ?? new ColorAdjustment();
         settingSliders = true;
         hue.Value = change.HueShiftDegrees;
         saturation.Value = change.Saturation;
@@ -440,23 +731,21 @@ internal sealed class PreviewPane : UserControl
         }
 
         settingSliders = false;
-
-        buildRecolor.IsEnabled = preview.PartColors.Count > 0 && compare.SelectedIndex <= (mod is null ? 0 : 1);
     }
 
     private void ApplyColor()
     {
-        if (partList.SelectedItem is not PartRow row)
+        if (selected is not { } row)
         {
             return;
         }
 
         var color = paintColor.Color;
-        var change = new S2ModKit.Application.ColorAdjustment((float)hue.Value, (float)saturation.Value, (float)brightness.Value,
-            Colorize: paint.IsChecked == true ? new S2ModKit.Application.RgbColor(color.R / 255f, color.G / 255f, color.B / 255f) : null,
+        var change = new ColorAdjustment((float)hue.Value, (float)saturation.Value, (float)brightness.Value,
+            Colorize: paint.IsChecked == true ? new RgbColor(color.R / 255f, color.G / 255f, color.B / 255f) : null,
             ColorizeStrength: (float)paintStrength.Value,
             ColorizeLightness: paint.IsChecked == true);                  // painting black or white works too
-        var unchanged = change == new S2ModKit.Application.ColorAdjustment();
+        var unchanged = change == new ColorAdjustment();
         if (unchanged)
         {
             preview.PartColors.Remove(row.Index);
@@ -467,12 +756,12 @@ internal sealed class PreviewPane : UserControl
         }
 
         preview.RequestPartColor(row.Index, unchanged ? null : change);
-        buildRecolor.IsEnabled = preview.PartColors.Count > 0 && compare.SelectedIndex <= (mod is null ? 0 : 1);
+        UpdateSummary();
     }
 
     private void ApplyRange()
     {
-        if (partList.SelectedItem is not PartRow row || !ranges.TryGetValue(row.Index, out var range))
+        if (selected is not { } row || !ranges.TryGetValue(row.Index, out var range))
         {
             return;
         }
@@ -484,19 +773,129 @@ internal sealed class PreviewPane : UserControl
 
     private void ResetColor()
     {
-        if (partList.SelectedItem is PartRow row)
+        if (selected is { } row)
         {
             preview.PartColors.Remove(row.Index);
             ranges.Remove(row.Index);
             preview.RequestColorRange(row.Index, null, 0);
             preview.RequestPartColor(row.Index, null);
             ShowColor();
+            UpdateSummary();
+        }
+    }
+
+    /// <summary>Shows what the picked part allows (from the CLI's checked operations and the preview) and its current shape.</summary>
+    private void ShowShape()
+    {
+        var capability = selected is { } row ? CapabilityOf(row) : null;
+        var previewRefusal = selected is { } picked ? previewRefusals.GetValueOrDefault(picked.Index) ?? preview.Session?.PartShapeRefusal(picked.Index) : null;
+        var level = previewRefusal is null ? capability?.Level ?? ShapeLevel.None : ShapeLevel.None;
+        (shapeStatus.Text, shapeStatus.Foreground) = selected is null ? ("Pick a part to reshape it.", Muted)
+            : modelRefusal is { } refused && capability is null ? (refused, Warn)
+            : previewRefusal is not null ? (previewRefusal, Warn)
+            : level == ShapeLevel.Full ? ("✓ " + capability!.Reason, Good)
+            : (capability?.Reason ?? "This part cannot be reshaped.", Warn);
+        shapeControls.IsEnabled = level != ShapeLevel.None;
+        keepProportions.IsEnabled = level == ShapeLevel.Full;
+        if (level is ShapeLevel.EvenSize or ShapeLevel.EvenSizeAndMove)
+        {
+            keepProportions.IsChecked = true;                               // the checked operation allows an even size only
+        }
+
+        foreach (var slider in turn)
+        {
+            slider.IsEnabled = level == ShapeLevel.Full;
+        }
+
+        foreach (var slider in move)
+        {
+            slider.IsEnabled = level is ShapeLevel.Full or ShapeLevel.EvenSizeAndMove;
+        }
+
+        pivot.IsEnabled = level == ShapeLevel.Full;
+        var shape = selected is { } current ? preview.PartShapes.GetValueOrDefault(current.Index) ?? PartShape.Identity : PartShape.Identity;
+        settingSliders = true;
+        (size[0].Value, size[1].Value, size[2].Value) = (shape.Scale.Y, shape.Scale.Z, shape.Scale.X);
+        (move[0].Value, move[1].Value, move[2].Value) = (shape.Move.Y, shape.Move.Z, shape.Move.X);
+        (turn[0].Value, turn[1].Value, turn[2].Value) = (shape.RotationDegrees.Y, shape.RotationDegrees.Z, shape.RotationDegrees.X);
+        pivot.SelectedIndex = (int)shape.Pivot;
+        settingSliders = false;
+    }
+
+    /// <summary>What the checked operations allow for part <paramref name="index"/> (the build uses the same level).</summary>
+    public ShapeLevel ShapeLevelOf(int index) =>
+        parts.FirstOrDefault(row => row.Index == index) is { } row ? CapabilityOf(row)?.Level ?? ShapeLevel.None : ShapeLevel.None;
+
+    private PartShapeCapability? CapabilityOf(PartRow row) =>
+        capabilities.GetValueOrDefault(ShapeCapabilities.Normalize(row.Part.Material));
+
+    private void ShapeSliderChanged(AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == RangeBase.ValueProperty && !settingSliders)
+        {
+            QueueShape();
+        }
+    }
+
+    private void QueueShape()
+    {
+        if (!settingSliders)
+        {
+            shapeDelay.Stop();
+            shapeDelay.Start();
+        }
+    }
+
+    private void ApplyShape()
+    {
+        if (selected is not { } row)
+        {
+            return;
+        }
+
+        var shape = new PartShape(
+            new System.Numerics.Vector3((float)size[2].Value, (float)size[0].Value, (float)size[1].Value),
+            new System.Numerics.Vector3((float)turn[2].Value, (float)turn[0].Value, (float)turn[1].Value),
+            new System.Numerics.Vector3((float)move[2].Value, (float)move[0].Value, (float)move[1].Value),
+            (ShapePivot)Math.Max(0, pivot.SelectedIndex));
+        var index = row.Index;
+        if (shape.IsIdentity)
+        {
+            preview.PartShapes.Remove(index);
+        }
+        else
+        {
+            preview.PartShapes[index] = shape;
+        }
+
+        preview.RequestPartShape(index, shape.IsIdentity ? null : shape, refusal => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (refusal is not null)
+            {
+                previewRefusals[index] = refusal;
+                preview.PartShapes.Remove(index);
+                ShowShape();
+            }
+
+            UpdateSummary();
+        }));
+        UpdateSummary();
+    }
+
+    private void ResetShape()
+    {
+        if (selected is { } row)
+        {
+            preview.PartShapes.Remove(row.Index);
+            preview.RequestPartShape(row.Index, null);
+            ShowShape();
+            UpdateSummary();
         }
     }
 
     private void ToggleSelected()
     {
-        if (partList.SelectedItem is PartRow row)
+        if (selected is { } row)
         {
             SetHidden([row.Index], !preview.Hidden.Contains(row.Index));
         }
@@ -508,7 +907,7 @@ internal sealed class PreviewPane : UserControl
         pickColor.Content = on ? "Cancel (Esc)" : "Pick on model";
     }
 
-    /// <summary>Drops every recolor, colour range and hidden part since the model opened (nothing was built).</summary>
+    /// <summary>Drops every recolor, colour range, shape and hidden part since the model opened (nothing was built).</summary>
     private void CancelAll()
     {
         foreach (var part in preview.PartColors.Keys.ToArray())
@@ -521,20 +920,59 @@ internal sealed class PreviewPane : UserControl
             preview.RequestColorRange(part, null, 0);
         }
 
+        foreach (var part in preview.PartShapes.Keys.ToArray())
+        {
+            preview.RequestPartShape(part, null);
+        }
+
         preview.PartColors.Clear();
+        preview.PartShapes.Clear();
         ranges.Clear();
         SetSampling(false);
         SetHidden(parts.Select(part => part.Index), false);
         ShowColor();
+        ShowShape();
     }
 
-    /// <summary>A label and a slider on one line, to keep the colour column short.</summary>
-    private static Grid Labelled(string label, Control slider)
+    private static Slider Shape(double minimum, double maximum, double value) => new() { Minimum = minimum, Maximum = maximum, Value = value, Height = 36 };
+
+    private static Grid Section(string title, Control? extra = null)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("72,*"), Margin = new Thickness(0, -4) };
-        row.Children.Add(new TextBlock { Text = label, Foreground = Brushes.Gray, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 8, 0, 0) };
+        row.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) });
+        if (extra is not null)
+        {
+            Grid.SetColumn(extra, 1);
+            row.Children.Add(extra);
+        }
+
+        return row;
+    }
+
+    /// <summary>A label and a slider on one line (and its value, when a format is given), to keep the tool column short.</summary>
+    private static Grid Labelled(string label, Slider slider, string? format = null)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("72,*,52"), Margin = new Thickness(0, -4) };
+        row.Children.Add(new TextBlock { Text = label, Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        Detach(slider);
         Grid.SetColumn(slider, 1);
         row.Children.Add(slider);
+        if (format is not null)
+        {
+            var value = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+            void Show() => value.Text = slider.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+            Show();
+            slider.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == RangeBase.ValueProperty)
+                {
+                    Show();
+                }
+            };
+            Grid.SetColumn(value, 2);
+            row.Children.Add(value);
+        }
+
         return row;
     }
 
@@ -543,6 +981,7 @@ internal sealed class PreviewPane : UserControl
         var row = new WrapPanel { ItemSpacing = 6, LineSpacing = 6, Margin = new Thickness(8, 4) };
         foreach (var child in children)
         {
+            Detach(child);
             row.Children.Add(child);
         }
 
@@ -569,4 +1008,7 @@ internal sealed class PreviewPane : UserControl
 }
 
 /// <summary>A part card: its index in draw order and what the preview reports about it.</summary>
-internal sealed record PartRow(int Index, S2ModKit.Application.PreviewPart Part);
+internal sealed record PartRow(int Index, PreviewPart Part)
+{
+    public string Name => Part.Material[(Part.Material.LastIndexOf('/') + 1)..];
+}

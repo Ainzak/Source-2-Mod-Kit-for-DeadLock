@@ -314,30 +314,61 @@ public sealed class AddonModOperations(IAddonFileOperations files, IGameProcessP
         ArgumentNullException.ThrowIfNull(chosen);
         ArgumentNullException.ThrowIfNull(siblings);
         EnsureGameStopped();
-        var names = (await NamesAsync(chosen.AddonsRoot, cancellationToken).ConfigureAwait(false)).ToList();
-        var plan = new List<AddonRename>();
-        foreach (var sibling in siblings)
-        {
-            var enabled = sibling.Archives.Where(archive => AddonFileApplication.TryParseSlot(archive) is not null).ToArray();
-            if (enabled.Length == 0)
-            {
-                continue;
-            }
+        var plan = await PlanSetAsync(chosen.AddonsRoot, siblings, [chosen], cancellationToken).ConfigureAwait(false);
+        return plan.Count == 0
+            ? new AddonOperationResult("unchanged", $"'{chosen.Label}' is already the active version. No files changed.", [], null)
+            : await RenameAsync(chosen, plan, journalRoot, $"'{chosen.Label}' is now the active version.", cancellationToken).ConfigureAwait(false);
+    }
 
-            var part = AddonNaming.PlanDisable(enabled, sibling.ModId, names);
+    /// <summary>Switches a set of mods (a profile): disables every enabled mod of <paramref name="disable"/>, then enables every disabled
+    /// mod of <paramref name="enable"/> in the given order (each takes the lowest free slot, so the order is the load order among them),
+    /// in one journaled <c>addon-rename@1</c> operation; a failure puts every file back.</summary>
+    public async Task<AddonOperationResult> SwitchSetAsync(string addonsRoot, string label, IReadOnlyList<AddonModTarget> disable, IReadOnlyList<AddonModTarget> enable,
+        string journalRoot, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(disable);
+        ArgumentNullException.ThrowIfNull(enable);
+        EnsureGameStopped();
+        var plan = await PlanSetAsync(addonsRoot, disable, enable, cancellationToken).ConfigureAwait(false);
+        var target = new AddonModTarget(addonsRoot, label, null, [], new HashSet<string>());
+        return plan.Count == 0
+            ? new AddonOperationResult("unchanged", $"The mods already match '{label}'. No files changed.", [], null)
+            : await RenameAsync(target, plan, journalRoot, $"Switched to '{label}'.", cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The renames that disable <paramref name="disable"/> and then enable <paramref name="enable"/>, each planned against the
+    /// names left by the ones before it.</summary>
+    public async Task<IReadOnlyList<AddonRename>> PlanSetAsync(string addonsRoot, IReadOnlyList<AddonModTarget> disable, IReadOnlyList<AddonModTarget> enable, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(disable);
+        ArgumentNullException.ThrowIfNull(enable);
+        var names = (await NamesAsync(addonsRoot, cancellationToken).ConfigureAwait(false)).ToList();
+        var plan = new List<AddonRename>();
+        void Add(IReadOnlyList<AddonRename> part)
+        {
             plan.AddRange(part);
             names = [.. names.Except(part.Select(item => item.From), StringComparer.OrdinalIgnoreCase), .. part.Select(item => item.To)];
         }
 
-        var disabled = chosen.Archives.Where(archive => AddonFileApplication.TryParseSlot(archive) is null).ToArray();
-        if (disabled.Length > 0)
+        foreach (var target in disable)
         {
-            plan.AddRange(AddonNaming.PlanEnable(disabled, chosen.ModId, names, chosen.ReservedSlotNames));
+            var enabled = target.Archives.Where(archive => AddonFileApplication.TryParseSlot(archive) is not null).ToArray();
+            if (enabled.Length > 0)
+            {
+                Add(AddonNaming.PlanDisable(enabled, target.ModId, names));
+            }
         }
 
-        return plan.Count == 0
-            ? new AddonOperationResult("unchanged", $"'{chosen.Label}' is already the active version. No files changed.", [], null)
-            : await RenameAsync(chosen, plan, journalRoot, $"'{chosen.Label}' is now the active version.", cancellationToken).ConfigureAwait(false);
+        foreach (var target in enable)
+        {
+            var disabled = target.Archives.Where(archive => AddonFileApplication.TryParseSlot(archive) is null).ToArray();
+            if (disabled.Length > 0)
+            {
+                Add(AddonNaming.PlanEnable(disabled, target.ModId, names, target.ReservedSlotNames));
+            }
+        }
+
+        return plan;
     }
 
     /// <summary>The renames moving a mod one place in the load order would do, without doing them.</summary>

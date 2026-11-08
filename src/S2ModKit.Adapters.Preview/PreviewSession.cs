@@ -41,6 +41,7 @@ public sealed partial class PreviewSession : IDisposable
     private readonly TextRenderer text;
     private readonly InkOutline ink;
     private readonly PartPicker picker;
+    private readonly PartGeometry geometry;
     private readonly HighlightOverlay highlight = new();
     private readonly Dictionary<int, int> hiddenIndexCounts = [];
     private Framebuffer? main;
@@ -94,6 +95,7 @@ public sealed partial class PreviewSession : IDisposable
         scene.Add(node, true);
         ink = new InkOutline(loader, model, node);
         picker = new PartPicker(model, node.RenderableMeshes.Select(mesh => mesh.MeshIndex).ToHashSet());
+        geometry = new PartGeometry(model, node.RenderableMeshes.Select(mesh => mesh.MeshIndex).ToHashSet());
         scene.Initialize();
         text = new TextRenderer(context, renderer.Camera);
         text.Load();

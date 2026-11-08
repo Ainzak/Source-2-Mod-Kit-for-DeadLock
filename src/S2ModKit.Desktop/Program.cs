@@ -72,17 +72,39 @@ internal static class Program
             });
 }
 
-internal sealed record AppOptions(string? Game, string Model, string? SelfTest, string? Addon = null, float? Outline = null)
+/// <summary>Command-line options. <c>--ui-shot &lt;png&gt;</c> opens the window, shows <c>--select &lt;mod name&gt;</c> (and, in its preview,
+/// tool <c>--tab Parts|Colour|Shape</c> with part <c>--part &lt;number&gt;</c>), saves the window as a picture and closes (layout checks without
+/// controlling the desktop); <c>--by-hero</c> starts in the per-hero view.</summary>
+internal sealed record AppOptions(string? Game, string Model, string? SelfTest, string? Addon = null, float? Outline = null,
+    string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false)
 {
     public static AppOptions Parse(string[] args)
     {
-        string? game = null, selfTest = null, addon = null;
+        string? game = null, selfTest = null, addon = null, uiShot = null, select = null, tab = null;
+        int? part = null;
+        var byHero = false;
         float? outline = null;
         var model = "models/heroes_wip/wraith/wraith.vmdl";
-        for (var i = 0; i + 1 < args.Length; i += 2)
+        for (var i = 0; i < args.Length; i += 2)
         {
+            if (args[i] == "--by-hero")
+            {
+                byHero = true;
+                i--;
+                continue;
+            }
+
+            if (i + 1 >= args.Length)
+            {
+                throw new ArgumentException($"Option '{args[i]}' needs a value.");
+            }
+
             switch (args[i])
             {
+                case "--ui-shot": uiShot = args[i + 1]; break;
+                case "--select": select = args[i + 1]; break;
+                case "--tab": tab = args[i + 1]; break;
+                case "--part": part = int.Parse(args[i + 1], System.Globalization.CultureInfo.InvariantCulture); break;
                 case "--game": game = args[i + 1]; break;
                 case "--model": model = args[i + 1]; break;
                 case "--selftest": selfTest = args[i + 1]; break;
@@ -92,6 +114,6 @@ internal sealed record AppOptions(string? Game, string Model, string? SelfTest, 
             }
         }
 
-        return new AppOptions(game, model, selfTest, addon, outline);
+        return new AppOptions(game, model, selfTest, addon, outline, uiShot, select, tab, part, byHero);
     }
 }

@@ -1,6 +1,6 @@
 # Existing-mesh position authoring
 
-The agent workflow exports source-bound geometry, creates an editable Blender scene and independently
+The authoring workflow exports source-bound geometry, creates an editable Blender scene and independently
 validates its returned positions, then imports them through the compiled build/verify lifecycle.
 Use an installed Blender executable and `tools/blender/blender_bridge.py`.
 
@@ -20,7 +20,7 @@ Supply absent outputs. Export publishes `bundle.json`, `selection.json`, `source
 The independent validator rereads the immutable project and dependencies and derives geometry/frame
 expectations from source records rather than trusting Blender's preflight.
 
-An agent prepares a version-1 selection using `position-authoring-selection.schema.json`: input hash,
+The script prepares a version-1 selection using `position-authoring-selection.schema.json`: input hash,
 1–16 complete ordinary members across every present LOD, displacement cap, and source-hashed protected
 IDs for each member/LOD. Explicit policies must select `preserve_unverified` runtime metadata,
 `preserve_serialized_inputs_unverified` procedural inputs, `preserve_source_coincidence` source triangles,

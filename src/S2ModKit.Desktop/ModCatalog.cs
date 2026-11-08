@@ -17,7 +17,11 @@ internal enum ModSource
 internal sealed record ModVersion(string Key, string Label, bool Active);
 
 /// <summary>What an operation changed: the list key to select afterwards and the message to show.</summary>
-internal sealed record CatalogChange(string SelectKey, string Message);
+internal sealed record CatalogChange(string SelectKey, string Message)
+{
+    /// <summary>The install receipts of what the change installed (archive installs), for records such as the GameBanana source.</summary>
+    public IReadOnlyList<S2ModKit.Application.AddonFileInstallReceipt> Receipts { get; init; } = [];
+}
 
 /// <summary>One recolored part for a build: its colour texture (path without <c>_c</c>), its UV mask in that texture's size and the change.</summary>
 internal sealed record PartRecolor(int Part, string Texture, float[] Mask, int Width, int Height, ColorAdjustment Change);
@@ -206,11 +210,16 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
     /// <summary>Extracts the chosen variants into a staging folder under the data folder, installs each through the safe installer
     /// into a free slot and removes the staging folder. A variant the installer refuses (it shares files with an enabled mod,
     /// including one installed a moment earlier from the same archive) is reported and the others still install.</summary>
-    public async Task<CatalogChange> InstallArchiveAsync(string archivePath, IReadOnlyList<ArchiveVariant> chosen, CancellationToken cancellationToken = default)
+    public async Task<CatalogChange> InstallArchiveAsync(string archivePath, IReadOnlyList<ArchiveVariant> chosen, CancellationToken cancellationToken = default) =>
+        await InstallArchiveAsync(archivePath, chosen, null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>As <see cref="InstallArchiveAsync(string, IReadOnlyList{ArchiveVariant}, CancellationToken)"/>, named <paramref name="label"/>
+    /// (a GameBanana mod's name) instead of the archive's file name; the receipts of what was installed are returned too.</summary>
+    public async Task<CatalogChange> InstallArchiveAsync(string archivePath, IReadOnlyList<ArchiveVariant> chosen, string? label, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chosen);
         Management.EnsureGameStopped();
-        var baseName = Path.GetFileNameWithoutExtension(archivePath);
+        var baseName = label ?? Path.GetFileNameWithoutExtension(archivePath);
         var stagingRoot = Path.GetFullPath(settings.StagingRoot);
         var staging = Path.Combine(stagingRoot, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}");
         var installed = new List<AddonFileInstallReceipt>();
@@ -221,10 +230,10 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             await archives.ExtractAsync(archivePath, [.. layout.SelectMany(item => item.Extractions)], staging, cancellationToken).ConfigureAwait(false);
             foreach (var (variant, dirPath, _) in layout)
             {
-                var label = layout.Count == 1 ? baseName : $"{baseName} - {(variant.Folder.Length > 0 ? variant.Folder[(variant.Folder.LastIndexOf('/') + 1)..] : Path.GetFileNameWithoutExtension(variant.FileName))}";
+                var variantLabel = layout.Count == 1 ? baseName : $"{baseName} - {(variant.Folder.Length > 0 ? variant.Folder[(variant.Folder.LastIndexOf('/') + 1)..] : Path.GetFileNameWithoutExtension(variant.FileName))}";
                 try
                 {
-                    if ((await InstallAsync(dirPath, label, cancellationToken).ConfigureAwait(false)).Receipt is { } receipt)
+                    if ((await InstallAsync(dirPath, variantLabel, cancellationToken).ConfigureAwait(false)).Receipt is { } receipt)
                     {
                         installed.Add(receipt);
                     }
@@ -245,7 +254,42 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
         var message = installed.Count == 0 ? "Nothing was installed." : $"Installed {string.Join(", ", installed.Select(receipt => $"'{receipt.Label}'"))}.";
         return new CatalogChange(installed.Count > 0 ? AddonNaming.FileKey(installed[0].TargetFileName) : string.Empty,
-            message + (refused.Count > 0 ? " Refused: " + string.Join(" ", refused) : string.Empty));
+            message + (refused.Count > 0 ? " Refused: " + string.Join(" ", refused) : string.Empty))
+        { Receipts = installed };
+    }
+
+    /// <summary>
+    /// Installs a downloaded update of <paramref name="mod"/> (a <c>.vpk</c>, or the chosen <paramref name="variant"/> of a zip, 7z or rar)
+    /// as a new version of the same mod: the current files stay as a disabled version. Refused while the game runs.
+    /// </summary>
+    public async Task<CatalogChange> UpdateAsync(ModEntry mod, string download, ArchiveVariant? variant, string label, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mod);
+        Management.EnsureGameStopped();
+        if (Path.GetExtension(download).Equals(".vpk", StringComparison.OrdinalIgnoreCase))
+        {
+            return await InstallVersionAsync(mod, mod.Name, download, label, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (variant is null)
+        {
+            throw Errors.Input("UPDATE_VARIANT_REQUIRED", "The update is an archive; choose which variant to install.", "Pick one of the archive's variants.");
+        }
+
+        var staging = Path.Combine(Path.GetFullPath(settings.StagingRoot), $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}");
+        try
+        {
+            var layout = ArchiveVariants.Layout([variant], staging);
+            await archives.ExtractAsync(download, [.. layout.SelectMany(item => item.Extractions)], staging, cancellationToken).ConfigureAwait(false);
+            return await InstallVersionAsync(mod, mod.Name, layout[0].DirPath, label, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Directory.Exists(staging))
+            {
+                Directory.Delete(staging, recursive: true);                  // only the folder created above, inside the staging root
+            }
+        }
     }
 
     /// <summary>Disables the mod by renaming its files in place (see <see cref="AddonNaming"/>).</summary>
@@ -413,8 +457,60 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             [.. mod.Files.Select(file => Path.GetFileName(file))], view.ReservedSlotNames);
     }
 
-    /// <summary>After a rename: the app's receipts and the library follow the new names; the list selects the mod under its new key.</summary>
+    /// <summary>The saved profiles (named sets of enabled mods).</summary>
+    public ModProfiles Profiles => new(Path.Combine(settings.Data, "profiles.json"));
+
+    /// <summary>
+    /// Switches to <paramref name="profile"/>: the enabled mods outside it are disabled and its disabled mods enabled in its load order,
+    /// in one journaled rename (refused while the game runs). An app install the old way disabled (only its package kept) is installed
+    /// again afterwards. Mods of the profile that are no longer in the folder are named in the message.
+    /// </summary>
+    public async Task<CatalogChange> ApplyProfileAsync(ModProfile profile, IReadOnlyList<ModEntry> mods, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        Management.EnsureGameStopped();
+        var plan = ModProfiles.Plan(profile, mods);
+        var disable = new List<AddonModTarget>();
+        foreach (var mod in plan.Disable)
+        {
+            disable.Add(await TargetOfAsync(mod, cancellationToken).ConfigureAwait(false));
+        }
+
+        var enable = new List<AddonModTarget>();
+        foreach (var mod in plan.Enable.Where(mod => !mod.Key.StartsWith("app:", StringComparison.Ordinal)))
+        {
+            enable.Add(await TargetOfAsync(mod, cancellationToken).ConfigureAwait(false));
+        }
+
+        var result = await Management.SwitchSetAsync(settings.AddonsRoot, profile.Name, disable, enable, settings.JournalRoot, cancellationToken).ConfigureAwait(false);
+        var note = await FollowRecordsAsync(result, cancellationToken).ConfigureAwait(false);
+        foreach (var legacy in plan.Enable.Where(mod => mod.Key.StartsWith("app:", StringComparison.Ordinal)))
+        {
+            await EnableAsync(legacy, cancellationToken).ConfigureAwait(false);
+        }
+
+        var message = plan.IsEmpty ? $"The mods already match '{profile.Name}'. No files changed."
+            : $"Switched to '{profile.Name}': {plan.Disable.Count} mod{(plan.Disable.Count == 1 ? string.Empty : "s")} disabled, {plan.Enable.Count} enabled.";
+        if (plan.Missing.Count > 0)
+        {
+            message += $" Not in the addons folder any more: {string.Join(", ", plan.Missing.Select(mod => $"'{mod.Name}'"))}.";
+        }
+
+        return new CatalogChange(string.Empty, message + note);
+    }
+
+    /// <summary>After a rename: the app's receipts, the library and the profiles follow the new names; the list selects the mod under its new key.</summary>
     private async Task<CatalogChange> ChangeAsync(ModEntry mod, AddonOperationResult result, CancellationToken cancellationToken)
+    {
+        var note = await FollowRecordsAsync(result, cancellationToken).ConfigureAwait(false);
+        var first = Path.GetFileName(mod.Files[0]);
+        var key = mod.Source == ModSource.Manager || mod.Key.StartsWith("app:", StringComparison.Ordinal) ? mod.Key
+            : result.Renames.FirstOrDefault(item => item.From.Equals(first, StringComparison.OrdinalIgnoreCase)) is { } renamed ? AddonNaming.FileKey(renamed.To) : mod.Key;
+        return new CatalogChange(key, result.Summary + note);
+    }
+
+    /// <summary>The app's own records follow a rename; returns a note for the message when they could not.</summary>
+    private async Task<string> FollowRecordsAsync(AddonOperationResult result, CancellationToken cancellationToken)
     {
         var note = string.Empty;
         if (result.Renames.Count > 0)
@@ -437,6 +533,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 {
                     await libraryStore.SaveAsync(settings.LibraryPath, followed, cancellationToken).ConfigureAwait(false);
                 }
+
+                Profiles.FollowRenames(result.Renames);
             }
 #pragma warning disable CA1031 // the files are renamed and verified; say that the app's own records lag
             catch (Exception exception)
@@ -446,10 +544,7 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             }
         }
 
-        var first = Path.GetFileName(mod.Files[0]);
-        var key = mod.Source == ModSource.Manager || mod.Key.StartsWith("app:", StringComparison.Ordinal) ? mod.Key
-            : result.Renames.FirstOrDefault(item => item.From.Equals(first, StringComparison.OrdinalIgnoreCase)) is { } renamed ? AddonNaming.FileKey(renamed.To) : mod.Key;
-        return new CatalogChange(key, result.Summary + note);
+        return note;
     }
 
     private async Task<List<AppInstall>> ReadInstallsAsync(CancellationToken cancellationToken)
@@ -709,19 +804,32 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         return new CatalogChange(repairedKey, $"Repaired '{mod.Name}': {drop.Count} outdated game file(s) left out. The original is kept disabled as the old version.");
     }
 
+    /// <summary>Builds an edited copy with parts hidden (see <see cref="BuildEditsAsync"/>).</summary>
+    public Task<CatalogChange> BuildEditedAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, CancellationToken cancellationToken = default) =>
+        BuildEditsAsync(mod, modelPath, hidden, [], null, cancellationToken);
+
+    /// <summary>Builds a recolored copy (see <see cref="BuildEditsAsync"/>).</summary>
+    public Task<CatalogChange> BuildRecoloredAsync(ModEntry? mod, string modelPath, IReadOnlyList<PartRecolor> parts, CancellationToken cancellationToken = default) =>
+        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, cancellationToken);
+
     /// <summary>
-    /// Builds an edited copy with parts of <paramref name="modelPath"/> hidden (no triangles; the rest of the model byte for byte).
-    /// For a mod: the whole mod is copied with the edited model, the copy is installed and the original kept disabled as a version
-    /// of the same mod. For the base game (<paramref name="mod"/> null): a new mod with only the edited model. Refused while the
-    /// game runs.
+    /// Builds one edited copy of <paramref name="modelPath"/> with every change made in the app: <paramref name="hidden"/> parts get
+    /// no triangles (the rest of the model byte for byte) and each recolored part's colour texture is decoded, changed through the
+    /// part's UV mask (<see cref="RecolorMath"/>) and written back in its own format. For a mod: the whole mod with the changed
+    /// files, installed as a version beside the original (kept disabled); for the base game (<paramref name="mod"/> null): a new
+    /// mod with only the changed files. Evidence beside the package: <c>edit.json</c> (hidden parts; per recolored part: texture,
+    /// change, texels, mean colour before and after). Refused while the game runs.
     /// </summary>
-    public async Task<CatalogChange> BuildEditedAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, CancellationToken cancellationToken = default)
+    public async Task<CatalogChange> BuildEditsAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
+        IReadOnlyList<PartShapeEdit>? shapes = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hidden);
+        ArgumentNullException.ThrowIfNull(recolors);
+        shapes ??= [];
         Management.EnsureGameStopped();
-        if (hidden.Count == 0)
+        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0)
         {
-            throw Errors.Input("MODEL_EDIT_NOTHING", "No part is hidden.", "Untick the parts to hide first.");
+            throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part first.");
         }
 
         if (mod is not null && (mod.Files.Count != 1 || !mod.Loaded))
@@ -731,45 +839,112 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
         var logical = (modelPath.EndsWith("_c", StringComparison.Ordinal) ? modelPath : modelPath + "_c").Replace('\\', '/');
         var entries = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
-        var sources = mod is not null ? [mod.Files[0]] : new[] { Path.Combine(settings.Game, "citadel", "pak01_dir.vpk") };
-        byte[]? model = null;
-        foreach (var archive in sources)
+        if (mod is not null)
         {
             using var source = new SteamDatabase.ValvePak.Package();
-            source.Read(archive);
+            source.Read(mod.Files[0]);
             foreach (var entry in source.Entries!.SelectMany(group => group.Value))
             {
-                var path = entry.GetFullPath();
-                if (mod is null && !path.Equals(logical, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;                                               // the base game: only the model
-                }
-
                 source.ReadEntry(entry, out var bytes);
-                if (path.Equals(logical, StringComparison.OrdinalIgnoreCase))
-                {
-                    model = bytes;
-                }
-                else
-                {
-                    entries[path] = bytes;
-                }
+                entries[entry.GetFullPath()] = bytes;
             }
         }
 
-        if (model is null)
+        string? shapeProject = null;
+        if (shapes.Count > 0)
         {
-            throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
+            var (reshaped, project) = await ShapeModelBuilder.BuildAsync(settings, mod, modelPath, shapes, cancellationToken).ConfigureAwait(false);   // the CLI's checked operations
+            entries[logical] = reshaped;
+            shapeProject = project;
         }
 
-        entries[logical] = S2ModKit.Adapters.Source2.CompiledModelEdit.HideDrawCalls(model, logical, hidden);
-        var label = $"edited: {hidden.Count} part{(hidden.Count == 1 ? string.Empty : "s")} hidden";
-        var name = mod?.Name ?? Hero.Catalogue.FirstOrDefault(hero => hero.Model.Equals(modelPath.Replace("_c", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))?.Name ?? Path.GetFileNameWithoutExtension(modelPath);
-        var edits = Path.Combine(settings.Data, "edits");
-        Directory.CreateDirectory(edits);
-        var package = Path.Combine(edits, $"{Sanitize(name)}-edited-{clock.UtcNow:yyyyMMdd-HHmmss}_dir.vpk");
-        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(package, entries, cancellationToken).ConfigureAwait(false);
+        if (hidden.Count > 0)
+        {
+            var model = entries.GetValueOrDefault(logical);
+            if (mod is null && shapeProject is null)
+            {
+                using var game = new SteamDatabase.ValvePak.Package();
+                game.Read(Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"));
+                if (game.FindEntry(logical) is { } found)
+                {
+                    game.ReadEntry(found, out var bytes);
+                    model = bytes;
+                }
+            }
 
+            if (model.IsEmpty)
+            {
+                throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
+            }
+
+            entries[logical] = S2ModKit.Adapters.Source2.CompiledModelEdit.HideDrawCalls(model.ToArray(), logical, hidden);
+        }
+
+        var evidence = new List<object>();
+        if (recolors.Count > 0)
+        {
+            var archives = new List<string>();
+            if (mod is not null)
+            {
+                archives.Add(mod.Files[0]);
+            }
+
+            archives.Add(Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"));
+            archives.Add(Path.Combine(settings.Game, "core", "pak01_dir.vpk"));
+            var workshop = new S2ModKit.Adapters.Source2.VrfTextureWorkshop();
+            foreach (var group in recolors.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
+            {
+                var texture = await workshop.DecodeAsync(archives, group.Key, cancellationToken).ConfigureAwait(false);
+                var rgba = (byte[])texture.Rgba.Clone();
+                foreach (var part in group)
+                {
+                    if (part.Width != texture.Width || part.Height != texture.Height)
+                    {
+                        throw Errors.Verification("RECOLOR_MASK_SIZE", $"The mask of part {part.Part + 1} is {part.Width}x{part.Height}; '{group.Key}' is {texture.Width}x{texture.Height}.", "Open the preview again.");
+                    }
+
+                    var before = RecolorMath.Mean(rgba, part.Mask);
+                    var texels = RecolorMath.Apply(rgba, part.Mask, part.Change);
+                    evidence.Add(new { part = part.Part, texture = group.Key, change = part.Change, texels, meanBefore = before.ToString(), meanAfter = RecolorMath.Mean(rgba, part.Mask).ToString() });
+                }
+
+                entries[group.Key + "_c"] = await workshop.CompileAsync(texture, rgba, settings.StagingRoot, cancellationToken).ConfigureAwait(false);   // in place: no compiler
+            }
+        }
+
+        var changes = new List<string>();
+        if (hidden.Count > 0)
+        {
+            changes.Add($"{hidden.Count} part{(hidden.Count == 1 ? string.Empty : "s")} hidden");
+        }
+
+        if (recolors.Count > 0)
+        {
+            changes.Add($"{recolors.Count} part{(recolors.Count == 1 ? string.Empty : "s")} recolored");
+        }
+
+        if (shapes.Count > 0)
+        {
+            changes.Add($"{shapes.Count} part{(shapes.Count == 1 ? string.Empty : "s")} reshaped");
+        }
+
+        var label = "edited: " + string.Join(", ", changes);
+        var name = mod?.Name ?? Hero.Catalogue.FirstOrDefault(hero => hero.Model.Equals(modelPath.Replace("_c", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))?.Name ?? Path.GetFileNameWithoutExtension(modelPath);
+        var folder = Path.Combine(settings.Data, "edits", $"{Sanitize(name)}-{clock.UtcNow:yyyyMMdd-HHmmss}");
+        Directory.CreateDirectory(folder);
+        var package = Path.Combine(folder, $"{Sanitize(name)}-edited_dir.vpk");
+        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(package, entries, cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(Path.Combine(folder, "edit.json"), System.Text.Json.JsonSerializer.Serialize(
+            new
+            {
+                operation = "app-edit@1",
+                model = modelPath,
+                mod = mod?.Name,
+                hidden = hidden.Order().ToArray(),
+                recolors = evidence,
+                shapes = shapes.Select(edit => new { part = edit.Part, material = edit.Material, edit.Level, scale = new[] { edit.Shape.Scale.X, edit.Shape.Scale.Y, edit.Shape.Scale.Z }, rotationDegrees = new[] { edit.Shape.RotationDegrees.X, edit.Shape.RotationDegrees.Y, edit.Shape.RotationDegrees.Z }, move = new[] { edit.Shape.Move.X, edit.Shape.Move.Y, edit.Shape.Move.Z }, pivot = edit.Shape.Pivot.ToString() }),
+                shapeProject,                                               // the CLI projects (one per part): recipes, plans, builds and verification evidence
+            }, IndentedJson), cancellationToken).ConfigureAwait(false);
         return await InstallVersionAsync(mod, name, package, label, cancellationToken).ConfigureAwait(false);
     }
 
@@ -786,7 +961,9 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 result.Receipt is null ? result.Summary : $"Installed '{name} ({label})'. It loads like any other mod; disable or delete it to go back.");
         }
 
-        var disabled = await DisableAsync(mod, cancellationToken).ConfigureAwait(false);   // the original must not win over its edit
+        var disabled = mod.Loaded
+            ? await DisableAsync(mod, cancellationToken).ConfigureAwait(false)   // the original must not win over its edit
+            : new CatalogChange(mod.Key, string.Empty);
         AddonFileResult installed;
         try
         {
@@ -818,85 +995,7 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
         versions.Add(new ModLibraryVersion { Key = versionKey, Label = label });
         await libraryStore.SaveAsync(settings.LibraryPath, library.WithVersions(known?.Name ?? mod.Name, versions, clock.UtcNow), cancellationToken).ConfigureAwait(false);
-        return new CatalogChange(versionKey, $"Built '{mod.Name} ({label})'. The original is kept disabled as a version of the same mod.");
-    }
-
-    /// <summary>
-    /// Builds a recolored copy: each changed part's colour texture is decoded, every part's change applied through that part's UV
-    /// mask (<see cref="RecolorMath"/>) and the pixels written back in the texture's own format. For a mod: the whole mod
-    /// with the new textures, installed as a version beside the original; for the base game: a new mod with only the textures.
-    /// Evidence beside the package: <c>recolor.json</c> (per part: texture, change, texels, mean colour before and after).
-    /// </summary>
-    public async Task<CatalogChange> BuildRecoloredAsync(ModEntry? mod, string modelPath, IReadOnlyList<PartRecolor> parts, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(parts);
-        Management.EnsureGameStopped();
-        if (parts.Count == 0)
-        {
-            throw Errors.Input("RECOLOR_NOTHING", "No part is recolored.", "Change a part's colour first.");
-        }
-
-        if (mod is not null && (mod.Files.Count != 1 || !mod.Loaded))
-        {
-            throw Errors.Input("RECOLOR_UNSUPPORTED", "Only an enabled mod in one archive can be recolored here.", "Enable the mod first; split mods are not recolored yet.");
-        }
-
-        var archives = new List<string>();
-        if (mod is not null)
-        {
-            archives.Add(mod.Files[0]);
-        }
-
-        archives.Add(Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"));
-        archives.Add(Path.Combine(settings.Game, "core", "pak01_dir.vpk"));
-        var workshop = new S2ModKit.Adapters.Source2.VrfTextureWorkshop();
-        var textures = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.OrdinalIgnoreCase);
-        var evidence = new List<object>();
-        foreach (var group in parts.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
-        {
-            var texture = await workshop.DecodeAsync(archives, group.Key, cancellationToken).ConfigureAwait(false);
-            var rgba = (byte[])texture.Rgba.Clone();
-            foreach (var part in group)
-            {
-                if (part.Width != texture.Width || part.Height != texture.Height)
-                {
-                    throw Errors.Verification("RECOLOR_MASK_SIZE", $"The mask of part {part.Part + 1} is {part.Width}x{part.Height}; '{group.Key}' is {texture.Width}x{texture.Height}.", "Open the preview again.");
-                }
-
-                var before = RecolorMath.Mean(rgba, part.Mask);
-                var texels = RecolorMath.Apply(rgba, part.Mask, part.Change);
-                evidence.Add(new { part = part.Part, texture = group.Key, change = part.Change, texels, meanBefore = before.ToString(), meanAfter = RecolorMath.Mean(rgba, part.Mask).ToString() });
-            }
-
-            textures[group.Key + "_c"] = await workshop.CompileAsync(texture, rgba, settings.StagingRoot, cancellationToken).ConfigureAwait(false);   // in place: no compiler
-        }
-
-        var entries = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
-        if (mod is not null)
-        {
-            using var source = new SteamDatabase.ValvePak.Package();
-            source.Read(mod.Files[0]);
-            foreach (var entry in source.Entries!.SelectMany(group => group.Value))
-            {
-                source.ReadEntry(entry, out var bytes);
-                entries[entry.GetFullPath()] = bytes;
-            }
-        }
-
-        foreach (var (path, bytes) in textures)
-        {
-            entries[path] = bytes;
-        }
-
-        var label = $"recolored: {parts.Count} part{(parts.Count == 1 ? string.Empty : "s")}";
-        var name = mod?.Name ?? Hero.Catalogue.FirstOrDefault(hero => hero.Model.Equals(modelPath.Replace("_c", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))?.Name ?? Path.GetFileNameWithoutExtension(modelPath);
-        var folder = Path.Combine(settings.Data, "recolors", $"{Sanitize(name)}-{clock.UtcNow:yyyyMMdd-HHmmss}");
-        Directory.CreateDirectory(folder);
-        var package = Path.Combine(folder, $"{Sanitize(name)}-recolored_dir.vpk");
-        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(package, entries, cancellationToken).ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(folder, "recolor.json"), System.Text.Json.JsonSerializer.Serialize(new { operation = "recolor@1", model = modelPath, mod = mod?.Name, parts = evidence },
-            IndentedJson), cancellationToken).ConfigureAwait(false);
-        return await InstallVersionAsync(mod, name, package, label, cancellationToken).ConfigureAwait(false);
+        return new CatalogChange(versionKey, $"Installed '{mod.Name} ({label})'. The previous files are kept disabled as a version of the same mod.") { Receipts = [receipt] };
     }
 
     private static string Sanitize(string label) => new([.. label.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_').Take(40)]);

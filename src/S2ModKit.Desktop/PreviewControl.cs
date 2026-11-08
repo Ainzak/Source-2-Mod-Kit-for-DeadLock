@@ -28,6 +28,13 @@ internal sealed class PreviewControl : OpenGlControlBase
     ];
 
     private readonly Stopwatch clock = new();
+    private double nextDue;
+
+    /// <summary>Frames per second the preview draws at most (a smooth preview needs no more; drawing faster only uses power).</summary>
+    public int MaxFps { get; set; } = 60;
+
+    /// <summary>Frames drawn with an open session since the control was created (checks).</summary>
+    public long FramesDrawn { get; private set; }
     private PreviewSession? session;
     private PreviewSessionOptions? pending;
     private bool loadingFrameShown, closeRequested, clipChanged, panning;
@@ -35,6 +42,9 @@ internal sealed class PreviewControl : OpenGlControlBase
     private float yaw, pitch = 5, zoom = 1.3f, height = 0.5f, time;
     private Vector2 pan;
     private string? clip;
+    private string? returnClip;                                        // after a clip played once, the clip shown before it
+    private readonly Queue<string> nextClips = new();                  // the phases still to play before going back
+    private bool sequence;                                             // an ability's phases are playing once
     private double lastFrame, lastProgress, fpsWindowStart;
     private int frames;
 
@@ -66,6 +76,13 @@ internal sealed class PreviewControl : OpenGlControlBase
     public void RequestPartColor(int part, S2ModKit.Application.ColorAdjustment? change) => colorRequests[part] = change;
 
     private readonly Dictionary<int, (S2ModKit.Application.RgbColor? Target, float Tolerance)> rangeRequests = [];
+    private readonly Dictionary<int, (S2ModKit.Application.PartShape? Shape, Action<string?>? Done)> shapeRequests = [];
+
+    /// <summary>Reshapes a part in the preview at the next frame (null: its compiled shape); <paramref name="done"/> gets the refusal, if any.</summary>
+    public void RequestPartShape(int part, S2ModKit.Application.PartShape? shape, Action<string?>? done = null) => shapeRequests[part] = (shape, done);
+
+    /// <summary>Parts reshaped in the preview, with their change.</summary>
+    public Dictionary<int, S2ModKit.Application.PartShape> PartShapes { get; } = [];
     private (Point At, Action<(int Part, S2ModKit.Application.RgbColor Color)?> Done)? sample;
 
     /// <summary>Limits a part's recolor to colours near <paramref name="target"/> at the next frame (null: the whole part).</summary>
@@ -101,6 +118,8 @@ internal sealed class PreviewControl : OpenGlControlBase
         PartColors.Clear();
         colorRequests.Clear();
         rangeRequests.Clear();
+        shapeRequests.Clear();
+        PartShapes.Clear();
         pending = options;
         loadingFrameShown = false;
         RequestNextFrameRendering();
@@ -158,9 +177,39 @@ internal sealed class PreviewControl : OpenGlControlBase
 
     public void SetClip(string name)
     {
+        returnClip = null;
+        nextClips.Clear();
+        sequence = false;
         clip = name;
         clipChanged = true;
         time = 0;
+    }
+
+    /// <summary>Plays <paramref name="name"/> once from the start, then goes back to the clip shown before it (an ability, then idle).</summary>
+    public void PlayOnce(string name) => PlaySequence([name]);
+
+    /// <summary>Plays <paramref name="names"/> once each, in order (an ability's phases), then goes back to the clip shown before.</summary>
+    public void PlaySequence(IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        if (names.Count == 0)
+        {
+            return;
+        }
+
+        var back = returnClip ?? clip;
+        nextClips.Clear();
+        foreach (var next in names.Skip(1))
+        {
+            nextClips.Enqueue(next);
+        }
+
+        clip = names[0];
+        clipChanged = true;
+        time = 0;
+        Playing = true;
+        returnClip = back is not null && !names.Contains(back) ? back : null;
+        sequence = true;
     }
 
     public void Seek(float seconds)
@@ -233,7 +282,32 @@ internal sealed class PreviewControl : OpenGlControlBase
 
         if (Playing && session.ClipSeconds > 0)
         {
-            time = (time + delta) % session.ClipSeconds;
+            if (sequence && time + delta >= session.ClipSeconds)
+            {
+                time = 0;
+                var advanced = false;
+                while (!advanced && nextClips.TryDequeue(out var next))        // the next phase (a clip that does not load is skipped)
+                {
+                    advanced = TrySetClip(next);
+                    clip = advanced ? next : clip;
+                }
+
+                if (!advanced)
+                {
+                    sequence = false;                                          // every phase played once: back to the clip before
+                    if (returnClip is not null)
+                    {
+                        clip = returnClip;
+                        TrySetClip(clip);
+                    }
+
+                    returnClip = null;
+                }
+            }
+            else
+            {
+                time = (time + delta) % session.ClipSeconds;
+            }
         }
 
         session.SetTime(time);
@@ -266,6 +340,13 @@ internal sealed class PreviewControl : OpenGlControlBase
         }
 
         colorRequests.Clear();
+        foreach (var (part, shapeRequest) in shapeRequests)
+        {
+            var refusal = part >= 0 && part < session.Parts.Count ? session.SetPartShape(part, shapeRequest.Shape) : "No such part.";
+            shapeRequest.Done?.Invoke(refusal);
+        }
+
+        shapeRequests.Clear();
         session.Present(fb, view, width, heightPx, pan: pan);
         AfterFrame?.Invoke(session, view, width, heightPx, now);
         if (sample is { } sampling)
@@ -283,6 +364,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         }
 
         frames++;
+        FramesDrawn++;
         if (now - fpsWindowStart >= 1.0)
         {
             var fps = frames / (now - fpsWindowStart);
@@ -298,7 +380,34 @@ internal sealed class PreviewControl : OpenGlControlBase
             Post(() => Progress?.Invoke(t, length));
         }
 
+        RequestPacedFrame(now);
+    }
+
+    /// <summary>Starts drawing again after the control was hidden (no frame is requested while it is not shown).</summary>
+    public void Resume()
+    {
+        nextDue = 0;
         RequestNextFrameRendering();
+    }
+
+    /// <summary>Asks for the next frame at the paced rate: the due time advances by one interval per frame, so timer
+    /// granularity (about 15 ms on Windows) evens out instead of lowering the rate.</summary>
+    private void RequestPacedFrame(double now)
+    {
+        var interval = 1.0 / Math.Clamp(MaxFps, 10, 240);
+        nextDue = Math.Max(nextDue + interval, now);                       // after a stall, start counting again from now
+        var wait = nextDue - clock.Elapsed.TotalSeconds;
+        if (wait <= 0.002)
+        {
+            RequestNextFrameRendering();
+            return;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(wait)).ConfigureAwait(true);
+            RequestNextFrameRendering();
+        });
     }
 
     private void OpenNow(PreviewSessionOptions options)
@@ -333,13 +442,22 @@ internal sealed class PreviewControl : OpenGlControlBase
 
     private bool TrySetClip(string name)
     {
-        if (session is null || !session.Animations.Contains(name))
+        var file = name.EndsWith(".vnmclip", StringComparison.OrdinalIgnoreCase);       // a clip file in the archives loads on demand
+        if (session is null || (!file && !session.Animations.Contains(name)))
         {
             return false;
         }
 
         var keep = time;
-        session.SetClip(name);
+        try
+        {
+            session.SetClip(name);
+        }
+        catch (S2ModKit.Domain.S2ModKitException) when (file)
+        {
+            return false;                                                    // not loadable on this model: the clip shown stays
+        }
+
         time = Math.Min(keep, session.ClipSeconds);
         return true;
     }

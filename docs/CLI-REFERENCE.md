@@ -301,7 +301,7 @@ and are deduplicated. No label infers anatomy, hair, eyeballs, clothing or attac
 The canonical schema-9 recipe is published only after exact common-field planning passes.
 
 ### `s2mod selection-preview`
-The concise agent route is `directional review`; the existing selection-preview response is unchanged.
+The concise review route is `directional review`; the existing selection-preview response is unchanged.
 
 
 
@@ -334,7 +334,7 @@ physical occlusion. The summary reports XYZ factors, changed/pinned/protected co
 stored displacement, complete-source AABB diagonal and their ratio, plus before/after spans for
 the same changed records and the complete selection. These measures do not define a perceptibility
 threshold or prove animation/garment fit. The route requires an existing explicit recipe;
-directional discovery/scaffolding use the separate agent route above.
+directional discovery/scaffolding use the separate review route above.
 
 The command plans from immutable source without saving a plan, building or editing a resource.
 Matching existing artifacts are reused; conflicting or incomplete artifacts reject without
@@ -514,7 +514,7 @@ slots 90-99 could never win.
 
 ### `s2mod addons install-current`
 
-The agent/player checkpoint route for a reviewed minimal package. It hashes the current model and
+The player checkpoint route for a reviewed minimal package. It hashes the current model and
 every imported dependency, reverifies the model and package, then rereads source at the same
 workflow's install handoff. Missing/drifted source, failed reads, stale linkage or verification failure
 stop before managed addon writes. Equal relevant bytes may proceed under changed archive provenance.

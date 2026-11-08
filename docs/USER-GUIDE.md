@@ -9,7 +9,7 @@ The sections below also document the CLI for scripts and advanced model work.
 
 Geometry shaping and Blender position imports are currently CLI-only. They require explicit source
 selections and parameters; the app does not automatically select or reshape body parts or fit clothing.
-The [automation guide](AI-USAGE.md#agent-rules) describes advanced command workflows.
+The [automation guide](AUTOMATION.md#rules-for-scripted-workflows) describes advanced command workflows.
 Offline verification does not establish live appearance or animated fit.
 
 Use a verified Release build of the CLI and keep project data under an ignored workspace. Do not
@@ -245,7 +245,7 @@ These are separately opted-in visual edits, not a fallback when a strict operati
 They preserve unresolved sphere, distance-field and collision metadata without proving that it
 still matches the edited shape. Rendering, clothing fit and gameplay need a separate player test.
 
-Use `& $s2mod components list --project $project --experimental --format json` for agent discovery.
+Use `& $s2mod components list --project $project --experimental --format json` for scripted discovery.
 Candidate IDs from strict discovery cannot be reused in experimental discovery.
 Current experimental discovery uses schema 4.
 
@@ -315,10 +315,10 @@ proof of animations, garment fit or live culling.
 
 After review, use the ordinary plan/build/verify/package lifecycle.
 
-### Protected directional and paired shaping (agent workflow)
+### Protected directional and paired shaping (scripted workflow)
 
-Advanced region shaping uses the `directional` or `paired` agent commands. See
-[CLI automation](AI-USAGE.md) for source inspection, exact options, scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
+Advanced region shaping uses the `directional` or `paired` commands. See
+[CLI automation](AUTOMATION.md) for source inspection, exact options, scaffolding and matched previews. The paired workflow uses operation 10 / recipe 11 / plan 7 /
 evidence 12 and requires explicit disjoint fields, protected records and compatibility policies.
 Structural discovery is not anatomical selection or admission: authored options must pass the
 exact planner with complete all-LOD members before building. Review front/side silhouettes and
@@ -390,7 +390,7 @@ animation or runtime load order.
 
 ## 6. Explicit installation, observation, and rollback
 
-For a reviewed minimal candidate imported from the game archive, agents use
+For a reviewed minimal candidate imported from the game archive, scripts use
 [`addons install-current`](CLI-REFERENCE.md#s2mod-addons-install-current) with the exact reviewed
 package hash and current base archive. It compares the model and every imported dependency inside
 the installation workflow, reverifies the candidate and rereads source at handoff. A mismatch or
@@ -481,7 +481,8 @@ deletes the candidate and refuses to touch a changed or foreign file.
 
 ## 7. Desktop app (mod manager, preview, parts and colours)
 
-This section describes the 0.7.0 development build. Released downloads may have fewer controls.
+This section describes the current development build (0.8.0 in progress). Released downloads may have fewer controls;
+the **Shape** tool is new.
 
 `S2ModKit.exe` (next to `s2mod.exe`) manages every mod in Deadlock's `citadel/addons` folder and previews it without
 starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder are refused while the game runs.
@@ -495,37 +496,70 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
    under **Settings**.
 2. **The list.** **All mods** shows every mod (one entry per mod, also when Deadlock Mod Manager split it into several
    files), sorted by name, date added or load order. **By hero** groups mods under each hero (heroes are read from the
-   game's own data), plus Objects, World, Interface and Other; a hero without mods shows the game's own model. Filter by
+   game's own data), plus Objects, World, Interface and Other; every group is folded until clicked (the group of the
+   shown mod opens), and a hero without mods shows the game's own model. Filter by
    name, hero or kind (model, animation, sound, UI, particles). Names, heroes and dates from Deadlock Mod Manager and
    HELLCAT are read, never written.
 3. **Manage.** **Enable** and **Disable** rename the mod's files in place (nothing is moved or copied); **Delete** sends
    them to the Recycle Bin; **Install mod...** (or dropping a file on the window) installs a `.vpk`, `.zip`, `.7z` or
    `.rar`, asking which variant when an archive has several; the new mod is selected, and a note names the enabled mods
-   it shares files with. **Show in folder** and **Open addons folder** open
-   Explorer.
-4. **Conflicts and load order.** A badge marks mods that replace the same game files; the panel lists the shared files
+   it shares files with. **Show in folder** (and **Settings > Open addons folder**) open Explorer. Rarely used actions
+   (Delete, load order) are under **More**; a mod with versions switches with its **Version** list. **Details** next to the
+   mod's summary shows its files and model.
+4. **Conflicts and load order.** A badge marks mods that replace the same game files; the warning next to the mod's
+   summary opens the panel listing the shared files
    and which mod wins (the lower pak number). Two model mods for one hero may both be enabled; the app warns that only
-   one shows. Enabling a mod that would replace the same files as an enabled mod asks first. Sort by **Load order** to move a mod earlier or later; the app renumbers the files.
+   one shows. Enabling a mod that would replace the same files as an enabled mod asks first. **More > Load earlier / Load
+   later** moves a mod in the load order (sort by **Load order** to see it); the app renumbers the files.
 5. **After a game update.** A banner appears when Steam's build changes. **Check mods** compares each mod with the game
    (files it replaces, references and bones) and marks mods that work, are worth a look, can be repaired or need their
    author; the list then shows only the mods that are not marked as working (kind filter **Flagged by Check mods**; click one for the reasons).
    **Repair** makes a fixed copy and keeps the original as a disabled old version; nothing is disabled by
    itself.
-6. **Preview.** A model mod opens in the game's hero-select lighting with the ink outline:
+6. **Preview.** Tabs above the main area show the mod's **Preview**, **Sounds** and **Files** (tabs without content
+   are hidden). A model mod opens in the game's hero-select lighting with the ink outline:
    - **Show**: this mod, the game's model, or another mod for the same hero; **Include my enabled mods** also loads
      what the game loads beneath it.
    - Animation: filter and pick a clip, pause, drag the timeline. Camera: left drag orbits, right or middle drag pans,
      the wheel zooms; Front, Side, Back, Below and Close-up.
-7. **Parts.** The parts list beside the preview highlights a part on hover; clicking the model selects the part under
-   the cursor. Untick parts to hide them, then **Build edited mod**: a copy without those parts is installed as a new
-   version of the mod (or as a new small mod for the game's own model).
-8. **Colours.** Select a part to recolor it live: hue shift, saturation, brightness, or **Paint a colour** with the
-   picker (black and white work; shading is kept) and its strength. For clothes painted on the same texture as skin,
-   tick **Only colours like**, **Pick on model** (Esc cancels) and set the tolerance. **Reset part** or **Cancel all
-   changes** undo; **Build recolored mod** installs the new colours as a version of the mod. No Valve tools are needed.
-9. **Sounds.** A sound mod opens its sound list (a model mod with sounds has a **Sounds** button): the sound events it
+7. **Part tools.** Beside the preview, the picked part sits above three tabs; hovering a part in the list highlights it,
+   clicking the model picks the part under the cursor.
+   - **Parts**: untick parts to hide them.
+   - **Colour**: recolor the picked part live: hue shift, saturation, brightness, or **Paint a colour** with the picker
+     (black and white work; shading is kept) and its strength. For clothes painted on the same texture as skin, tick
+     **Only colours like**, **Pick on model** (Esc cancels) and set the tolerance. No Valve tools are needed.
+   - **Shape**: change the picked part's width, height and depth (**Keep proportions** locks them together), move it and
+     tilt, turn or roll it around its centre, base or top, live in the preview. Only parts the CLI's checked operations
+     accept can be reshaped (today mostly weapons and accessories of the game's own heroes); other parts say why in plain
+     words.
+8. **Build edited mod.** The bottom of the part tools lists the changes; **Cancel all** drops them and **Build edited
+   mod** installs one edited version with every hidden, recolored and reshaped part (the original stays as a disabled
+   version; for the game's own model, a new small mod). Each reshaped part goes through the CLI's checked operations
+   (one verified build per part, so several reshaped parts take a little longer); the build's records are kept in the
+   data folder (`shape-work`).
+9. **Sounds.** The **Sounds** tab (a sound-only mod opens on it) lists the sound events it
    changes or adds and the sound files it ships. **▶ Mod** plays the mod's sound and **▶ Game's** the game's
    original, to compare; an event plays its sounds in turn on repeated clicks. Nothing is changed.
+
+10. **Browse GameBanana.** **My mods | Browse GameBanana** at the top switches to Deadlock mods on GameBanana: newest,
+    recently updated, most liked or most viewed, by hero or category, or GameBanana's own search. Mods with content
+    ratings stay hidden unless **Show mods with content ratings** is ticked. A mod's page shows its screenshots, files
+    (size, date, downloads and GameBanana's virus scan), description and credits; **Install** downloads a file, checks
+    it against the size and checksum GameBanana lists and installs it like a dropped file (an archive with several
+    variants asks which). **More > Open on GameBanana** opens the page of a mod that came from there (installed here or
+    by Deadlock Mod Manager).
+11. **New files on GameBanana.** Once a day on start (with **Look for updates on start**) or with **Settings > Look for
+    mod updates on GameBanana**, the app asks GameBanana about every installed mod that came from it: a file uploaded
+    after the one installed here, or after Mod Manager's download, marks the mod **new file** (kind filter **New files on
+    GameBanana**). **Update...** shows the file and its description first (a new file can be an update or an optional
+    extra), then installs it as a new version of the mod; the current files stay as a disabled version.
+12. **Profiles.** **Profiles > Save enabled mods as a profile...** keeps the enabled mods and their load order under a name
+    (for example "Ranked" and "Fun"). Picking a profile in the menu shows what it disables and enables, then renames the
+    mods in place in one step, as Enable and Disable do; nothing is deleted. Mods of the profile that were removed since are
+    named and skipped. A newly installed mod is in no profile until it is saved again.
+13. **Ability buttons.** Over a hero's preview, buttons 1-4 play that hero's ability animations once, every phase in order
+    (for example charge, then strike; or hook, flight, then attack), then the preview returns to the animation it showed before. The abilities and their animations come from the game's own data; an ability
+    whose animation the model does not have gets no button.
 
 Previews are offline evidence: they are close to the game but not a game test.
 
@@ -563,11 +597,11 @@ JSON mode, consume the code rather than localized prose.
 | `CLI_NUMBER_INVALID` | Use finite invariant numbers such as `1.25` or `-3.5`. |
 | `POST_WRITE_VERIFICATION_FAILED` | No candidate was published; inspect evidence and do not install. |
 
-## Optional: using a coding assistant
+## Scripted workflows
 
-Give a new coding agent this guide, [CLI-REFERENCE.md](CLI-REFERENCE.md), and
-[AI-USAGE.md](AI-USAGE.md), plus the exact project root, reviewed catalogue and base VPK, and desired
+For a scripted run, start from this guide, [CLI-REFERENCE.md](CLI-REFERENCE.md) and
+[AUTOMATION.md](AUTOMATION.md), with the exact project root, reviewed catalogue and base VPK, and the desired
 high-level change. Use `catalog resolve` to map the player-facing name to a verified locator; the
-locator remains navigation data rather than a geometry hint. The agent should list components,
+locator remains navigation data rather than a geometry hint. List components,
 scaffold rather than hand-author selectors, run `plan`, and accept a structured unsupported result
 as valid.
