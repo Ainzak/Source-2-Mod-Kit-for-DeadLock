@@ -15,8 +15,10 @@ This is pre-alpha community software, independent of Valve. Game assets are not 
 - Enable, disable and delete any mod (renamed in place, nothing copied); install from VPK, zip, 7z or rar.
 - See which mods replace the same files and which one wins; change the load order.
 - After a game update, check every mod and repair the ones that only need stale files removed.
-- Preview models with animations and compare a mod with the game's model.
-- Hide parts of a model, recolor parts with a live preview, and build the edited copy; no Valve tools needed.
+- Preview models with animations, play a hero's abilities and compare a mod with the game's model.
+- Hide, recolor, resize, move and turn whole parts with a live preview, and build one edited copy; no Valve tools needed.
+- Browse and install Deadlock mods from GameBanana inside the app; see when a mod you have gets a new file there.
+- Profiles: save the set of enabled mods under a name and switch between sets.
 - Play a sound mod's sounds next to the game's originals.
 - Installer with a free choice of folder, and new versions offered in the app.
 
