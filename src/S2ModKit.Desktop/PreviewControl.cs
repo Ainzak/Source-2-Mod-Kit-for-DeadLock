@@ -277,7 +277,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         if (clipChanged && clip is not null)
         {
             clipChanged = false;
-            TrySetClip(clip);
+            TrySetClip(clip, abilityClip: sequence);
         }
 
         if (Playing && session.ClipSeconds > 0)
@@ -288,7 +288,7 @@ internal sealed class PreviewControl : OpenGlControlBase
                 var advanced = false;
                 while (!advanced && nextClips.TryDequeue(out var next))        // the next phase (a clip that does not load is skipped)
                 {
-                    advanced = TrySetClip(next);
+                    advanced = TrySetClip(next, abilityClip: true);
                     clip = advanced ? next : clip;
                 }
 
@@ -440,9 +440,11 @@ internal sealed class PreviewControl : OpenGlControlBase
         }
     }
 
-    private bool TrySetClip(string name)
+    /// <summary>Selects a clip the model lists. Only an ability's phases (<paramref name="abilityClip"/>) may load a clip file the
+    /// model does not list; a clip kept from the previous model (another hero's idle) never does: it would bend this skeleton.</summary>
+    private bool TrySetClip(string name, bool abilityClip = false)
     {
-        var file = name.EndsWith(".vnmclip", StringComparison.OrdinalIgnoreCase);       // a clip file in the archives loads on demand
+        var file = abilityClip && name.EndsWith(".vnmclip", StringComparison.OrdinalIgnoreCase);   // an ability's clip file loads on demand
         if (session is null || (!file && !session.Animations.Contains(name)))
         {
             return false;
