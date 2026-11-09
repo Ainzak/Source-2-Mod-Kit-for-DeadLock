@@ -74,6 +74,7 @@ internal sealed class MainWindow : Window
     public MainWindow(AppOptions options)
     {
         Title = "S2ModKit";
+        Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://S2ModKit/Assets/S2ModKit.ico")));
         Width = 1700;
         Height = 1000;
         settings = AppSettings.Load(options.Game);

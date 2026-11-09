@@ -1,5 +1,5 @@
 ; S2ModKit setup (Inno Setup 6). Built by scripts/Publish-Release.ps1 -InnoCompiler <ISCC.exe>:
-;   ISCC.exe /DAppVersion=0.8.0 /DSourceDir=<staged release folder> /DOutputDir=<release output> installer\S2ModKit.iss
+;   ISCC.exe /DAppVersion=0.8.1 /DSourceDir=<staged release folder> /DOutputDir=<release output> installer\S2ModKit.iss
 ; The user chooses the install folder. No administrator rights are needed unless the user picks a protected folder.
 ; The app keeps its settings and data in the user profile (%LocalAppData%\S2ModKit, movable in the app), so updates and
 ; uninstalling never touch them. In-app updates run this setup silently with /DIR=<current folder>.
@@ -43,6 +43,7 @@ CloseApplications=yes
 RestartApplications=no
 UninstallDisplayName=S2ModKit {#AppVersion}
 UninstallDisplayIcon={app}\S2ModKit.exe
+SetupIconFile=..\src\S2ModKit.Desktop\Assets\S2ModKit.ico
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked

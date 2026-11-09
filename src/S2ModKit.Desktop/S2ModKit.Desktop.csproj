@@ -24,6 +24,12 @@
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
+  <PropertyGroup>
+    <ApplicationIcon>Assets\S2ModKit.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\S2ModKit.ico" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="S2ModKit.Desktop.Tests" />
   </ItemGroup>
