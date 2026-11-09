@@ -79,6 +79,8 @@ public sealed class HeroAbilityTests
 
         var models = HeroAbilities.Read(game, report + ".cache.json")!;
         var heroes = models.GroupBy(pair => pair.Value).Select(group => (Model: group.First().Key, Abilities: group.Key)).OrderBy(item => item.Model, StringComparer.Ordinal).ToArray();
+        File.WriteAllLines(report + ".effects.txt", heroes.Select(hero => $"{hero.Model}: " + string.Join("; ", hero.Abilities.Select(ability => $"{ability.Name} {ability.EffectList.Count}"))));
+        heroes = [.. heroes.Select(hero => (hero.Model, (IReadOnlyList<HeroAbility>)[.. hero.Abilities.Where(ability => ability.Slot is >= 1 and <= 4)]))];
         File.WriteAllLines(report, [$"{heroes.Sum(hero => hero.Abilities.Count(ability => ability.PlayList.Count > 0))} of {heroes.Sum(hero => hero.Abilities.Count)} abilities have a clip",
             .. heroes.Select(hero => $"{hero.Model}: " + string.Join("; ", hero.Abilities.Select(ability => $"{ability.Slot} {ability.Name} = {(ability.PlayList.Count == 0 ? "-" : string.Join(" > ", ability.PlayList.Select(Path.GetFileNameWithoutExtension)))}")))]);
     }
@@ -101,8 +103,9 @@ public sealed class HeroAbilityTests
             var models = HeroAbilities.Read(game, cache);
             Assert.NotNull(models);
             var wraith = HeroAbilities.Of(models, "models/heroes_wip/wraith/wraith.vmdl_c");
-            Assert.Equal(["Card Trick", "Project Mind", "Full Auto", "Telekinesis"], wraith.Select(ability => ability.Name));
-            Assert.All(wraith, ability => Assert.NotNull(HeroAbilities.ClipFor(ability, WraithClips)));
+            Assert.Equal(["Card Trick", "Project Mind", "Full Auto", "Telekinesis", "Weapon", "Other effects"], wraith.Select(ability => ability.Name));
+            Assert.All(wraith, ability => Assert.NotEmpty(ability.EffectList));
+            Assert.All(wraith.Where(ability => ability.Slot is >= 1 and <= 4), ability => Assert.NotNull(HeroAbilities.ClipFor(ability, WraithClips)));
             Assert.Equal(models.Count, HeroAbilities.Read(game, cache)!.Count);                        // read back from the cache
         }
         finally

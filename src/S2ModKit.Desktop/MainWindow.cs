@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -64,6 +65,7 @@ internal sealed class MainWindow : Window
     private IReadOnlyList<ModEntry> mods = [];
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly SelectableTextBlock managerBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly StackPanel appUpdate = new() { Spacing = 4, IsVisible = false };
     private List<ListRow> rows = [];
     private bool byHero;
@@ -78,13 +80,25 @@ internal sealed class MainWindow : Window
         Width = 1700;
         Height = 1000;
         settings = AppSettings.Load(options.Game);
+        AppLog.Start(settings.Data, $"S2ModKit {AppUpdates.Current.ToString(3)} ({(AppSettings.Installed ? "installed" : "portable")}) on {Environment.OSVersion.VersionString}; "
+            + $"game {settings.Game}; data {settings.Data}");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Error("Unhandled error", e.ExceptionObject as Exception ?? new InvalidOperationException(e.ExceptionObject?.ToString()));
+        TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Error("Unobserved background error", e.Exception);
+        Dispatcher.UIThread.UnhandledException += (_, e) => AppLog.Error("Unhandled error in the window", e.Exception);
+        listStatus.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBlock.TextProperty)
+            {
+                AppLog.Shown(listStatus.Text);                              // every message the window shows
+            }
+        };
         Closed += (_, _) =>
         {
             sounds?.Release();
         };
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings);
-        pane.BuildRequested += (mod, model, hidden, colors, shapes) => _ = BuildAsync(mod, model, hidden, colors, shapes);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects);
         list.ItemTemplate = new FuncDataTemplate<ListRow>((row, _) => row switch
         {
             HeaderRow header => new TextBlock
@@ -161,6 +175,7 @@ internal sealed class MainWindow : Window
         header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { heroFilter, kindFilter } });
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
+        header.Children.Add(managerBanner);
         header.Children.Add(listStatus);
         DockPanel.SetDock(header, Dock.Top);
         side.Children.Add(header);
@@ -305,6 +320,13 @@ internal sealed class MainWindow : Window
             var build = await current.GameBuildAsync();
             updateBanner.IsVisible = await current.GameUpdatedSinceCheckAsync();
             updateBanner.Text = $"Deadlock was updated (build {build}). Press 'Check mods' to see which mods the update affects.";
+            var stale = ManagerCompatibility.StaleWarning(ManagerCompatibility.Read(settings.Game), mods);
+            managerBanner.Text = stale;
+            managerBanner.IsVisible = stale is not null;
+            if (stale is not null)
+            {
+                AppLog.Shown(stale);
+            }
             var hero = heroFilter.SelectedItem as string;
             heroFilter.ItemsSource = (string[])[AllHeroes, .. mods.SelectMany(mod => mod.HeroNames).Distinct().Order(StringComparer.OrdinalIgnoreCase)];
             heroFilter.SelectedItem = hero is not null && mods.Any(mod => mod.HeroNames.Contains(hero)) ? hero : AllHeroes;
@@ -314,6 +336,7 @@ internal sealed class MainWindow : Window
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            AppLog.Error("Shown in the window", exception);
             listStatus.Text = "Could not read the addons folder: " + exception.Message;
         }
     }
@@ -662,8 +685,10 @@ internal sealed class MainWindow : Window
             var order = ModCatalog.LoadOrderOf(mods).Select(item => item.Key).ToList();
             order = [.. mods.Where(other => order.Contains(other.Key)).OrderBy(other => other.FirstSlot).Select(other => other.Key)];
             var at = order.IndexOf(mod.Key);
-            Add("Load earlier (wins over more mods)", () => RunAsync(() => catalog.MoveAsync(mod, -1, mods)), at > 0);
+            Add("Load first (wins over every mod)", () => RunAsync(() => catalog.MoveToEndAsync(mod, first: true, mods)), at > 0);
+            Add("Load earlier (wins over one more mod)", () => RunAsync(() => catalog.MoveAsync(mod, -1, mods)), at > 0);
             Add("Load later", () => RunAsync(() => catalog.MoveAsync(mod, 1, mods)), at >= 0 && at < order.Count - 1);
+            Add("Load last", () => RunAsync(() => catalog.MoveToEndAsync(mod, first: false, mods)), at >= 0 && at < order.Count - 1);
         }
 
         if (GameBananaIdOf(mod) is { } gameBananaId)
@@ -811,6 +836,7 @@ internal sealed class MainWindow : Window
                 catch (Exception exception)
 #pragma warning restore CA1031
                 {
+                    AppLog.Error("Shown in the window", exception);
                     listStatus.Text = exception.Message;
                     return receipts;
                 }
@@ -859,7 +885,8 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Builds one edited version with the hidden, recolored and reshaped parts (masks, boxes and movements taken from the open preview).</summary>
-    private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes)
+    private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes,
+        IReadOnlyDictionary<string, EffectColorChange> effects)
     {
         var session = pane.Control.Session;
         var recolors = new List<PartRecolor>();
@@ -881,7 +908,7 @@ internal sealed class MainWindow : Window
         }
 
         listStatus.Text = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..." : "Building...";
-        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits));
+        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects));
     }
 
     /// <summary>Runs the mod doctor over every mod (read-only) and shows what the last game update affected.</summary>
@@ -912,6 +939,7 @@ internal sealed class MainWindow : Window
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            AppLog.Error("Shown in the window", exception);
             listStatus.Text = "Could not check the mods: " + (exception is S2ModKitException { Error: var error } ? $"{error.Summary} {error.Remediation}" : exception.Message);
         }
     }
@@ -931,6 +959,7 @@ internal sealed class MainWindow : Window
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            AppLog.Error("Shown in the window", exception);
             listStatus.Text = exception is S2ModKitException { Error: var error } ? $"{error.Summary} {error.Remediation}" : exception.Message;
             await LoadAsync();                                             // the preview was released: show the current state again
             listStatus.Text = exception is S2ModKitException { Error: var shown } ? $"{shown.Summary} {shown.Remediation}" : exception.Message;
@@ -1055,6 +1084,23 @@ internal sealed class MainWindow : Window
         data.Click += async (_, _) => await PickDataAsync();
         var modUpdates = new MenuItem { Header = "Look for mod updates on GameBanana" };
         modUpdates.Click += async (_, _) => await CheckModUpdatesAsync(quiet: false);
+        var openLog = new MenuItem { Header = "Open log" };
+        openLog.Click += async (_, _) =>
+        {
+            if (AppLog.CurrentPath is { } log)
+            {
+                await ShowInExplorer(log, select: true);
+            }
+        };
+        var copyLog = new MenuItem { Header = "Copy log" };
+        copyLog.Click += async (_, _) =>
+        {
+            if (Clipboard is { } clipboard)
+            {
+                await clipboard.SetTextAsync(AppLog.Read());
+                listStatus.Text = "The log is copied: paste it into your report. It holds the app's messages and errors, your folders and mod names.";
+            }
+        };
         var now = new MenuItem { Header = "Look for updates now" };
         now.Click += async (_, _) => await CheckForUpdateAsync(quiet: false);
         var flyout = new MenuFlyout();
@@ -1073,7 +1119,7 @@ internal sealed class MainWindow : Window
             };
         }
 
-        foreach (var item in (MenuItem[])[refresh, addons, game, data, modUpdates, now, updates, .. speeds])
+        foreach (var item in (MenuItem[])[refresh, addons, game, data, modUpdates, now, updates, openLog, copyLog, .. speeds])
         {
             flyout.Items.Add(item);
         }
@@ -1108,14 +1154,16 @@ internal sealed class MainWindow : Window
     /// <summary>Asks GitHub for a newer release (once, on request or on start) and shows "Update" when there is one.</summary>
     private async Task CheckForUpdateAsync(bool quiet)
     {
-        var update = await AppUpdates.CheckAsync();
+        var (update, failure) = await AppUpdates.CheckWithReasonAsync();
         appUpdate.Children.Clear();
         appUpdate.IsVisible = update is not null;
         if (update is null)
         {
             if (!quiet)
             {
-                listStatus.Text = $"S2ModKit {AppUpdates.Current.ToString(3)} is the latest version (or GitHub could not be reached).";
+                listStatus.Text = failure is null
+                    ? $"S2ModKit {AppUpdates.Current.ToString(3)} is the latest version."
+                    : $"Could not check for updates: GitHub could not be reached ({failure}).";
             }
 
             return;
@@ -1137,6 +1185,7 @@ internal sealed class MainWindow : Window
                 catch (Exception exception)
 #pragma warning restore CA1031
                 {
+                    AppLog.Error("Shown in the window", exception);
                     listStatus.Text = "Could not update: " + exception.Message;
                 }
             }));
@@ -1194,7 +1243,8 @@ internal sealed class MainWindow : Window
         {
             if (!quiet)
             {
-                listStatus.Text = "Could not check GameBanana for updates: " + exception.Message;
+                listStatus.Text = $"Could not check GameBanana for updates ({AppUpdates.Describe(exception)}).";
+                AppLog.Error("GameBanana updates", exception);
             }
         }
     }
@@ -1251,6 +1301,7 @@ internal sealed class MainWindow : Window
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            AppLog.Error("Shown in the window", exception);
             listStatus.Text = "Could not update: " + (exception is S2ModKitException { Error: var error } ? $"{error.Summary} {error.Remediation}" : exception.Message);
         }
     }
@@ -1369,6 +1420,7 @@ internal sealed class MainWindow : Window
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            AppLog.Error("Shown in the window", exception);
             browse.Status = "Could not install: " + (exception is S2ModKitException { Error: var error } ? $"{error.Summary} {error.Remediation}" : exception.Message);
             return false;
         }
@@ -1404,7 +1456,7 @@ internal sealed class MainWindow : Window
     {
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings);
-        pane.BuildRequested += (mod, model, hidden, colors, shapes) => _ = BuildAsync(mod, model, hidden, colors, shapes);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects);
         paneHost.Content = pane;
         ShowBody(null);
         await LoadAsync();

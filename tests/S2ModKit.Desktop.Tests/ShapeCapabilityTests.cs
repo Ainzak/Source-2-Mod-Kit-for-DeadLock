@@ -44,7 +44,7 @@ public sealed class ShapeCapabilityTests
     public async Task ABuildWithNothingChangedIsRefused()
     {
         using var root = new ModTestRoot();
-        var error = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, "models/x/x.vmdl", new HashSet<int>(), [], null, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, "models/x/x.vmdl", new HashSet<int>(), [], null, null, TestContext.Current.CancellationToken));
         Assert.Equal("MODEL_EDIT_NOTHING", error.Error.Code);
     }
 }

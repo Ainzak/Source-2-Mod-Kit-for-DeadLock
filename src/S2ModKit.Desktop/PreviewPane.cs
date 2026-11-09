@@ -14,7 +14,7 @@ namespace S2ModKit.Desktop;
 /// camera presets over the view. Beside it the part tools: the picked part above three tabs (Parts: hide and show; Colour:
 /// recolor; Shape: size, move and rotate where the CLI's checked operations allow), and one "Build edited mod" for all changes.
 /// </summary>
-internal sealed class PreviewPane : UserControl
+internal sealed partial class PreviewPane : UserControl
 {
     private const string Vanilla = "Vanilla";
     private static readonly IBrush Muted = Brushes.Gray;
@@ -82,7 +82,7 @@ internal sealed class PreviewPane : UserControl
 
     /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
     /// parts and the reshaped parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>>? BuildRequested;
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
     private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
@@ -231,7 +231,7 @@ internal sealed class PreviewPane : UserControl
             if (model.SelectedItem is string modelPath && CanBuild)
             {
                 BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
-                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes));
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges);
             }
         };
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
@@ -327,7 +327,11 @@ internal sealed class PreviewPane : UserControl
             SelectPart(parts.FirstOrDefault(row => row.Index == number - 1));
         }
 
-        ShowTab(tab?.ToUpperInvariant() switch { "COLOUR" or "COLOR" => colourTab, "SHAPE" => shapeTab, _ => partsTab });
+        ShowTab(tab?.ToUpperInvariant() switch { "COLOUR" or "COLOR" => colourTab, "SHAPE" => shapeTab, "EFFECTS" => effectsTab, _ => partsTab });
+        if (string.Equals(tab, "effects", StringComparison.OrdinalIgnoreCase))
+        {
+            SetAllEffectChecks(true);                                        // shows the before and after colours
+        }
     }
 
     /// <summary>The parts currently hidden in the preview (indices into the session's parts).</summary>
@@ -337,7 +341,7 @@ internal sealed class PreviewPane : UserControl
     public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
 
     private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
-        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShapes.Count > 0);
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
@@ -365,8 +369,8 @@ internal sealed class PreviewPane : UserControl
         picked.Children.Add(new TextBlock { Text = "Hover a part in the list to highlight it; click the model to pick one.", Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap });
         tools.Children.Add(picked);
 
-        var tabs = new UniformGrid { Columns = 3, Margin = new Thickness(10, 0, 10, 6) };
-        foreach (var tab in new[] { partsTab, colourTab, shapeTab })
+        var tabs = new UniformGrid { Columns = 4, Margin = new Thickness(10, 0, 10, 6) };
+        foreach (var tab in new[] { partsTab, colourTab, shapeTab, effectsTab })
         {
             tab.HorizontalAlignment = HorizontalAlignment.Stretch;
             tab.HorizontalContentAlignment = HorizontalAlignment.Center;
@@ -425,9 +429,15 @@ internal sealed class PreviewPane : UserControl
 
     private void ShowTab(ToggleButton tab)
     {
-        foreach (var other in new[] { partsTab, colourTab, shapeTab })
+        foreach (var other in new[] { partsTab, colourTab, shapeTab, effectsTab })
         {
             other.IsChecked = other == tab;
+        }
+
+        if (tab == effectsTab)
+        {
+            toolHost.Content = EffectsView();
+            return;
         }
 
         if (tab == partsTab)
@@ -508,6 +518,8 @@ internal sealed class PreviewPane : UserControl
         overlay.Text = $"Loading {(shown?.Name ?? Vanilla)}...";
         overlay.IsVisible = true;
         preview.Open(new PreviewSessionOptions(archives, modelPath, SceneMap: "maps/ui/hero_select.vmap"));
+        shownArchives = archives;
+        _ = LoadEffectsAsync(modelPath);
         _ = ReadCapabilitiesAsync(archives, modelPath);
     }
 
@@ -547,6 +559,7 @@ internal sealed class PreviewPane : UserControl
         if (session is null)
         {
             overlay.Text = $"Could not open the preview: {error}";
+            AppLog.Shown(overlay.Text);
             return;
         }
 
@@ -581,7 +594,7 @@ internal sealed class PreviewPane : UserControl
             return;                                                         // another model was opened meanwhile
         }
 
-        AbilityClips = [.. abilities.Select(ability => (ability.Slot, ability.Name, ability.PlayList is { Count: > 0 } list ? list : HeroAbilities.PhasesFor(ability, clips)))];
+        AbilityClips = [.. abilities.Where(ability => ability.Slot is >= 1 and <= 4).Select(ability => (ability.Slot, ability.Name, ability.PlayList is { Count: > 0 } list ? list : HeroAbilities.PhasesFor(ability, clips)))];
         foreach (var (slot, name, phases) in AbilityClips)
         {
             if (phases.Count == 0)
@@ -693,6 +706,11 @@ internal sealed class PreviewPane : UserControl
             changes.Add($"{preview.PartShapes.Count} reshaped");
         }
 
+        if (effectChanges.Count > 0)
+        {
+            changes.Add($"effects of {effectChanges.Count} group{(effectChanges.Count == 1 ? string.Empty : "s")} recolored");
+        }
+
         changeSummary.Text = changes.Count == 0 ? "No changes yet." : "Changes: " + string.Join(" · ", changes);
         buildEdited.IsEnabled = CanBuild;
         ToolTip.SetTip(buildEdited, "Builds one edited version with every change (reshaped parts through the checked model operations); the original stays as a disabled version.");
@@ -710,6 +728,7 @@ internal sealed class PreviewPane : UserControl
 
         colorPanel.IsVisible = true;
         colorHint.IsVisible = false;
+        preview.PrepareColor(row.Index);                                    // unpack its texture now, not on the first colour change
         colorTitle.Text = $"Colour of part {row.Index + 1} ({texture[(texture.LastIndexOf('/') + 1)..]})";
         var change = preview.PartColors.GetValueOrDefault(row.Index) ?? new ColorAdjustment();
         settingSliders = true;
@@ -910,6 +929,8 @@ internal sealed class PreviewPane : UserControl
     /// <summary>Drops every recolor, colour range, shape and hidden part since the model opened (nothing was built).</summary>
     private void CancelAll()
     {
+        SetAllEffectChecks(false);                                           // unticked groups go back to their colours
+        effectChanges.Clear();
         foreach (var part in preview.PartColors.Keys.ToArray())
         {
             preview.RequestPartColor(part, null);

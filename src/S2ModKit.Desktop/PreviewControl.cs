@@ -75,6 +75,15 @@ internal sealed class PreviewControl : OpenGlControlBase
     /// <summary>Recolors a part in the preview at the next frame (null: original colours).</summary>
     public void RequestPartColor(int part, S2ModKit.Application.ColorAdjustment? change) => colorRequests[part] = change;
 
+    private readonly HashSet<int> colorPrepare = [];
+
+    /// <summary>Starts unpacking a part's colour texture before its first recolor (when the part is picked in the Colour tab).</summary>
+    public void PrepareColor(int part)
+    {
+        colorPrepare.Add(part);
+        RequestNextFrameRendering();
+    }
+
     private readonly Dictionary<int, (S2ModKit.Application.RgbColor? Target, float Tolerance)> rangeRequests = [];
     private readonly Dictionary<int, (S2ModKit.Application.PartShape? Shape, Action<string?>? Done)> shapeRequests = [];
 
@@ -322,24 +331,51 @@ internal sealed class PreviewControl : OpenGlControlBase
             }
         }
 
-        foreach (var (part, range) in rangeRequests)
+        foreach (var part in colorPrepare.Where(part => part >= 0 && part < session.Parts.Count))
         {
+            session.PrepareColor(part);                                        // unpacks in the background: the window keeps drawing
+        }
+
+        colorPrepare.Clear();
+        var waiting = false;
+        foreach (var (part, range) in rangeRequests.ToArray())
+        {
+            if (part >= 0 && part < session.Parts.Count && !session.ColorReady(part))
+            {
+                session.PrepareColor(part);
+                waiting = true;                                                // applied on a later frame, once unpacked
+                continue;
+            }
+
             if (part >= 0 && part < session.Parts.Count)
             {
                 session.SetPartColorRange(part, range.Target, range.Tolerance);
             }
+
+            rangeRequests.Remove(part);
         }
 
-        rangeRequests.Clear();
-        foreach (var (part, change) in colorRequests)
+        foreach (var (part, change) in colorRequests.ToArray())
         {
+            if (part >= 0 && part < session.Parts.Count && !session.ColorReady(part))
+            {
+                session.PrepareColor(part);
+                waiting = true;
+                continue;
+            }
+
             if (part >= 0 && part < session.Parts.Count)
             {
                 session.SetPartColor(part, change);
             }
+
+            colorRequests.Remove(part);
         }
 
-        colorRequests.Clear();
+        if (waiting)
+        {
+            RequestNextFrameRendering();
+        }
         foreach (var (part, shapeRequest) in shapeRequests)
         {
             var refusal = part >= 0 && part < session.Parts.Count ? session.SetPartShape(part, shapeRequest.Shape) : "No such part.";

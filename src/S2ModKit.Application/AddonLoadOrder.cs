@@ -45,13 +45,55 @@ public static partial class AddonLoadOrder
                 direction < 0 ? "There is no lower slot to move to." : "There is no mod after it to move behind.");
         }
 
-        var moved = ordered[index];
         var neighbour = ordered[other];
-        var (first, second) = direction < 0 ? (moved, neighbour) : (neighbour, moved);   // the new order
-        var union = first.Slots.Concat(second.Slots).Order().ToArray();
+        var summary = direction < 0
+            ? $"'{ordered[index].Mod.Label}' now loads before '{neighbour.Mod.Label}'"
+            : $"'{ordered[index].Mod.Label}' now loads after '{neighbour.Mod.Label}'";
+        return Move(ordered, index, other, allNames, tempTag, neighbour.Mod.Label, summary);
+    }
+
+    /// <summary>
+    /// Moves a mod to the first place (<paramref name="first"/> true: lowest pak number, wins over every other mod) or the last. The
+    /// mods between keep their order and shift by one; the slots of all of them are shared out again in the new order, so every
+    /// other mod keeps its slot.
+    /// </summary>
+    public static AddonReorderPlan PlanToEnd(IReadOnlyList<LoadOrderMod> enabled, string key, bool first, IReadOnlyCollection<string> allNames, string tempTag)
+    {
+        ArgumentNullException.ThrowIfNull(enabled);
+        ArgumentNullException.ThrowIfNull(allNames);
+        var ordered = enabled.Select(mod => (Mod: mod, Slots: SlotsOf(mod))).OrderBy(item => item.Slots.Min()).ThenBy(item => item.Mod.Key, StringComparer.Ordinal).ToArray();
+        var index = Array.FindIndex(ordered, item => item.Mod.Key == key);
+        if (index < 0)
+        {
+            throw Errors.Input("ADDON_REORDER_NOT_ENABLED", "Only an enabled mod has a place in the load order.", "Enable the mod first.");
+        }
+
+        var target = first ? 0 : ordered.Length - 1;
+        if (target == index)
+        {
+            throw Errors.Verification("ADDON_REORDER_RANGE", first ? $"'{ordered[index].Mod.Label}' already loads first." : $"'{ordered[index].Mod.Label}' already loads last.", "Nothing to move.");
+        }
+
+        var summary = first ? $"'{ordered[index].Mod.Label}' now loads first (wins over every other mod)" : $"'{ordered[index].Mod.Label}' now loads last";
+        return Move(ordered, index, target, allNames, tempTag, ordered[target].Mod.Label, summary);
+    }
+
+    private static AddonReorderPlan Move((LoadOrderMod Mod, int[] Slots)[] ordered, int index, int target, IReadOnlyCollection<string> allNames, string tempTag, string neighbourLabel, string summaryStart)
+    {
+        var moved = ordered[index];
+        var order = ordered.ToList();
+        order.RemoveAt(index);
+        order.Insert(target, moved);                                       // the new order
+        var (low, high) = (Math.Min(index, target), Math.Max(index, target));
+        var union = ordered[low..(high + 1)].SelectMany(item => item.Slots).Order().ToArray();
         var net = new List<AddonRename>();
-        Assign(first.Mod, first.Slots, union[..first.Slots.Length], allNames, net);
-        Assign(second.Mod, second.Slots, union[first.Slots.Length..], allNames, net);
+        var at = 0;
+        foreach (var item in order.Skip(low).Take(high - low + 1))
+        {
+            Assign(item.Mod, item.Slots, union[at..(at + item.Slots.Length)], allNames, net);
+            at += item.Slots.Length;
+        }
+
         var changed = net.Where(item => !item.From.Equals(item.To, StringComparison.OrdinalIgnoreCase)).ToArray();
 
         var names = new HashSet<string>(allNames, StringComparer.OrdinalIgnoreCase);
@@ -71,10 +113,7 @@ public static partial class AddonLoadOrder
         }
 
         AddonRename[] steps = [.. direct, .. temporary, .. cyclic.Select((item, i) => new AddonRename(temporary[i].To, item.To))];
-        var summary = direction < 0
-            ? $"'{moved.Mod.Label}' now loads before '{neighbour.Mod.Label}' ({changed.Length} file(s) renamed)."
-            : $"'{moved.Mod.Label}' now loads after '{neighbour.Mod.Label}' ({changed.Length} file(s) renamed).";
-        return new AddonReorderPlan(moved.Mod.Label, neighbour.Mod.Label, summary, changed, steps);
+        return new AddonReorderPlan(moved.Mod.Label, neighbourLabel, $"{summaryStart} ({changed.Length} file(s) renamed).", changed, steps);
     }
 
     private static void Assign(LoadOrderMod mod, int[] oldSlots, int[] newSlots, IReadOnlyCollection<string> allNames, List<AddonRename> net)

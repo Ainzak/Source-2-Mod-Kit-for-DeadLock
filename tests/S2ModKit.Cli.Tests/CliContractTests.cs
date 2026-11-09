@@ -24,7 +24,7 @@ public sealed partial class CliContractTests
         Assert.Equal(0, exitCode);
         Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
         Assert.Equal("doctor", document.RootElement.GetProperty("command").GetString());
-        Assert.Contains("0.8.1", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
+        Assert.Contains("0.8.2", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("result").GetProperty("runtimeIdentifier").GetString()));
         var catalogueRevision = document.RootElement.GetProperty("result").GetProperty("catalogueRevision").GetString();
         Assert.True(catalogueRevision is "not_packaged" or "2026-10-28.1");

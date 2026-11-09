@@ -167,6 +167,36 @@ public sealed class ModConflictAndOrderTests
         Assert.DoesNotContain(root.AddonNames(), name => name.StartsWith("s2mk_tmp_", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task LoadFirstAndLastMoveAModAcrossTheWholeOrderInOneOperation()
+    {
+        using var root = new ModTestRoot();
+        var token = TestContext.Current.CancellationToken;
+        await root.VpkAsync(root.In("pak03_dir.vpk"), "sounds/a.vsnd_c");
+        await root.VpkAsync(root.In("pak10_dir.vpk"), "sounds/b.vsnd_c");
+        await root.VpkAsync(root.In("pak11_dir.vpk"), "sounds/c.vsnd_c");
+        await File.WriteAllBytesAsync(root.In("pak11_000.vpk"), [7], token);              // a chunk follows its archive
+        await root.VpkAsync(root.In("pak98_dir.vpk"), "sounds/d.vsnd_c");                  // a new build at the end
+        var catalog = root.Catalog();
+        var mods = await catalog.LoadAsync(token);
+        string[] markers = ["sounds/a.vsnd_c", "sounds/b.vsnd_c", "sounds/c.vsnd_c", "sounds/d.vsnd_c"];
+
+        await catalog.MoveToEndAsync(Mod(mods, "pak98_dir.vpk"), first: true, mods, token);
+
+        Assert.Equal(["d", "a", "b", "c"], await SlotOrderAsync(catalog, markers, token));
+        string[] slots = ["pak03_dir.vpk", "pak10_dir.vpk", "pak11_dir.vpk", "pak98_000.vpk", "pak98_dir.vpk"];
+        Assert.Equal(slots, root.AddonNames());   // the same slots, shared out again
+        Assert.Single(Journals(root));                                                      // one operation
+        mods = await catalog.LoadAsync(token);
+        Assert.Equal("ADDON_REORDER_RANGE", (await Assert.ThrowsAsync<S2ModKitException>(() => catalog.MoveToEndAsync(Mod(mods, "pak03_dir.vpk"), first: true, mods, token))).Error.Code);   // already first
+
+        mods = await catalog.LoadAsync(token);
+        await catalog.MoveToEndAsync(Mod(mods, "pak03_dir.vpk"), first: false, mods, token);   // the first one (d) to the end again
+
+        Assert.Equal(["a", "b", "c", "d"], await SlotOrderAsync(catalog, markers, token));
+        Assert.DoesNotContain(root.AddonNames(), name => name.StartsWith("s2mk_tmp_", StringComparison.Ordinal));
+    }
+
     private static async Task<string[]> SlotOrderAsync(ModCatalog catalog, string[] markers, CancellationToken token)
     {
         var mods = await catalog.LoadAsync(token);

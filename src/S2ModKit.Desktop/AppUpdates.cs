@@ -21,19 +21,36 @@ internal static class AppUpdates
         ?? typeof(AppUpdates).Assembly.GetName().Version ?? new Version(0, 0, 0);
 
     /// <summary>The latest release when it is newer than <see cref="Current"/>; null when it is not, or GitHub cannot be reached.</summary>
-    public static async Task<AvailableUpdate?> CheckAsync(CancellationToken cancellationToken = default)
+    public static async Task<AvailableUpdate?> CheckAsync(CancellationToken cancellationToken = default) =>
+        (await CheckWithReasonAsync(cancellationToken).ConfigureAwait(false)).Update;
+
+    /// <summary>The latest release when it is newer (Update), or why GitHub could not be asked (Failure, for the window); both null:
+    /// this is the latest version.</summary>
+    public static async Task<(AvailableUpdate? Update, string? Failure)> CheckWithReasonAsync(CancellationToken cancellationToken = default)
     {
         using var http = Client();
         try
         {
             var json = await http.GetStringAsync(new Uri($"https://api.github.com/repos/{Repository}/releases/latest"), cancellationToken).ConfigureAwait(false);
-            return Parse(json, Current);
+            return (Parse(json, Current), null);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
-            return null;                                                     // offline or rate-limited: try again next start
+            AppLog.Error("Update check", exception);
+            return (null, Describe(exception));                              // offline or rate-limited: try again later
         }
     }
+
+    /// <summary>A short reason for a failed request to GitHub or GameBanana, for the window.</summary>
+    internal static string Describe(Exception exception) => exception switch
+    {
+        HttpRequestException { StatusCode: { } code } when (int)code is 403 or 429 => $"the server is limiting requests (HTTP {(int)code}); try again in an hour",
+        HttpRequestException { StatusCode: { } code } when (int)code >= 500 => $"the server has a problem right now (HTTP {(int)code}); try again later",
+        HttpRequestException { StatusCode: { } code } => $"the server answered HTTP {(int)code}",
+        HttpRequestException => "no connection (offline, or blocked by a firewall)",
+        TaskCanceledException => "no answer in time",
+        _ => "an unexpected answer",
+    };
 
     /// <summary>Reads a GitHub "latest release" response: the tag (<c>v1.2.3</c>), the page and the <c>*-setup.exe</c> asset.</summary>
     internal static AvailableUpdate? Parse(string json, Version current)

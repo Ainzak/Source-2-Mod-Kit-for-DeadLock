@@ -11,8 +11,18 @@ namespace S2ModKit.Desktop;
 /// triggers for it (<c>m_strAG2CastingAction</c>, <c>m_strAG2CastCompletedAction</c>), the clip found for it in the game's
 /// archive (a <c>.vnmclip</c> path without <c>_c</c>; null when none matched) and the phases to play in order (the clip and its
 /// siblings: charge, hook, intro, loops, release, end).</summary>
-internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyList<string> Actions, string? Clip = null, IReadOnlyList<string>? Phases = null)
+internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyList<string> Actions, string? Clip = null, IReadOnlyList<string>? Phases = null,
+    IReadOnlyList<string>? Effects = null)
 {
+    /// <summary>Slot of the effects group for the hero's weapon (no button).</summary>
+    public const int WeaponSlot = 0;
+
+    /// <summary>Slot of the effects group for the hero's other effects (no button).</summary>
+    public const int OtherSlot = 5;
+
+    /// <summary>The ability's effect files (<c>.vpcf</c> paths without <c>_c</c>, children included); empty when unknown.</summary>
+    public IReadOnlyList<string> EffectList => Effects ?? [];
+
     /// <summary>What the ability's button plays, in order (empty: no button).</summary>
     public IReadOnlyList<string> PlayList => Phases is { Count: > 0 } phases ? phases : Clip is { } clip ? [clip] : [];
 }
@@ -25,7 +35,7 @@ internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyLi
 /// </summary>
 internal static partial class HeroAbilities
 {
-    private const string CacheVersion = "abilities-8";
+    private const string CacheVersion = "abilities-9";
 
     // The order of an ability's phases by the words after its name (ability_flyingstrike_shoot, _fly_intro, _fly_loop, _attack).
     private static readonly Dictionary<string, int> PhaseOrder = new(StringComparer.Ordinal)
@@ -322,6 +332,25 @@ internal static partial class HeroAbilities
             .Where(item => item.Parts.Length > 3 && item.Parts[0] == "models" && item.Parts[1] is "heroes_wip" or "heroes_staging")
             .GroupBy(item => Hero.StripVersion(item.Parts[2]), StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Select(item => item.Path).ToArray(), StringComparer.Ordinal);
         var clipsByGraph = GraphClips(package);
+        var effectFiles = (package.Entries?.GetValueOrDefault("vpcf_c") ?? []).ToDictionary(entry => entry.GetFullPath().Replace('\\', '/').ToLowerInvariant()[..^2], StringComparer.Ordinal);
+        var childrenCache = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        IReadOnlyList<string> childrenOf(string effect)
+        {
+            if (!childrenCache.TryGetValue(effect, out var children))
+            {
+                children = [];
+                if (effectFiles.TryGetValue(effect, out var entry))
+                {
+                    package.ReadEntry(entry, out var bytes);
+                    children = [.. S2ModKit.Adapters.Source2.CompiledParticleEdit.ChildEffects(bytes, effect + "_c").Select(name => name.Replace('\\', '/').ToLowerInvariant())];
+                }
+
+                childrenCache[effect] = children;
+            }
+
+            return children;
+        }
+
         var models = new Dictionary<string, IReadOnlyList<HeroAbility>>(StringComparer.Ordinal);
         foreach (var key in heroes.Keys.Where(key => key.StartsWith("hero_", StringComparison.Ordinal)))
         {
@@ -362,6 +391,7 @@ internal static partial class HeroAbilities
                 list.Add(entry with { Clip = clip, Phases = phases });
             }
 
+            AddEffects(list, bound, abilities, names, effectFiles, childrenOf);
             foreach (var model in heroModels)
             {
                 models.TryAdd(model, list);
@@ -405,6 +435,80 @@ internal static partial class HeroAbilities
         }
 
         return byHero;
+    }
+
+    /// <summary>
+    /// Fills each ability's effects and adds the Weapon and Other groups: the <c>.vpcf</c> files an ability (or the hero's primary
+    /// weapon) names in <c>abilities.vdata</c>, with their child effects, kept only when the path names this hero (shared generic
+    /// effects would recolor every hero); Other holds the hero's remaining effects (a folder or file named after the hero).
+    /// </summary>
+    private static void AddEffects(List<HeroAbility> list, KVObject bound, KVObject abilities, IReadOnlyList<string> names,
+        IReadOnlyDictionary<string, PackageEntry> effectFiles, Func<string, IReadOnlyList<string>> childrenOf)
+    {
+        bool Mine(string effect) => names.Any(name => effect.Contains("/" + name + "/", StringComparison.Ordinal) || effect.Contains("/" + name + "_", StringComparison.Ordinal));
+        IReadOnlyList<string> Expand(IEnumerable<string> roots)
+        {
+            var found = new List<string>();
+            var queue = new Queue<string>(roots.Where(Mine));
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (queue.TryDequeue(out var effect))
+            {
+                if (!seen.Add(effect) || !effectFiles.ContainsKey(effect))
+                {
+                    continue;
+                }
+
+                found.Add(effect);
+                foreach (var child in childrenOf(effect).Where(Mine))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+
+            return found;
+        }
+
+        IEnumerable<string> Named(string abilityId) => abilities.TryGetValue(abilityId, out var value) && value is KVObject ability ? Strings(ability).Where(text => text.EndsWith(".vpcf", StringComparison.OrdinalIgnoreCase)).Select(text => text.Replace('\\', '/').ToLowerInvariant()) : [];
+
+        var claimed = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < list.Count; i++)
+        {
+            var effects = Expand(Named(list[i].Id)).Where(claimed.Add).ToArray();
+            list[i] = list[i] with { Effects = effects };
+        }
+
+        var weaponId = bound.TryGetValue("ESlot_Weapon_Primary", out var weapon) && !weapon.IsNull ? weapon.ToString(null) : string.Empty;
+        list.Add(new HeroAbility(HeroAbility.WeaponSlot, weaponId, "Weapon", [], Effects: [.. Expand(Named(weaponId)).Where(claimed.Add)]));
+        list.Add(new HeroAbility(HeroAbility.OtherSlot, "other", "Other effects", [], Effects: [.. effectFiles.Keys.Where(effect => Mine(effect) && !claimed.Contains(effect)).Order(StringComparer.Ordinal)]));
+    }
+
+    /// <summary>Every string value in a key-value tree.</summary>
+    private static IEnumerable<string> Strings(KVObject node)
+    {
+        if (node.IsArray)
+        {
+            for (var i = 0; i < node.Count; i++)
+            {
+                foreach (var text in Strings(node[i]))
+                {
+                    yield return text;
+                }
+            }
+        }
+        else if (node.ValueType == KVValueType.Collection)
+        {
+            foreach (var key in node.Keys)
+            {
+                foreach (var text in Strings(node[key]))
+                {
+                    yield return text;
+                }
+            }
+        }
+        else if (node.ValueType == KVValueType.String)
+        {
+            yield return node.ToString(null);
+        }
     }
 
     private static KVObject ReadData(Package package, string path)

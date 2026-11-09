@@ -368,6 +368,15 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         return await ChangeAsync(mod, result, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Moves an enabled mod to the first place in the load order (wins over every other mod) or the last.</summary>
+    public async Task<CatalogChange> MoveToEndAsync(ModEntry mod, bool first, IReadOnlyList<ModEntry> all, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mod);
+        ArgumentNullException.ThrowIfNull(all);
+        var result = await Management.ReorderToEndAsync(settings.AddonsRoot, LoadOrderOf(all), mod.Key, first, settings.JournalRoot, cancellationToken).ConfigureAwait(false);
+        return await ChangeAsync(mod, result, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>The enabled mods with their enabled archives (the input of <see cref="AddonLoadOrder.Plan"/>).</summary>
     internal static IReadOnlyList<LoadOrderMod> LoadOrderOf(IEnumerable<ModEntry> all) =>
         [.. all.Where(mod => mod.Loaded && !mod.Key.StartsWith("app:", StringComparison.Ordinal))
@@ -806,11 +815,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
     /// <summary>Builds an edited copy with parts hidden (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildEditedAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, hidden, [], null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, hidden, [], null, null, cancellationToken);
 
     /// <summary>Builds a recolored copy (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildRecoloredAsync(ModEntry? mod, string modelPath, IReadOnlyList<PartRecolor> parts, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, null, cancellationToken);
 
     /// <summary>
     /// Builds one edited copy of <paramref name="modelPath"/> with every change made in the app: <paramref name="hidden"/> parts get
@@ -821,15 +830,16 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
     /// change, texels, mean colour before and after). Refused while the game runs.
     /// </summary>
     public async Task<CatalogChange> BuildEditsAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
-        IReadOnlyList<PartShapeEdit>? shapes = null, CancellationToken cancellationToken = default)
+        IReadOnlyList<PartShapeEdit>? shapes = null, IReadOnlyDictionary<string, EffectColorChange>? effects = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hidden);
         ArgumentNullException.ThrowIfNull(recolors);
         shapes ??= [];
+        effects ??= new Dictionary<string, EffectColorChange>();
         Management.EnsureGameStopped();
-        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0)
+        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0 && effects.Count == 0)
         {
-            throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part first.");
+            throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part, or recolor effects first.");
         }
 
         if (mod is not null && (mod.Files.Count != 1 || !mod.Loaded))
@@ -912,6 +922,39 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             }
         }
 
+        var effectEvidence = new List<object>();
+        if (effects.Count > 0)
+        {
+            // a mod's own copy of an effect wins over the game's (the archive is read again for the effects only: entries holds them too)
+            var sources = new List<string>();
+            if (mod is not null)
+            {
+                sources.Add(mod.Files[0]);
+            }
+
+            sources.Add(Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"));
+            var files = EffectFiles.Read(sources, effects.Keys);
+            foreach (var (effect, change) in effects.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                if (!files.TryGetValue(effect, out var original))
+                {
+                    continue;                                               // listed by the game data but not shipped: nothing to recolor
+                }
+
+                var (recolored, changedValues) = S2ModKit.Adapters.Source2.CompiledParticleEdit.Recolor(original, effect + "_c", change);
+                if (changedValues > 0)
+                {
+                    entries[effect + "_c"] = recolored;
+                    effectEvidence.Add(new { effect, target = change.Target.ToString(), exact = change.Exact, values = changedValues });
+                }
+            }
+
+            if (effectEvidence.Count == 0)
+            {
+                throw Errors.Input("EFFECT_EDIT_NOTHING", "The chosen effects have no colours that change.", "Pick another colour or other abilities.");
+            }
+        }
+
         var changes = new List<string>();
         if (hidden.Count > 0)
         {
@@ -926,6 +969,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         if (shapes.Count > 0)
         {
             changes.Add($"{shapes.Count} part{(shapes.Count == 1 ? string.Empty : "s")} reshaped");
+        }
+
+        if (effectEvidence.Count > 0)
+        {
+            changes.Add($"{effectEvidence.Count} effect{(effectEvidence.Count == 1 ? string.Empty : "s")} recolored");
         }
 
         var label = "edited: " + string.Join(", ", changes);
@@ -944,6 +992,7 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 recolors = evidence,
                 shapes = shapes.Select(edit => new { part = edit.Part, material = edit.Material, edit.Level, scale = new[] { edit.Shape.Scale.X, edit.Shape.Scale.Y, edit.Shape.Scale.Z }, rotationDegrees = new[] { edit.Shape.RotationDegrees.X, edit.Shape.RotationDegrees.Y, edit.Shape.RotationDegrees.Z }, move = new[] { edit.Shape.Move.X, edit.Shape.Move.Y, edit.Shape.Move.Z }, pivot = edit.Shape.Pivot.ToString() }),
                 shapeProject,                                               // the CLI projects (one per part): recipes, plans, builds and verification evidence
+                effects = effectEvidence,
             }, IndentedJson), cancellationToken).ConfigureAwait(false);
         return await InstallVersionAsync(mod, name, package, label, cancellationToken).ConfigureAwait(false);
     }

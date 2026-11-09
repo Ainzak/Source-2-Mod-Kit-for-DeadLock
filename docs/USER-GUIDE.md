@@ -560,6 +560,15 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
 13. **Ability buttons.** Over a hero's preview, buttons 1-4 play that hero's ability animations once, every phase in order
     (for example charge, then strike; or hook, flight, then attack), then the preview returns to the animation it showed before. The abilities and their animations come from the game's own data; an ability
     whose animation the model does not have gets no button.
+14. **Effects.** The preview's **Effects** tab lists the hero's effects by ability 1-4, Weapon and Other, each with its main
+    colours. Tick abilities and pick a colour: the squares show the colours now and, after the arrow, after the change.
+    Colours keep their brightness (glows stay glows); **Exactly this colour** makes them flat. **Build edited mod** makes the
+    version. Effects shared by every hero are never changed.
+15. **Load first / Load last.** **More > Load first** puts a mod before every other one, so it wins all shared files;
+    **Load last** puts it after all. The other mods keep their order.
+16. **Log.** Each session writes a log in the data folder (`logs`, the last five are kept): the app's version and folders,
+    the messages it showed and error details. **Settings > Open log** shows the file, **Copy log** copies it for a problem
+    report. Nothing is sent anywhere.
 
 Previews are offline evidence: they are close to the game but not a game test.
 

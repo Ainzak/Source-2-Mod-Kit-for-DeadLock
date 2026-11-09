@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using OpenTK.Graphics.OpenGL;
 using S2ModKit.Application;
 using SkiaSharp;
@@ -16,6 +17,38 @@ public sealed partial class PreviewSession
     private readonly Dictionary<string, Recolored> recolored = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(int Part, int Width, int Height), float[]> masks = [];
     private readonly Dictionary<int, (RgbColor Target, float Tolerance)> ranges = [];
+    private readonly ConcurrentDictionary<string, Task<Pixels?>> unpacking = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<(int Part, int Width, int Height), float[]> uvMasks = new();   // computed beside the unpacking
+
+    /// <summary>Whether part <paramref name="index"/>'s colour texture is unpacked, so a recolor applies at once (no colour texture: true).</summary>
+    public bool ColorReady(int index) =>
+        PartColorTexture(index) is not { } path || recolored.ContainsKey(path) || (unpacking.TryGetValue(path, out var task) && task.IsCompleted);
+
+    /// <summary>
+    /// Starts unpacking part <paramref name="index"/>'s colour texture on a worker thread (a large compressed texture takes seconds);
+    /// the file is read here, the pixels are decoded in the background. Call again until <see cref="ColorReady"/> is true.
+    /// </summary>
+    public void PrepareColor(int index)
+    {
+        if (PartColorTexture(index) is not { } path || recolored.ContainsKey(path) || unpacking.ContainsKey(path))
+        {
+            return;
+        }
+
+        var resource = loader.LoadFileCompiled(path);
+        unpacking[path] = resource is { DataBlock: Texture texture }
+            ? Task.Run(() =>
+            {
+                var pixels = Unpack(texture);
+                if (pixels is not null)
+                {
+                    uvMasks[(index, pixels.PreviewWidth, pixels.PreviewHeight)] = picker.Mask(index, pixels.PreviewWidth, pixels.PreviewHeight);   // reads only texture coordinates
+                }
+
+                return pixels;
+            })
+            : Task.FromResult<Pixels?>(null);
+    }
 
     /// <summary>The part under a pixel of the last frame and the colour of its texture there (the original, before any recolor).</summary>
     public (int Part, RgbColor Color)? SamplePartColor(float x, float y, int width, int height)
@@ -139,7 +172,7 @@ public sealed partial class PreviewSession
     {
         if (!masks.TryGetValue((part, width, height), out var mask))
         {
-            mask = picker.Mask(part, width, height);
+            mask = uvMasks.TryRemove((part, width, height), out var ready) ? ready : picker.Mask(part, width, height);
             if (ranges.TryGetValue(part, out var range) && PartColorTexture(part) is { } path && Decode(path) is { } source && source.Colours(width, height) is { } colours)
             {
                 const float Soft = 0.05f;
@@ -169,11 +202,32 @@ public sealed partial class PreviewSession
             return known;
         }
 
-        if (loader.LoadFileCompiled(path) is not { DataBlock: Texture texture } || Draw(Enumerable.Range(0, Parts.Count).First(part => string.Equals(PartColorTexture(part), path, StringComparison.OrdinalIgnoreCase))).Material.Textures.GetValueOrDefault(ColorTexture) is not { } original)
+        if (Draw(Enumerable.Range(0, Parts.Count).First(part => string.Equals(PartColorTexture(part), path, StringComparison.OrdinalIgnoreCase))).Material.Textures.GetValueOrDefault(ColorTexture) is not { } original)
         {
             return null;
         }
 
+        if (!unpacking.TryGetValue(path, out var task))
+        {
+            task = Task.FromResult(loader.LoadFileCompiled(path) is { DataBlock: Texture texture } ? Unpack(texture) : null);   // not prepared: unpack now
+            unpacking[path] = task;
+        }
+
+        if (task.GetAwaiter().GetResult() is not { } pixels)                // callers check ColorReady first; a build waits here
+        {
+            return null;
+        }
+
+        GL.GetTextureLevelParameter(original.Handle, 0, GetTextureParameter.TextureInternalFormat, out int format);
+        var srgb = format is 0x8E8D or 0x8C43 or 0x8C41 or 0x8C4C or 0x8C4D or 0x8C4E or 0x8C4F;   // sRGB BC7, RGBA8, RGB8 and S3TC
+        var decoded = new Recolored(pixels.Rgba, pixels.Width, pixels.Height, original, null, srgb, pixels.Preview, pixels.PreviewWidth, pixels.PreviewHeight);
+        recolored[path] = decoded;
+        return decoded;
+    }
+
+    /// <summary>Decodes a compressed texture to RGBA8 and its preview copy (at most 2048 wide); no OpenGL, safe on a worker thread.</summary>
+    private static Pixels? Unpack(Texture texture)
+    {
         using var bitmap = texture.GenerateBitmap();
         var info = new SKImageInfo(bitmap.Width, bitmap.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
         var rgba = new byte[info.BytesSize];
@@ -188,18 +242,16 @@ public sealed partial class PreviewSession
             }
         }
 
-        GL.GetTextureLevelParameter(original.Handle, 0, GetTextureParameter.TextureInternalFormat, out int format);
-        var srgb = format is 0x8E8D or 0x8C43 or 0x8C41 or 0x8C4C or 0x8C4D or 0x8C4E or 0x8C4F;   // sRGB BC7, RGBA8, RGB8 and S3TC
         var (preview, previewWidth, previewHeight) = (rgba, bitmap.Width, bitmap.Height);
         while (previewWidth > 2048 || previewHeight > 2048)
         {
             (preview, previewWidth, previewHeight) = Half(preview, previewWidth, previewHeight);
         }
 
-        var decoded = new Recolored(rgba, bitmap.Width, bitmap.Height, original, null, srgb, preview, previewWidth, previewHeight);
-        recolored[path] = decoded;
-        return decoded;
+        return new Pixels(rgba, bitmap.Width, bitmap.Height, preview, previewWidth, previewHeight);
     }
+
+    private sealed record Pixels(byte[] Rgba, int Width, int Height, byte[] Preview, int PreviewWidth, int PreviewHeight);
 
     private DrawCall Draw(int index) => node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
 
@@ -211,6 +263,8 @@ public sealed partial class PreviewSession
         }
 
         recolored.Clear();
+        unpacking.Clear();
+        uvMasks.Clear();
     }
 
     /// <summary>

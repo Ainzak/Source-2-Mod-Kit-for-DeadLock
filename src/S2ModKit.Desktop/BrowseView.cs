@@ -110,7 +110,11 @@ internal sealed class BrowseView : UserControl
     public string Status
     {
         get => status.Text ?? string.Empty;
-        set => status.Text = value;
+        set
+        {
+            status.Text = value;
+            AppLog.Shown(value);
+        }
     }
 
     /// <summary>For window pictures: opens the first mod of the list.</summary>
@@ -132,7 +136,8 @@ internal sealed class BrowseView : UserControl
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            status.Text = "GameBanana could not be reached: " + exception.Message;
+            Status = $"GameBanana could not be reached ({AppUpdates.Describe(exception)}).";
+            AppLog.Error("GameBanana", exception);
         }
 
         opening = true;
@@ -175,7 +180,8 @@ internal sealed class BrowseView : UserControl
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            status.Text = "GameBanana could not be reached: " + exception.Message;
+            Status = $"GameBanana could not be reached ({AppUpdates.Describe(exception)}).";
+            AppLog.Error("GameBanana", exception);
         }
     }
 
@@ -293,7 +299,7 @@ internal sealed class BrowseView : UserControl
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            page.Content = new SelectableTextBlock { Text = "GameBanana could not be reached: " + exception.Message, Foreground = Warning, Margin = new Thickness(20), TextWrapping = TextWrapping.Wrap };
+            page.Content = new SelectableTextBlock { Text = $"GameBanana could not be reached ({AppUpdates.Describe(exception)}).", Foreground = Warning, Margin = new Thickness(20), TextWrapping = TextWrapping.Wrap };
             return;
         }
 

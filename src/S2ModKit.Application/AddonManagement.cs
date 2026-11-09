@@ -386,6 +386,16 @@ public sealed class AddonModOperations(IAddonFileOperations files, IGameProcessP
         return await RenameAsync(target, plan.Net, journalRoot, plan.Summary, cancellationToken, AddonOperationJournal.ReorderOperation, plan.Steps).ConfigureAwait(false);
     }
 
+    /// <summary>Moves a mod to the first place in the load order (<paramref name="first"/> true: wins over every other mod) or the last,
+    /// in one journaled <c>addon-reorder@1</c> operation; the mods between keep their order (see <see cref="AddonLoadOrder.PlanToEnd"/>).</summary>
+    public async Task<AddonOperationResult> ReorderToEndAsync(string addonsRoot, IReadOnlyList<LoadOrderMod> enabled, string key, bool first, string journalRoot, CancellationToken cancellationToken = default)
+    {
+        EnsureGameStopped();
+        var plan = AddonLoadOrder.PlanToEnd(enabled, key, first, await NamesAsync(addonsRoot, cancellationToken).ConfigureAwait(false), Guid.NewGuid().ToString("N")[..8]);
+        var target = new AddonModTarget(addonsRoot, plan.Moved, null, [], new HashSet<string>());
+        return await RenameAsync(target, plan.Net, journalRoot, plan.Summary, cancellationToken, AddonOperationJournal.ReorderOperation, plan.Steps).ConfigureAwait(false);
+    }
+
     /// <summary>Sends every file of the mod (archives and data chunks) to the Recycle Bin.</summary>
     public async Task<AddonOperationResult> DeleteAsync(AddonModTarget target, string journalRoot, CancellationToken cancellationToken = default)
     {
