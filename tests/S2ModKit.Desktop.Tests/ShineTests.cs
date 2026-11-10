@@ -98,7 +98,7 @@ public sealed class ShineTests
         var before = InPlaceTexture.ReadStored(entries[normal + "_c"].ToArray(), normal + "_c");
         var channel = ShineMath.RoughnessChannel(before.Codec);
 
-        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, [new PartShine(part, normal!, 1f)], token);
+        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, [new PartShine(part, normal!, 1f)], null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var output = new Package();

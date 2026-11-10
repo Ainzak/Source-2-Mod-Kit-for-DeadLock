@@ -90,7 +90,7 @@ internal sealed partial class PreviewPane : UserControl
 
     /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
     /// parts and the reshaped parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>>? BuildRequested;
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
     private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
@@ -263,7 +263,7 @@ internal sealed partial class PreviewPane : UserControl
             if (model.SelectedItem is string modelPath && CanBuild)
             {
                 BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
-                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines));
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines), AddedEffects);
             }
         };
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
@@ -297,6 +297,10 @@ internal sealed partial class PreviewPane : UserControl
                     settingSliders = false;
                     ApplyRange();
                 });
+            }
+            else if (click && effectsTab.IsChecked == true && PlaceAt(at))
+            {
+                // an added effect was waiting for its place
             }
             else if (click)
             {
@@ -373,7 +377,7 @@ internal sealed partial class PreviewPane : UserControl
     public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
 
     private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
-        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0);
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
@@ -616,6 +620,7 @@ internal sealed partial class PreviewPane : UserControl
         }
 
         overlay.IsVisible = false;
+        ShowListedEffects(session);                                         // a mod built here with added effects plays them
         stats.Text = $"opened in {elapsed.TotalSeconds:F1} s";
         parts = [.. session.Parts.SelectMany((part, index) => session.Pieces.Where(piece => piece.Part == index).Select(piece => new PartRow(piece.Index, part, piece))
             .Prepend(new PartRow(index, part)))];                           // a part made of separate meshes lists them under it, for their own colours
@@ -763,6 +768,11 @@ internal sealed partial class PreviewPane : UserControl
         if (preview.PartShines.Count > 0)
         {
             changes.Add($"{preview.PartShines.Count} shiny");
+        }
+
+        if (NewAddedCount > 0)
+        {
+            changes.Add($"{NewAddedCount} effect{(NewAddedCount == 1 ? string.Empty : "s")} added");
         }
 
         if (effectChanges.Count > 0)
@@ -997,6 +1007,9 @@ internal sealed partial class PreviewPane : UserControl
     {
         SetAllEffectChecks(false);                                           // unticked groups go back to their colours
         effectChanges.Clear();
+        ClearAddedEffects(keepExisting: true);
+        RefreshAddedList(null);
+        _ = ApplyPlacedAsync(files: false);
         foreach (var part in preview.PartColors.Keys.ToArray())
         {
             preview.RequestPartColor(part, null);

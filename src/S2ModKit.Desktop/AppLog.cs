@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace S2ModKit.Desktop;
@@ -7,10 +8,20 @@ namespace S2ModKit.Desktop;
 /// A local log of one app session in <c>&lt;data&gt;/logs/s2modkit-&lt;start time&gt;.log</c>: the version and folders on start, every message
 /// the window shows, and the details of errors (type, message, stack). The newest <see cref="Keep"/> logs are kept. Nothing is sent
 /// anywhere; Settings > Open log / Copy log let the user attach it to a report. Logging never throws.
+/// <para>Crashes: <see cref="CaptureCrashes"/> points the process's error output at <c>logs/crash-&lt;start time&gt;.txt</c>, where the
+/// runtime writes the trace of a failure no handler sees (a stack overflow, a fault in native code). The runtime writes through
+/// the C runtime's <c>stderr</c>, so that stream is reopened (changing the Windows standard handle alone has no effect); <see cref="Close"/> removes
+/// the file on a normal exit. A crash file left by an earlier session that no longer runs is copied into the new session's log
+/// by <see cref="Start"/> and reported once through <see cref="PreviousCrash"/>.</para>
 /// </summary>
-internal static class AppLog
+internal static partial class AppLog
 {
     public const int Keep = 5;
+    private const int CrashTextLimit = 48 * 1024;
+    private static string? crash;
+
+    /// <summary>True when an earlier session ended without closing; its trace is in this session's log.</summary>
+    public static bool PreviousCrash { get; private set; }
     private static readonly Lock Gate = new();
     private static string? path;
     private static string? lastMessage;
@@ -37,6 +48,7 @@ internal static class AppLog
             }
 
             Info(startLine);
+            PreviousCrash = ReportPreviousCrashes(folder);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -99,4 +111,115 @@ internal static class AppLog
             }
         }
     }
+
+    /// <summary>Sends the process's error output to this session's crash file (the runtime's trace of a fatal failure lands there).</summary>
+    public static void CaptureCrashes()
+    {
+        string? log;
+        lock (Gate)
+        {
+            log = path;
+        }
+
+        if (log is null || crash is not null || !OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var file = Path.Combine(Path.GetDirectoryName(log)!, "crash-" + Path.GetFileNameWithoutExtension(log)["s2modkit-".Length..] + ".txt");
+        try
+        {
+            var stream = StandardStream(2);
+            if (Reopen(file, "w", stream) != 0)
+            {
+                _ = SetBuffer(stream, 0, 4, 0);                                 // _IONBF: a dying process flushes nothing
+                crash = file;
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // no crash capture: the app still works
+        }
+    }
+
+    /// <summary>A normal exit: this session leaves no crash file behind.</summary>
+    public static void Close()
+    {
+        if (crash is not { } file)
+        {
+            return;
+        }
+
+        crash = null;
+        Info("Closed");
+        try
+        {
+            _ = Reopen("NUL", "w", StandardStream(2));                          // lets go of the file
+            File.Delete(file);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // reported as an unexpected end next time; harmless
+        }
+    }
+
+    /// <summary>Copies the crash files of sessions that no longer run into the current log and removes them.</summary>
+    private static bool ReportPreviousCrashes(string folder)
+    {
+        var found = false;
+        foreach (var file in Directory.EnumerateFiles(folder, "crash-*.txt").Order(StringComparer.Ordinal).ToArray())
+        {
+            string text;
+            try
+            {
+                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);   // fails while that session still runs
+                var bytes = new byte[Math.Min(stream.Length, CrashTextLimit)];
+                stream.ReadExactly(bytes);
+                text = Encoding.UTF8.GetString(bytes).Trim() + (stream.Length > CrashTextLimit ? Environment.NewLine + "(cut)" : string.Empty);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            found = true;
+            var session = "s2modkit-" + Path.GetFileNameWithoutExtension(file)["crash-".Length..] + ".log";
+            Write("CRASH", $"The session of {session} ended unexpectedly. "
+                + (text.Length == 0 ? "No trace was written (the app was ended from outside, or the PC shut down)." : "Trace:" + Environment.NewLine + text)
+                + LastLines(Path.Combine(folder, session)));
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // reported again next time
+            }
+        }
+
+        return found;
+    }
+
+    private static string LastLines(string log)
+    {
+        try
+        {
+            return File.Exists(log)
+                ? $"{Environment.NewLine}Its last log lines:{Environment.NewLine}{string.Join(Environment.NewLine, File.ReadLines(log).TakeLast(25))}"
+                : string.Empty;
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+    }
+
+    [LibraryImport("ucrtbase.dll", EntryPoint = "__acrt_iob_func")]
+    private static partial nint StandardStream(uint index);
+
+    [LibraryImport("ucrtbase.dll", EntryPoint = "_wfreopen", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint Reopen(string path, string mode, nint stream);
+
+    [LibraryImport("ucrtbase.dll", EntryPoint = "setvbuf")]
+    private static partial int SetBuffer(nint stream, nint buffer, int mode, nuint size);
 }

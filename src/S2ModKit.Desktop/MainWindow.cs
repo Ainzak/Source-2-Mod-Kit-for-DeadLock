@@ -67,12 +67,20 @@ internal sealed class MainWindow : Window
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly SelectableTextBlock managerBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly SelectableTextBlock crashBanner = new()
+    {
+        Text = "S2ModKit closed unexpectedly last time; the report is in the log. Settings > Copy log copies it for a bug report.",
+        Foreground = Warning,
+        TextWrapping = TextWrapping.Wrap,
+        IsVisible = false,
+    };
     private readonly StackPanel reapplyBanner = new() { Spacing = 4, IsVisible = false };
     private readonly StackPanel appUpdate = new() { Spacing = 4, IsVisible = false };
     private List<ListRow> rows = [];
     private bool byHero;
     private readonly HashSet<string> openGroups = new(StringComparer.OrdinalIgnoreCase);   // hero view: groups the user unfolded
     private string? lastKey;
+    private bool listing;                                                // the list's rows are being replaced
     private bool folding;                                                // a fold toggle: no reveal, no reload of the shown mod
 
     public MainWindow(AppOptions options)
@@ -84,6 +92,8 @@ internal sealed class MainWindow : Window
         settings = AppSettings.Load(options.Game);
         AppLog.Start(settings.Data, $"S2ModKit {AppUpdates.Current.ToString(3)} ({(AppSettings.Installed ? "installed" : "portable")}) on {Environment.OSVersion.VersionString}; "
             + $"game {settings.Game}; data {settings.Data}");
+        AppLog.CaptureCrashes();
+        crashBanner.IsVisible = AppLog.PreviousCrash;
         AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Error("Unhandled error", e.ExceptionObject as Exception ?? new InvalidOperationException(e.ExceptionObject?.ToString()));
         TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Error("Unobserved background error", e.Exception);
         Dispatcher.UIThread.UnhandledException += (_, e) => AppLog.Error("Unhandled error in the window", e.Exception);
@@ -97,10 +107,11 @@ internal sealed class MainWindow : Window
         Closed += (_, _) =>
         {
             sounds?.Release();
+            AppLog.Close();
         };
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto || options.SelfTest is not null || options.UiShot is not null };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added);
         list.ItemTemplate = new FuncDataTemplate<ListRow>((row, _) => row switch
         {
             HeaderRow header => new TextBlock
@@ -132,6 +143,11 @@ internal sealed class MainWindow : Window
         {
             if (list.SelectedItem is HeaderRow { Foldable: true } folded)
             {
+                if (listing)
+                {
+                    return;                                                 // the new rows put the selection on a header: not a click
+                }
+
                 if (!openGroups.Add(folded.Group))
                 {
                     openGroups.Remove(folded.Group);
@@ -178,6 +194,7 @@ internal sealed class MainWindow : Window
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
         header.Children.Add(managerBanner);
+        header.Children.Add(crashBanner);
         header.Children.Add(reapplyBanner);
         header.Children.Add(listStatus);
         DockPanel.SetDock(header, Dock.Top);
@@ -284,6 +301,11 @@ internal sealed class MainWindow : Window
             }
 
             await LoadAsync();
+            if (options.CrashTest == "overflow")
+            {
+                Overflow(1);
+            }
+
             if (options.UiShot is { } shot)
             {
                 await UiShotAsync(shot, options);
@@ -306,6 +328,9 @@ internal sealed class MainWindow : Window
     /// and closes (the 3D view itself may come out empty: it is drawn by OpenGL outside the window's own rendering).</summary>
     private async Task UiShotAsync(string path, AppOptions options)
     {
+        var placeEffect = string.Equals(options.Tab, "addeffect", StringComparison.OrdinalIgnoreCase);
+        var effectsShot = placeEffect || string.Equals(options.Tab, "effects", StringComparison.OrdinalIgnoreCase);
+        PreviewPane.AddedEffectsOffered |= effectsShot;
         if (string.Equals(options.Tab, "browse", StringComparison.OrdinalIgnoreCase))     // the GameBanana browser with its first mod open
         {
             await SetBrowseAsync(true);
@@ -337,6 +362,27 @@ internal sealed class MainWindow : Window
             await Task.Delay(TimeSpan.FromSeconds(8));                      // preview session and shape capabilities
             pane.ShowForShot(options.Tab, options.Part);
             await Task.Delay(TimeSpan.FromSeconds(2));
+            if (effectsShot)                                                 // the 3D view itself as <path>-3d.png; "addeffect": after an effect is placed by a click on the chest
+            {
+                if (placeEffect)
+                {
+                    await pane.PlaceForShotAsync(options.Effect ?? "inferno_hand_ambient_flame", 0.5, 0.33);
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(4));
+                var saved = false;
+                pane.Control.AfterFrame = (session, view, width, height, _) =>
+                {
+                    if (!saved)
+                    {
+                        saved = true;
+                        File.WriteAllBytes(path + "-3d.png", new S2ModKit.Infrastructure.PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                    }
+                };
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                pane.Control.AfterFrame = null;
+            }
+
             if (string.Equals(options.Tab, "cycle", StringComparison.OrdinalIgnoreCase))   // Files, then back to Preview: does it draw again?
             {
                 var tabs = mainTabs.Children.OfType<ToggleButton>().ToArray();
@@ -359,6 +405,10 @@ internal sealed class MainWindow : Window
 #pragma warning restore CS0618
         Close();
     }
+
+#pragma warning disable CA1857, S2190 // deliberate endless recursion: the crash capture check
+    private static int Overflow(int depth) => Overflow(depth + 1) + 1;
+#pragma warning restore CA1857, S2190
 
     private async Task LoadAsync(string? select = null)
     {
@@ -469,7 +519,16 @@ internal sealed class MainWindow : Window
         }
 
         rows = shown;
-        list.ItemsSource = shown;
+        listing = true;                                                     // replacing the rows can leave the selection on a header row at the
+        try                                                                 // same place; taken as a click it folded the group and listed again,
+        {                                                                   // without end (the stack overflow of 2026-11-09/10)
+            list.ItemsSource = shown;
+        }
+        finally
+        {
+            listing = false;
+        }
+
         list.SelectedItem = shown.OfType<ModRow>().FirstOrDefault(row => row.Mod.Key == current);
     }
 
@@ -963,7 +1022,7 @@ internal sealed class MainWindow : Window
 
     /// <summary>Builds one edited version with the hidden, recolored and reshaped parts (masks, boxes and movements taken from the open preview).</summary>
     private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes,
-        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines)
+        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect> added)
     {
         var session = pane.Control.Session;
         var shiny = shines.Select(pair => session?.PartNormalTexture(pair.Key) is { } texture ? new PartShine(pair.Key, texture, pair.Value) : null).OfType<PartShine>().ToArray();
@@ -987,7 +1046,7 @@ internal sealed class MainWindow : Window
         }
 
         listStatus.Text = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..." : "Building...";
-        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny));
+        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny, added));
     }
 
     /// <summary>Asks for a pak number (1-99, lower wins) and puts the mod there; when another mod has that slot, offers to swap them.</summary>
@@ -1586,7 +1645,7 @@ internal sealed class MainWindow : Window
     {
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added);
         paneHost.Content = pane;
         ShowBody(null);
         await LoadAsync();

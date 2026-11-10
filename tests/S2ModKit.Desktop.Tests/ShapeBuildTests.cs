@@ -133,7 +133,7 @@ public sealed class ShapeBuildTests
         var shape = new PartShape(new Vector3(1.4f, 1.4f, 1.4f), Vector3.Zero, new Vector3(0, 0, 5));
         var edit = new PartShapeEdit(Clothes, "models/heroes_wip/unicorn/materials/unicorn_clothes.vmat", shape, new Vector3(-20, -20, 0), new Vector3(20, 20, 70), 30f, ShapeLevel.Full);
 
-        await root.Catalog().BuildEditsAsync(null, Celeste, new HashSet<int>(), [], [edit], null, null, token);
+        await root.Catalog().BuildEditsAsync(null, Celeste, new HashSet<int>(), [], [edit], null, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var package = new Package();

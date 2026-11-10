@@ -76,11 +76,11 @@ internal static class Program
 /// tool <c>--tab Parts|Colour|Shape</c> with part <c>--part &lt;number&gt;</c>, 0: the first separate mesh), saves the window as a picture and closes (layout checks without
 /// controlling the desktop); <c>--by-hero</c> starts in the per-hero view.</summary>
 internal sealed record AppOptions(string? Game, string Model, string? SelfTest, string? Addon = null, float? Outline = null,
-    string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false)
+    string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false, string? CrashTest = null, string? Effect = null)
 {
     public static AppOptions Parse(string[] args)
     {
-        string? game = null, selfTest = null, addon = null, uiShot = null, select = null, tab = null;
+        string? game = null, selfTest = null, addon = null, uiShot = null, select = null, tab = null, crashTest = null, effect = null;
         int? part = null;
         var byHero = false;
         float? outline = null;
@@ -109,11 +109,13 @@ internal sealed record AppOptions(string? Game, string Model, string? SelfTest, 
                 case "--model": model = args[i + 1]; break;
                 case "--selftest": selfTest = args[i + 1]; break;
                 case "--addon": addon = args[i + 1]; break;
+                case "--effect": effect = args[i + 1]; break;                // with --tab addeffect: the effect to place (search text)
+                case "--crash-test": crashTest = args[i + 1]; break;      // "overflow": a deliberate stack overflow after the window opens (crash capture check)
                 case "--outline": outline = float.Parse(args[i + 1], System.Globalization.CultureInfo.InvariantCulture); break;
                 default: throw new ArgumentException($"Unknown option '{args[i]}'.");
             }
         }
 
-        return new AppOptions(game, model, selfTest, addon, outline, uiShot, select, tab, part, byHero);
+        return new AppOptions(game, model, selfTest, addon, outline, uiShot, select, tab, part, byHero, crashTest, effect);
     }
 }

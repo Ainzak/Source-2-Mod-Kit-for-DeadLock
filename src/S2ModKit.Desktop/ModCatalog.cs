@@ -841,11 +841,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
     /// <summary>Builds an edited copy with parts hidden (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildEditedAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, hidden, [], null, null, null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, hidden, [], null, null, null, null, cancellationToken);
 
     /// <summary>Builds a recolored copy (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildRecoloredAsync(ModEntry? mod, string modelPath, IReadOnlyList<PartRecolor> parts, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, null, null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, null, null, null, cancellationToken);
 
     /// <summary>
     /// Builds one edited copy of <paramref name="modelPath"/> with every change made in the app: <paramref name="hidden"/> parts get
@@ -857,8 +857,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
     /// </summary>
     public Task<CatalogChange> BuildEditsAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
         IReadOnlyList<PartShapeEdit>? shapes = null, IReadOnlyDictionary<string, EffectColorChange>? effects = null, IReadOnlyList<PartShine>? shines = null,
-        CancellationToken cancellationToken = default) =>
-        BuildEditsCoreAsync(mod, modelPath, hidden, recolors, shapes, effects, shines, null, cancellationToken);
+        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added = null, CancellationToken cancellationToken = default) =>
+        BuildEditsCoreAsync(mod, modelPath, hidden, recolors, shapes, effects, shines, added, null, cancellationToken);
 
     /// <summary>
     /// Re-apply edits: builds a mod the app made again from its recipe (<see cref="EditRecipe"/>) on the current game files, or the base
@@ -902,25 +902,27 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         var shapes = recipe.Shapes.Select(shape => new PartShapeEdit(shape.Part, shape.Material,
             new PartShape(Vector(shape.Scale), Vector(shape.RotationDegrees), Vector(shape.Move), shape.Pivot), Vector(shape.BoundsMin), Vector(shape.BoundsMax), shape.Displacement, shape.Level)).ToArray();
         var change = await BuildEditsCoreAsync(baseMod, recipe.Model, recipe.Hidden.ToHashSet(), recolors, shapes, recipe.Effects,
-            [.. (recipe.Shines ?? []).Select(shine => new PartShine(shine.Part, shine.Texture, shine.Shine))], edited, cancellationToken).ConfigureAwait(false);
+            [.. (recipe.Shines ?? []).Select(shine => new PartShine(shine.Part, shine.Texture, shine.Shine))],
+            [.. (recipe.Added ?? []).Select(effect => new S2ModKit.Adapters.Source2.AddedEffect(effect.Effect, effect.Bone, Vector(effect.Offset)))], edited, cancellationToken).ConfigureAwait(false);
         return baseMod is null ? change : change with { Message = change.Message + " Edits re-applied. The original mod may still need an update from its author." };
 
         static System.Numerics.Vector3 Vector(float[] values) => new(values[0], values[1], values[2]);
     }
 
     private async Task<CatalogChange> BuildEditsCoreAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
-        IReadOnlyList<PartShapeEdit>? shapes, IReadOnlyDictionary<string, EffectColorChange>? effects, IReadOnlyList<PartShine>? shines, ModEntry? installAs,
-        CancellationToken cancellationToken)
+        IReadOnlyList<PartShapeEdit>? shapes, IReadOnlyDictionary<string, EffectColorChange>? effects, IReadOnlyList<PartShine>? shines,
+        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added, ModEntry? installAs, CancellationToken cancellationToken)
     {
         shines ??= [];
+        added ??= [];
         ArgumentNullException.ThrowIfNull(hidden);
         ArgumentNullException.ThrowIfNull(recolors);
         shapes ??= [];
         effects ??= new Dictionary<string, EffectColorChange>();
         Management.EnsureGameStopped();
-        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0 && effects.Count == 0 && shines.Count == 0)
+        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0 && effects.Count == 0 && shines.Count == 0 && added.Count == 0)
         {
-            throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part, or recolor effects first.");
+            throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part, or recolor or add effects first.");
         }
 
         if (mod is not null && (mod.Files.Count != 1 || (!mod.Loaded && installAs is null)))   // re-apply reads a base kept disabled under its edit
@@ -972,6 +974,26 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             }
 
             entries[logical] = S2ModKit.Adapters.Source2.CompiledModelEdit.HideDrawCalls(model.ToArray(), logical, hidden);
+        }
+
+        if (added.Count > 0)
+        {
+            // always-on effects: the model lists them and gets a point per placed effect (add_model_effects@1)
+            var game = Path.Combine(settings.Game, "citadel", "pak01_dir.vpk");
+            var model = entries.TryGetValue(logical, out var current) ? current.ToArray()
+                : ReadFirst([game], logical)
+                ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
+            var template = ReadFirst([game], S2ModKit.Adapters.Source2.CompiledAddedEffects.TemplateEffect + "_c")
+                ?? throw Errors.Unsupported("ADDED_EFFECT_TEMPLATE", "The game no longer has the effect that added effects are built from.", "Update S2ModKit.");
+            if (added.FirstOrDefault(effect => !entries.ContainsKey(effect.Effect + "_c") && ReadFirst([game], effect.Effect + "_c") is null) is { } missing)
+            {
+                throw Errors.Input("ADDED_EFFECT_MISSING", $"The effect '{missing.Effect}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Choose the effect again; a game update may have removed it.");
+            }
+
+            foreach (var (path, bytes) in await Task.Run(() => S2ModKit.Adapters.Source2.CompiledAddedEffects.Build(model, logical, template, added), cancellationToken).ConfigureAwait(false))
+            {
+                entries[path] = bytes;
+            }
         }
 
         var evidence = new List<object>();
@@ -1197,6 +1219,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             changes.Add($"{effectEvidence.Count} effect{(effectEvidence.Count == 1 ? string.Empty : "s")} recolored");
         }
 
+        if (added.Count > 0)
+        {
+            changes.Add($"{added.Count} effect{(added.Count == 1 ? string.Empty : "s")} added");
+        }
+
         var label = (installAs is null ? "edited: " : "edits re-applied: ") + string.Join(", ", changes);
         var name = mod?.Name ?? Hero.Catalogue.FirstOrDefault(hero => hero.Model.Equals(modelPath.Replace("_c", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))?.Name ?? Path.GetFileNameWithoutExtension(modelPath);
         var folder = Path.Combine(settings.Data, "edits", $"{Sanitize(name)}-{clock.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..6]}");   // two builds in one second (re-apply) never share a folder
@@ -1217,6 +1244,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 shapeOutputHash = shapeHashes?.Output,
                 effects = effectEvidence,
                 shines = shineEvidence,
+                addedOperation = added.Count > 0 ? "add_model_effects@1" : null,
+                added = added.Select(effect => new { effect = effect.Effect, bone = effect.Bone, offset = new[] { effect.Offset.X, effect.Offset.Y, effect.Offset.Z } }),
             }, IndentedJson), cancellationToken).ConfigureAwait(false);
         new EditRecipe(EditRecipe.CurrentSchema, await GameBuildAsync(cancellationToken).ConfigureAwait(false), modelPath, mod?.Name, mod?.ModId, mod?.Key,
             [.. hidden.Order()],
@@ -1225,7 +1254,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 [edit.Shape.RotationDegrees.X, edit.Shape.RotationDegrees.Y, edit.Shape.RotationDegrees.Z], [edit.Shape.Move.X, edit.Shape.Move.Y, edit.Shape.Move.Z],
                 edit.Shape.Pivot, [edit.BoundsMin.X, edit.BoundsMin.Y, edit.BoundsMin.Z], [edit.BoundsMax.X, edit.BoundsMax.Y, edit.BoundsMax.Z], edit.Displacement, edit.Level))],
             new Dictionary<string, EffectColorChange>(effects, StringComparer.Ordinal), clock.UtcNow,
-            [.. shines.Select(part => new RecipeShine(part.Part, part.Texture, part.Shine))]).Write(folder);   // for Re-apply edits after a game update
+            [.. shines.Select(part => new RecipeShine(part.Part, part.Texture, part.Shine))],
+            [.. added.Select(effect => new RecipeAddedEffect(effect.Effect, effect.Bone, [effect.Offset.X, effect.Offset.Y, effect.Offset.Z]))]).Write(folder);   // for Re-apply edits after a game update
         return installAs is null
             ? await InstallVersionAsync(mod, name, package, label, cancellationToken).ConfigureAwait(false)
             : await InstallVersionAsync(installAs, installAs.Name, package, label, cancellationToken).ConfigureAwait(false);

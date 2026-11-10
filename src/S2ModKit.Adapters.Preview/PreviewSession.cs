@@ -90,6 +90,7 @@ public sealed partial class PreviewSession : IDisposable
             throw Domain.Errors.Input("PREVIEW_MODEL_TYPE", $"'{modelPath}_c' is not a model.", "Pass a .vmdl path.");
         }
 
+        ReadListedEffects(model);
         node = new ModelSceneNode(scene, model);
         node.SetOverrideLod(0);
         scene.Add(node, true);
@@ -280,8 +281,26 @@ public sealed partial class PreviewSession : IDisposable
 
     private (int Part, Vector2 Uv)? PickWithUv(float x, float y, int width, int height)
     {
-        if (picker.Count != Parts.Count || width <= 0 || height <= 0
-            || !Matrix4x4.Invert(renderer.Camera.ViewProjectionMatrix, out var inverse))
+        if (picker.Count != Parts.Count || Ray(x, y, width, height) is not { } ray)
+        {
+            return null;
+        }
+
+        return picker.PickWithUv(ray.Origin, ray.Direction, Skin(), node.Transform, hiddenIndexCounts.Keys.ToHashSet());
+    }
+
+    /// <summary>The skinning matrices of the current pose, by skeleton bone.</summary>
+    private Matrix4x4[] Skin()
+    {
+        var bones = new Matrix4x4[Math.Max(1, node.AnimationController.Skeleton.Bones.Length)];
+        node.AnimationController.GetSkinningMatrices(bones);
+        return bones;
+    }
+
+    /// <summary>The view ray through pixel (<paramref name="x"/>, <paramref name="y"/>) of the last frame, or null.</summary>
+    private (Vector3 Origin, Vector3 Direction)? Ray(float x, float y, int width, int height)
+    {
+        if (width <= 0 || height <= 0 || !Matrix4x4.Invert(renderer.Camera.ViewProjectionMatrix, out var inverse))
         {
             return null;
         }
@@ -295,10 +314,7 @@ public sealed partial class PreviewSession : IDisposable
 
         var (a, b) = (Unproject(0.25f), Unproject(0.75f));
         var origin = renderer.Camera.Location;
-        var direction = Vector3.Normalize(Vector3.Distance(a, origin) < Vector3.Distance(b, origin) ? b - a : a - b);
-        var bones = new Matrix4x4[Math.Max(1, node.AnimationController.Skeleton.Bones.Length)];
-        node.AnimationController.GetSkinningMatrices(bones);
-        return picker.PickWithUv(origin, direction, bones, node.Transform, hiddenIndexCounts.Keys.ToHashSet());
+        return (origin, Vector3.Normalize(Vector3.Distance(a, origin) < Vector3.Distance(b, origin) ? b - a : a - b));
     }
 
     private void RenderFrame(PreviewView view, int width, int height, float fieldOfView, Vector2 pan = default)
@@ -327,18 +343,29 @@ public sealed partial class PreviewSession : IDisposable
         renderer.DeltaTime = 0;
         node.AnimationController.Time = time;
         AdvanceEffect(camera);
+        AdvancePlaced(camera);
         renderer.Update(update);
-        try
+        while (true)
         {
-            renderer.Render(main!);
-        }
+            try
+            {
+                renderer.Render(main!);
+                break;
+            }
 #pragma warning disable CA1031 // an effect the renderer cannot draw: stop it and draw the frame without it
-        catch (Exception exception) when (effect is not null)
+            catch (Exception exception) when (effect is not null || placed.Exists(item => item.Node is not null))
 #pragma warning restore CA1031
-        {
-            EffectError = $"The preview cannot draw this effect ({exception.Message}).";
-            StopEffect();
-            renderer.Render(main!);
+            {
+                if (effect is not null)
+                {
+                    EffectError = $"The preview cannot draw this effect ({exception.Message}).";
+                    StopEffect();
+                }
+                else
+                {
+                    DropPlaced(placed.Count - 1, $"The preview cannot draw this effect ({exception.Message}).");
+                }
+            }
         }
 
         if (effect is null)
@@ -354,6 +381,11 @@ public sealed partial class PreviewSession : IDisposable
             highlight.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, picker.Posed(HighlightPart, bones, node.Transform), occluders,
                 0.5f + (0.5f * MathF.Sin((float)Environment.TickCount64 / 160f)));
         }
+        if (effect is null)
+        {
+            DrawPlacedMarker(main!.FboHandle, width, height, camera.ViewProjectionMatrix);
+        }
+
         renderer.PostprocessRender(main!, display!, false);
     }
 
@@ -416,6 +448,7 @@ public sealed partial class PreviewSession : IDisposable
     public void Dispose()
     {
         StopEffect();
+        ClearPlaced();
         SetOverlay(null);
         ink.Dispose();
         highlight.Dispose();

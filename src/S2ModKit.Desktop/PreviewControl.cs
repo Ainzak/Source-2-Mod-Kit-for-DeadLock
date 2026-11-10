@@ -98,6 +98,30 @@ internal sealed class PreviewControl : OpenGlControlBase
         RequestNextFrameRendering();
     }
 
+    private (IReadOnlyList<PlacedEffect> Effects, byte[]? Overlay, Action<IReadOnlyList<string?>>? Done)? placedRequest;
+    private (Point At, Action<(string Bone, System.Numerics.Vector3 Offset)?> Done)? pointRequest;
+
+    /// <summary>The placed effect whose point is marked in the view (-1: none).</summary>
+    public int MarkedPlaced { get; set; } = -1;
+
+    /// <summary>Shows exactly these placed effects with the model; <paramref name="overlay"/>: a VPK with their files prepared for the
+    /// preview, searched first. <paramref name="done"/> gets why each cannot play, or null (on the window's thread).</summary>
+    public void RequestPlacedEffects(IReadOnlyList<PlacedEffect> effects, byte[]? overlay, Action<IReadOnlyList<string?>>? done = null)
+    {
+        placedRequest = (effects, overlay, done);
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>The bone under a point of the view and the point in that bone's space (null: nothing there).</summary>
+    public void RequestPoint(Point at, Action<(string Bone, System.Numerics.Vector3 Offset)?> done)
+    {
+        pointRequest = (at, done);
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>A placed effect stopped because the preview could not draw it (the reason).</summary>
+    public event Action<string>? PlacedStopped;
+
     /// <summary>An effect stopped by itself because the preview could not draw it (the reason).</summary>
     public event Action<string>? EffectStopped;
 
@@ -371,6 +395,24 @@ internal sealed class PreviewControl : OpenGlControlBase
             Post(() => wanted.Done?.Invoke(refusal));
         }
 
+        if (placedRequest is { } placing)
+        {
+            placedRequest = null;
+            if (placing.Overlay is not null)
+            {
+                session.SetOverlay(placing.Overlay);
+            }
+
+            var refusals = session.SetPlacedEffects(placing.Effects);
+            Post(() => placing.Done?.Invoke(refusals));
+        }
+
+        session.MarkedPlaced = MarkedPlaced;
+        foreach (var reason in session.TakePlacedErrors())
+        {
+            Post(() => PlacedStopped?.Invoke(reason));
+        }
+
         if (session.EffectError is { } stopped && stopped != effectError)
         {
             effectError = stopped;
@@ -453,6 +495,13 @@ internal sealed class PreviewControl : OpenGlControlBase
             sample = null;
             var sampled = session.SamplePartColor((float)(sampling.At.X * scale), (float)(sampling.At.Y * scale), width, heightPx);
             Post(() => sampling.Done(sampled));
+        }
+
+        if (pointRequest is { } pointing)
+        {
+            pointRequest = null;
+            var point = session.PickPoint((float)(pointing.At.X * scale), (float)(pointing.At.Y * scale), width, heightPx);
+            Post(() => pointing.Done(point));
         }
 
         if (pick is { } request)

@@ -24,7 +24,14 @@ public sealed partial class CliContractTests
         Assert.Equal(0, exitCode);
         Assert.Equal("success", document.RootElement.GetProperty("status").GetString());
         Assert.Equal("doctor", document.RootElement.GetProperty("command").GetString());
-        Assert.Contains("0.8.2", document.RootElement.GetProperty("result").GetProperty("productVersion").GetString(), StringComparison.Ordinal);
+        var props = new DirectoryInfo(AppContext.BaseDirectory);                // the one Version line every assembly follows
+        while (!(File.Exists(Path.Combine(props!.FullName, "Directory.Build.props")) && File.ReadAllText(Path.Combine(props.FullName, "Directory.Build.props")).Contains("<Version>", StringComparison.Ordinal)))
+        {
+            props = props.Parent;
+        }
+
+        var declared = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(props.FullName, "Directory.Build.props")), "<Version>([^<]+)</Version>").Groups[1].Value;
+        Assert.Equal(declared, document.RootElement.GetProperty("result").GetProperty("productVersion").GetString());
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("result").GetProperty("runtimeIdentifier").GetString()));
         var catalogueRevision = document.RootElement.GetProperty("result").GetProperty("catalogueRevision").GetString();
         Assert.True(catalogueRevision is "not_packaged" or "2026-10-28.1");

@@ -27,7 +27,7 @@ public sealed class EffectColorTests
         using var root = new ModTestRoot();
         var effects = new Dictionary<string, EffectColorChange> { ["particles/abilities/nobody/missing.vpcf"] = new(Blue) };
         var refusal = await Assert.ThrowsAsync<S2ModKit.Domain.S2ModKitException>(() =>
-            root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, effects, null, TestContext.Current.CancellationToken));
+            root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, effects, null, null, TestContext.Current.CancellationToken));
         Assert.Equal("EFFECT_EDIT_NOTHING", refusal.Error.Code);
         Assert.Empty(root.AddonNames());
     }

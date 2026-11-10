@@ -35,6 +35,40 @@ public sealed class AppLogTests
     }
 
     [Fact]
+    public void ACrashFileOfAnEndedSessionIsReportedOnceAndOneStillRunningIsLeftAlone()
+    {
+        var data = Path.Combine(Path.GetTempPath(), "s2mk-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var logs = Path.Combine(data, "logs");
+            Directory.CreateDirectory(logs);
+            File.WriteAllText(Path.Combine(logs, "s2modkit-20200101-000000.log"), "00:00:01.000 SHOWN Opening the preview\n");
+            File.WriteAllText(Path.Combine(logs, "crash-20200101-000000.txt"), "Stack overflow.\n   at Some.Method()");
+            var running = Path.Combine(logs, "crash-20200102-000000.txt");
+            using (new FileStream(running, FileMode.Create, FileAccess.Write, FileShare.Read | FileShare.Delete))
+            {
+                AppLog.Start(data, "S2ModKit test start");
+
+                Assert.True(AppLog.PreviousCrash);
+                var text = AppLog.Read();
+                Assert.Contains("CRASH The session of s2modkit-20200101-000000.log ended unexpectedly. Trace:", text, StringComparison.Ordinal);
+                Assert.Contains("at Some.Method()", text, StringComparison.Ordinal);
+                Assert.Contains("Opening the preview", text, StringComparison.Ordinal);
+                Assert.False(File.Exists(Path.Combine(logs, "crash-20200101-000000.txt")));
+                Assert.True(File.Exists(running));                              // that session still runs
+            }
+
+            File.Delete(running);
+            AppLog.Start(data, "S2ModKit test start again");
+            Assert.False(AppLog.PreviousCrash);                                 // reported once
+        }
+        finally
+        {
+            Directory.Delete(data, true);
+        }
+    }
+
+    [Fact]
     public void FailedRequestsSayWhatHappened()
     {
         Assert.Contains("HTTP 504", AppUpdates.Describe(new HttpRequestException("x", null, HttpStatusCode.GatewayTimeout)), StringComparison.Ordinal);

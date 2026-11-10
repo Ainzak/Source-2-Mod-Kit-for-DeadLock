@@ -578,7 +578,8 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
     mods stays quick and no mod file is held open); **Settings > Open the 3D preview automatically** opens it at once.
 18. **Log.** Each session writes a log in the data folder (`logs`, the last five are kept): the app's version and folders,
     the messages it showed and error details. **Settings > Open log** shows the file, **Copy log** copies it for a problem
-    report. Nothing is sent anywhere.
+    report. Nothing is sent anywhere. If the app ever closes by itself, it keeps the failure's trace; the next start shows
+    "S2ModKit closed unexpectedly last time" and puts the trace into the new log, so **Copy log** holds everything a report needs.
 19. **Shine.** The colour panel's **Shine** slider lowers the selected part's roughness, so it reflects its surroundings like
     latex or polished metal (0 leaves the part as the game has it). The preview shows it at once; **Build edited mod** writes
     it into the part's normal-roughness texture (only where the part's UVs are) and Re-apply edits keeps it.

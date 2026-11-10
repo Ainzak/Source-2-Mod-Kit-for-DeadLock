@@ -72,6 +72,23 @@ internal sealed class PartPicker
     public int? Pick(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform, IReadOnlySet<int> hidden) =>
         PickWithUv(origin, direction, skin, transform, hidden)?.Part;
 
+    /// <summary>Where the ray first hits a visible part (in the current pose) and the bone that moves that spot most, or null.</summary>
+    public (Vector3 Point, int Bone)? PickPoint(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform, IReadOnlySet<int> hidden)
+    {
+        (Vector3, int)? hit = null;
+        var best = float.MaxValue;
+        for (var index = 0; index < parts.Count; index++)
+        {
+            if (!hidden.Contains(index) && parts[index].Nearest(origin, direction, skin, transform) is { } found && found.Distance < best)
+            {
+                best = found.Distance;
+                hit = (origin + (direction * found.Distance), parts[index].MainBone(found.Vertex));
+            }
+        }
+
+        return hit;
+    }
+
     /// <summary>Sets part <paramref name="index"/>'s shape change (bind pose) so picking and the highlight follow the preview.</summary>
     public void SetShape(int index, Matrix4x4 shape)
     {
@@ -242,6 +259,21 @@ internal sealed class PartPicker
             })];
         }
 
+        /// <summary>The bone with the most weight on vertex <paramref name="v"/> (an index into the skinning matrices).</summary>
+        public int MainBone(int v)
+        {
+            var best = 0;
+            for (var k = 1; k < perVertex; k++)
+            {
+                if (weights[(v * perVertex) + k] > weights[(v * perVertex) + best])
+                {
+                    best = k;
+                }
+            }
+
+            return bones.Length == 0 ? 0 : bones[(v * perVertex) + best];
+        }
+
         /// <summary>The part's shape change in bind pose (identity: as compiled); picking and the highlight follow it.</summary>
         public Matrix4x4 Shape { get; set; } = Matrix4x4.Identity;
 
@@ -343,7 +375,7 @@ internal sealed class PartPicker
         }
 
         /// <summary>Distance along the ray to the nearest triangle of this part in the current pose, or null.</summary>
-        public (float Distance, Vector2 Uv)? Nearest(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform)
+        public (float Distance, Vector2 Uv, int Vertex)? Nearest(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform)
         {
             var posed = new Dictionary<int, Vector3>();
             Vector3 Pose(int v)
@@ -369,14 +401,15 @@ internal sealed class PartPicker
                 return posed[v] = Vector3.Transform(total > 0 ? p / total : Shaped(v), transform);
             }
 
-            (float Distance, Vector2 Uv)? best = null;
+            (float Distance, Vector2 Uv, int Vertex)? best = null;
             for (var t = 0; t + 2 < indices.Length; t += 3)
             {
                 if (Hit(origin, direction, Pose(indices[t]), Pose(indices[t + 1]), Pose(indices[t + 2])) is { } h && (best is null || h.Distance < best.Value.Distance))
                 {
                     var uv = uvs.Length == 0 ? Vector2.Zero
                         : ((1 - h.U - h.V) * uvs[indices[t]]) + (h.U * uvs[indices[t + 1]]) + (h.V * uvs[indices[t + 2]]);
-                    best = (h.Distance, uv);
+                    var corner = 1 - h.U - h.V;                                // the hit's nearest corner
+                    best = (h.Distance, uv, indices[t + (h.U > corner && h.U >= h.V ? 1 : h.V > corner ? 2 : 0)]);
                 }
             }
 

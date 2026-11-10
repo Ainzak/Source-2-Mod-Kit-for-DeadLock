@@ -30,13 +30,14 @@ internal sealed record EditRecipe(
     RecipeShape[] Shapes,
     Dictionary<string, EffectColorChange> Effects,
     DateTimeOffset Built,
-    RecipeShine[]? Shines = null)
+    RecipeShine[]? Shines = null,
+    RecipeAddedEffect[]? Added = null)
 {
     public const string FileName = "recipe.json";
     public const string CurrentSchema = "app-recipe@1";
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
-    public bool HasEdits => Hidden.Length > 0 || Recolors.Length > 0 || Shapes.Length > 0 || Effects.Count > 0 || Shines is { Length: > 0 };
+    public bool HasEdits => Hidden.Length > 0 || Recolors.Length > 0 || Shapes.Length > 0 || Effects.Count > 0 || Shines is { Length: > 0 } || Added is { Length: > 0 };
 
     public void Write(string folder) => File.WriteAllText(Path.Combine(folder, FileName), JsonSerializer.Serialize(this, Indented));
 
@@ -80,3 +81,7 @@ internal sealed record EditRecipe(
             ?? others.FirstOrDefault(mod => mod.Name == BaseName);
     }
 }
+
+/// <summary>An always-on effect added to the model: the effect file, the bone it sits on (null: follows the hero) and its place in
+/// that bone's space.</summary>
+internal sealed record RecipeAddedEffect(string Effect, string? Bone, float[] Offset);

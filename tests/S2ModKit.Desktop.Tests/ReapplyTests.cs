@@ -76,7 +76,7 @@ public sealed class ReapplyTests
 
         var catalog = root.Catalog();
         var blue = new EffectColorChange(new RgbColor(0.1f, 0.3f, 1f));
-        await catalog.BuildEditsAsync(null, Model, new HashSet<int> { 0 }, [], null, effects.ToDictionary(effect => effect, _ => blue), null, token);
+        await catalog.BuildEditsAsync(null, Model, new HashSet<int> { 0 }, [], null, effects.ToDictionary(effect => effect, _ => blue), null, null, token);
         var mods = await catalog.LoadAsync(token);
         var edited = Assert.Single(mods, mod => mod.Loaded);
         var recipe = EditRecipe.Of(edited);

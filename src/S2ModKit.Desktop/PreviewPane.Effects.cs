@@ -67,6 +67,7 @@ internal sealed partial class PreviewPane
         if (effectsModel != modelPath)
         {
             effectChanges.Clear();
+            ClearAddedEffects();
         }
 
         effectsModel = modelPath;
@@ -74,6 +75,7 @@ internal sealed partial class PreviewPane
         abilityData ??= Task.Run(() => HeroAbilities.Read(settings.Game, Path.Combine(settings.Data, "hero-abilities.json")));
         effectGroups = [.. HeroAbilities.Of(await abilityData.ConfigureAwait(true), modelPath).Where(group => group.EffectList.Count > 0)];
         BuildEffectsView();
+        _ = ApplyPlacedAsync(files: true);                                   // a reopened view shows the added effects again
         var archives = shownArchives;
         var groups = effectGroups;
         var swatches = await Task.Run(() =>
@@ -102,6 +104,11 @@ internal sealed partial class PreviewPane
         Detach(effectExact);
         effectRows.Clear();
         var panel = new StackPanel { Margin = new Thickness(10, 4), Spacing = 4 };
+        if (previewWanted && AddedEffectsOffered)
+        {
+            panel.Children.Add(AddedEffectsSection());
+        }
+
         if (effectGroups.Count == 0)
         {
             panel.Children.Add(new TextBlock
@@ -113,6 +120,7 @@ internal sealed partial class PreviewPane
         }
         else
         {
+            panel.Children.Add(new TextBlock { Text = "Effect colours", FontWeight = FontWeight.SemiBold });
             panel.Children.Add(new TextBlock
             {
                 Text = "Tick the abilities whose effects you want in a new colour, then pick the colour. The squares are each ability's main "
@@ -127,7 +135,13 @@ internal sealed partial class PreviewPane
             Detach(effectPicker);
             Detach(effectStatus);
             panel.Children.Add(effectPicker);
-            panel.Children.Add(Wrap(Button("Play", () => _ = PlayEffectAsync()), Button("Stop", StopEffectPreview)));
+            panel.Children.Add(Wrap(Button("Play", () =>
+            {
+                if (effectPicker.SelectedItem is EffectChoice choice)
+                {
+                    _ = PlayEffectAsync(choice.Path);
+                }
+            }), Button("Stop", StopEffectPreview)));
             panel.Children.Add(effectStatus);
             panel.Children.Add(Wrap(Button("Tick all", () => SetAllEffectChecks(true)), Button("Untick all", () => SetAllEffectChecks(false))));
             foreach (var group in effectGroups)
@@ -235,20 +249,17 @@ internal sealed partial class PreviewPane
 
     /// <summary>Plays the picked effect alone in the 3D view; when its ability has a new colour, with the recolored files of every changed
     /// ability in front (so child effects change too).</summary>
-    private async Task PlayEffectAsync()
+    private async Task PlayEffectAsync(string effect)
     {
-        if (effectPicker.SelectedItem is not EffectChoice choice)
-        {
-            return;
-        }
-
+        placing = null;
         effectStatus.Text = "Preparing the effect...";
         byte[]? overlay = null;
         var changes = EffectChanges;
         var archives = shownArchives;
         try
         {
-            overlay = await Task.Run(() => EffectOverlay(archives, choice.Path, changes, settings.StagingRoot)).ConfigureAwait(true);
+            var added = addedEffects.Select(row => row.Effect).ToArray();    // their files stay prepared while one effect plays alone
+            overlay = await Task.Run(() => EffectOverlay(archives, [effect, .. added], changes, settings.StagingRoot)).ConfigureAwait(true);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or S2ModKit.Domain.S2ModKitException)
         {
@@ -256,11 +267,11 @@ internal sealed partial class PreviewPane
             effectStatus.Text = "Could not prepare the effect for the preview: " + exception.Message;
         }
 
-        preview.RequestEffect(choice.Path, overlay, refusal =>
+        preview.RequestEffect(effect, overlay, refusal =>
         {
             effectPlaying = refusal is null;
             effectStatus.Text = refusal is null
-                ? $"Playing {System.IO.Path.GetFileName(choice.Path)}{(changes.ContainsKey(choice.Path) ? " in the new colours" : " in its current colours")}; it repeats every few seconds."
+                ? $"Playing {System.IO.Path.GetFileName(effect)}{(changes.ContainsKey(effect) ? " in the new colours" : " in its current colours")}; it repeats every few seconds."
                 : refusal + " The colour squares still show the change.";
             if (refusal is not null)
             {
@@ -284,12 +295,12 @@ internal sealed partial class PreviewPane
     /// A VPK (bytes) for the preview only (written to the staging folder and deleted): the effect and its child effects, recolored where
     /// their ability has a new colour, and simplified so the preview's renderer can read them (<see cref="S2ModKit.Adapters.Source2.CompiledParticleEdit.ForPreview"/>).
     /// </summary>
-    internal byte[]? EffectOverlayFor(string effect) => EffectOverlay(shownArchives, effect, EffectChanges, settings.StagingRoot);
+    internal byte[]? EffectOverlayFor(string effect) => EffectOverlay(shownArchives, [effect], EffectChanges, settings.StagingRoot);
 
-    private static byte[]? EffectOverlay(IReadOnlyList<string> archives, string effect, IReadOnlyDictionary<string, EffectColorChange> changes, string staging)
+    private static byte[]? EffectOverlay(IReadOnlyList<string> archives, IEnumerable<string> effects, IReadOnlyDictionary<string, EffectColorChange> changes, string staging)
     {
         var entries = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
-        foreach (var (file, original) in EffectFiles.ReadTree(archives, effect))
+        foreach (var (file, original) in effects.Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(effect => EffectFiles.ReadTree(archives, effect)).DistinctBy(pair => pair.Key))
         {
             var bytes = changes.TryGetValue(file, out var change) ? S2ModKit.Adapters.Source2.CompiledParticleEdit.Recolor(original, file + "_c", change).Bytes : original;
             var (simple, simplified) = S2ModKit.Adapters.Source2.CompiledParticleEdit.ForPreview(bytes, file + "_c");
