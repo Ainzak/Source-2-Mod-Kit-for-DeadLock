@@ -29,8 +29,10 @@ public static class InPlaceTexture
             throw Errors.Verification("RECOLOR_PIXELS_SIZE", $"The pixels are {width}x{height}; the texture is {texture.Width}x{texture.Height}.", "Report the texture.");
         }
 
+        // a picture smaller than its storage is only rewritten as one level (a 1x1 colour in one 4x4 block): the encoder fills the same block
+        var paddedSingle = texture.NumMipLevels == 1 && texture.ActualWidth <= texture.Width && texture.ActualHeight <= texture.Height;
         if (texture.Depth != 1 || (texture.Flags & VTexFlags.CUBE_TEXTURE) != 0 || texture.ExtraData.ContainsKey(VTexExtraData.COMPRESSED_MIP_SIZE)
-            || texture.ActualWidth != texture.Width || texture.ActualHeight != texture.Height)
+            || ((texture.ActualWidth != texture.Width || texture.ActualHeight != texture.Height) && !paddedSingle))
         {
             throw Errors.Unsupported("RECOLOR_TEXTURE_LAYOUT", $"'{texture.Format}' {texture.Width}x{texture.Height} with this layout (cube, volume, compressed or padded mips) cannot be rewritten in place.",
                 "Recolor it with the SDK compiler (--resourcecompiler and --sdk-game).");
@@ -66,6 +68,32 @@ public static class InPlaceTexture
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// The stored pixels of the top level (RGBA, without VRF's normal or colour decoding: what <see cref="Write"/> stores back) and the
+    /// texture's codec flags, which say how its channels are used (<c>HemiOctRB</c>: normal in red and green, roughness in blue). A
+    /// picture smaller than its storage (1x1 in a 4x4 block) is repeated to the storage size.
+    /// </summary>
+    public static (byte[] Rgba, int Width, int Height, ValveResourceFormat.TextureDecoders.TextureCodec Codec) ReadStored(byte[] compiled, string logicalPath)
+    {
+        ArgumentNullException.ThrowIfNull(compiled);
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(compiled));
+        var texture = resource.DataBlock as Texture ?? throw Errors.Input("RECOLOR_NOT_A_TEXTURE", $"'{logicalPath}' is not a texture.", "Pass a texture (.vtex).");
+        using var bitmap = texture.GenerateBitmap(0, Texture.CubemapFace.PositiveX, 0, ValveResourceFormat.TextureDecoders.TextureCodec.None);
+        var rgba = new byte[texture.Width * texture.Height * 4];
+        for (var y = 0; y < texture.Height; y++)
+        {
+            for (var x = 0; x < texture.Width; x++)
+            {
+                var colour = bitmap.GetPixel(x * bitmap.Width / texture.Width, y * bitmap.Height / texture.Height);
+                var at = ((y * texture.Width) + x) * 4;
+                (rgba[at], rgba[at + 1], rgba[at + 2], rgba[at + 3]) = (colour.Red, colour.Green, colour.Blue, colour.Alpha);
+            }
+        }
+
+        return (rgba, texture.Width, texture.Height, texture.RetrieveCodecFromResourceEditInfo());
     }
 
     private static CompressionFormat Format(VTexFormat format) => format switch

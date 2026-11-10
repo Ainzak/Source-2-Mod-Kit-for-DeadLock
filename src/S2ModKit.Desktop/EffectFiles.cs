@@ -34,6 +34,55 @@ internal static class EffectFiles
         return found;
     }
 
+    /// <summary>An effect and every child effect under it (any depth, at most <paramref name="limit"/> files), each from the first archive
+    /// that has it.</summary>
+    public static Dictionary<string, byte[]> ReadTree(IReadOnlyList<string> archives, string effect, int limit = 400)
+    {
+        ArgumentNullException.ThrowIfNull(archives);
+        var packages = archives.Where(File.Exists).Select(path =>
+        {
+            var package = new Package();
+            package.Read(path);
+            return package;
+        }).ToArray();
+        try
+        {
+            var found = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            var queue = new Queue<string>([effect.Replace('\\', '/').ToLowerInvariant()]);
+            while (queue.TryDequeue(out var next) && found.Count < limit)
+            {
+                if (found.ContainsKey(next))
+                {
+                    continue;
+                }
+
+                foreach (var package in packages)
+                {
+                    if (package.FindEntry(next + "_c") is { } entry)
+                    {
+                        package.ReadEntry(entry, out var bytes);
+                        found[next] = bytes;
+                        foreach (var child in S2ModKit.Adapters.Source2.CompiledParticleEdit.ChildEffects(bytes, next + "_c"))
+                        {
+                            queue.Enqueue(child.Replace('\\', '/').ToLowerInvariant());
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            return found;
+        }
+        finally
+        {
+            foreach (var package in packages)
+            {
+                package.Dispose();
+            }
+        }
+    }
+
     /// <summary>The distinct strong colours of some effects (greys left out), most frequent first, for swatches.</summary>
     public static IReadOnlyList<(int R, int G, int B)> Swatches(IEnumerable<(string Path, byte[] Bytes)> effects, int count)
     {

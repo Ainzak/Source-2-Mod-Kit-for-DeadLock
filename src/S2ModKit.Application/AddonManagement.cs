@@ -396,6 +396,25 @@ public sealed class AddonModOperations(IAddonFileOperations files, IGameProcessP
         return await RenameAsync(target, plan.Net, journalRoot, plan.Summary, cancellationToken, AddonOperationJournal.ReorderOperation, plan.Steps).ConfigureAwait(false);
     }
 
+    /// <summary>Moves a mod to another mod's place in the load order (drag and drop), in one journaled <c>addon-reorder@1</c> operation.</summary>
+    public async Task<AddonOperationResult> ReorderToPlaceOfAsync(string addonsRoot, IReadOnlyList<LoadOrderMod> enabled, string key, string targetKey, string journalRoot, CancellationToken cancellationToken = default)
+    {
+        EnsureGameStopped();
+        var plan = AddonLoadOrder.PlanToPlaceOf(enabled, key, targetKey, await NamesAsync(addonsRoot, cancellationToken).ConfigureAwait(false), Guid.NewGuid().ToString("N")[..8]);
+        var target = new AddonModTarget(addonsRoot, plan.Moved, null, [], new HashSet<string>());
+        return await RenameAsync(target, plan.Net, journalRoot, plan.Summary, cancellationToken, AddonOperationJournal.ReorderOperation, plan.Steps).ConfigureAwait(false);
+    }
+
+    /// <summary>Puts a mod at pak number <paramref name="slot"/>, swapping with the mod there when <paramref name="swap"/> (see
+    /// <see cref="AddonLoadOrder.PlanToSlot"/>), in one journaled <c>addon-reorder@1</c> operation.</summary>
+    public async Task<AddonOperationResult> ReorderToSlotAsync(string addonsRoot, IReadOnlyList<LoadOrderMod> enabled, string key, int slot, bool swap, string journalRoot, CancellationToken cancellationToken = default)
+    {
+        EnsureGameStopped();
+        var plan = AddonLoadOrder.PlanToSlot(enabled, key, slot, swap, await NamesAsync(addonsRoot, cancellationToken).ConfigureAwait(false), Guid.NewGuid().ToString("N")[..8]);
+        var target = new AddonModTarget(addonsRoot, plan.Moved, null, [], new HashSet<string>());
+        return await RenameAsync(target, plan.Net, journalRoot, plan.Summary, cancellationToken, AddonOperationJournal.ReorderOperation, plan.Steps).ConfigureAwait(false);
+    }
+
     /// <summary>Sends every file of the mod (archives and data chunks) to the Recycle Bin.</summary>
     public async Task<AddonOperationResult> DeleteAsync(AddonModTarget target, string journalRoot, CancellationToken cancellationToken = default)
     {

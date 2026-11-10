@@ -12,7 +12,7 @@ namespace S2ModKit.Desktop;
 /// archive (a <c>.vnmclip</c> path without <c>_c</c>; null when none matched) and the phases to play in order (the clip and its
 /// siblings: charge, hook, intro, loops, release, end).</summary>
 internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyList<string> Actions, string? Clip = null, IReadOnlyList<string>? Phases = null,
-    IReadOnlyList<string>? Effects = null)
+    IReadOnlyList<string>? Effects = null, IReadOnlyList<string>? Models = null)
 {
     /// <summary>Slot of the effects group for the hero's weapon (no button).</summary>
     public const int WeaponSlot = 0;
@@ -22,6 +22,10 @@ internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyLi
 
     /// <summary>The ability's effect files (<c>.vpcf</c> paths without <c>_c</c>, children included); empty when unknown.</summary>
     public IReadOnlyList<string> EffectList => Effects ?? [];
+
+    /// <summary>Models the ability turns the hero into or places (<c>m_ModelChange</c>, statues; <c>.vmdl</c> without <c>_c</c>): their
+    /// materials follow the ability's effect colour, as Calico's cat form does in community mods.</summary>
+    public IReadOnlyList<string> ModelList => Models ?? [];
 
     /// <summary>What the ability's button plays, in order (empty: no button).</summary>
     public IReadOnlyList<string> PlayList => Phases is { Count: > 0 } phases ? phases : Clip is { } clip ? [clip] : [];
@@ -35,7 +39,7 @@ internal sealed record HeroAbility(int Slot, string Id, string Name, IReadOnlyLi
 /// </summary>
 internal static partial class HeroAbilities
 {
-    private const string CacheVersion = "abilities-9";
+    private const string CacheVersion = "abilities-10";
 
     // The order of an ability's phases by the words after its name (ability_flyingstrike_shoot, _fly_intro, _fly_loop, _attack).
     private static readonly Dictionary<string, int> PhaseOrder = new(StringComparer.Ordinal)
@@ -474,7 +478,10 @@ internal static partial class HeroAbilities
         for (var i = 0; i < list.Count; i++)
         {
             var effects = Expand(Named(list[i].Id)).Where(claimed.Add).ToArray();
-            list[i] = list[i] with { Effects = effects };
+            var models = abilities.TryGetValue(list[i].Id, out var value) && value is KVObject ability
+                ? Strings(ability).Where(text => text.EndsWith(".vmdl", StringComparison.OrdinalIgnoreCase)).Select(text => text.Replace('\\', '/').ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray()
+                : [];
+            list[i] = list[i] with { Effects = effects, Models = models };
         }
 
         var weaponId = bound.TryGetValue("ESlot_Weapon_Primary", out var weapon) && !weapon.IsNull ? weapon.ToString(null) : string.Empty;

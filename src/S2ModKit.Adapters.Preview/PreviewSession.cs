@@ -110,6 +110,9 @@ public sealed partial class PreviewSession : IDisposable
         Parts = node.RenderableMeshes
             .SelectMany(mesh => mesh.DrawCalls.Select(draw => new PreviewPart(mesh.Name, draw.Material.Material.Name, draw.Material.ShaderName, draw.IndexCount)))
             .ToArray();
+        Pieces = picker.Count == Parts.Count
+            ? [.. Enumerable.Range(0, Parts.Count).SelectMany(part => picker.PiecesOf(part).Select((piece, number) => new PartPiece(piece, part, number + 1, picker.TriangleCount(piece))))]
+            : [];
         if (Parts.FirstOrDefault(part => part.Shader == "error") is { } broken)
         {
             throw Domain.Errors.Verification("PREVIEW_MATERIAL_ERROR", $"Material '{broken.Material}' of '{broken.Mesh}' did not load (error shader).", "Add the archive that ships this material.");
@@ -119,6 +122,12 @@ public sealed partial class PreviewSession : IDisposable
     public static string RendererName => $"ValveResourceFormat.Renderer {typeof(VRenderer).Assembly.GetName().Version}; {GLEnvironment.GpuRendererAndDriver}";
 
     public IReadOnlyList<PreviewPart> Parts { get; }
+
+    /// <summary>The separate meshes of parts made of several (index from <c>Parts.Count</c> up): each can take its own colour.</summary>
+    public IReadOnlyList<PartPiece> Pieces { get; }
+
+    /// <summary>The material of a part or piece.</summary>
+    public string PartMaterial(int index) => Parts[picker.ParentOf(index)].Material;
 
     /// <summary>Rest-pose bounds of the model (camera framing).</summary>
     public AABB Bounds { get; }
@@ -317,15 +326,32 @@ public sealed partial class PreviewSession : IDisposable
         renderer.Uptime = time;
         renderer.DeltaTime = 0;
         node.AnimationController.Time = time;
+        AdvanceEffect(camera);
         renderer.Update(update);
-        renderer.Render(main!);
-        ink.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, OutlineThickness);
-        if (HighlightPart >= 0 && HighlightPart < picker.Count && picker.Count == Parts.Count && !hiddenIndexCounts.ContainsKey(HighlightPart))
+        try
+        {
+            renderer.Render(main!);
+        }
+#pragma warning disable CA1031 // an effect the renderer cannot draw: stop it and draw the frame without it
+        catch (Exception exception) when (effect is not null)
+#pragma warning restore CA1031
+        {
+            EffectError = $"The preview cannot draw this effect ({exception.Message}).";
+            StopEffect();
+            renderer.Render(main!);
+        }
+
+        if (effect is null)
+        {
+            ink.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, OutlineThickness);
+        }
+
+        if (effect is null && HighlightPart >= 0 && HighlightPart < picker.Total && picker.Count == Parts.Count && !hiddenIndexCounts.ContainsKey(picker.ParentOf(HighlightPart)))
         {
             var bones = new Matrix4x4[Math.Max(1, node.AnimationController.Skeleton.Bones.Length)];
             node.AnimationController.GetSkinningMatrices(bones);
             var occluders = Enumerable.Range(0, picker.Count).Where(part => !hiddenIndexCounts.ContainsKey(part)).SelectMany(part => picker.Posed(part, bones, node.Transform)).ToArray();
-            highlight.Draw(main.FboHandle, width, height, camera.ViewProjectionMatrix, picker.Posed(HighlightPart, bones, node.Transform), occluders,
+            highlight.Draw(main!.FboHandle, width, height, camera.ViewProjectionMatrix, picker.Posed(HighlightPart, bones, node.Transform), occluders,
                 0.5f + (0.5f * MathF.Sin((float)Environment.TickCount64 / 160f)));
         }
         renderer.PostprocessRender(main!, display!, false);
@@ -372,8 +398,25 @@ public sealed partial class PreviewSession : IDisposable
         return resource;
     }
 
+    /// <summary>
+    /// Closes the archive files now (no OpenGL needed), so a mod's file can be renamed or deleted while the preview is hidden and draws no
+    /// frame. The session cannot load anything afterwards; <see cref="Dispose"/> still frees the GPU side on the next frame.
+    /// </summary>
+    public void ReleaseFiles()
+    {
+        SetOverlay(null);
+        foreach (var package in packages)
+        {
+            package.Dispose();
+        }
+
+        packages.Clear();
+    }
+
     public void Dispose()
     {
+        StopEffect();
+        SetOverlay(null);
         ink.Dispose();
         highlight.Dispose();
         DeleteRecolored();

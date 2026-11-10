@@ -13,6 +13,7 @@ namespace S2ModKit.Adapters.Preview;
 internal sealed class PartPicker
 {
     private readonly List<Triangles> parts = [];
+    private readonly List<(int Parent, Triangles Piece)> pieces = [];
 
     public PartPicker(Model model, IReadOnlySet<int> activeMeshes)
     {
@@ -32,28 +33,59 @@ internal sealed class PartPicker
                 }
             }
         }
+
+        for (var part = 0; part < parts.Count; part++)
+        {
+            pieces.AddRange(parts[part].Pieces().Select(piece => (part, piece)));
+        }
     }
 
+    /// <summary>The model's parts (draw calls, LOD 0).</summary>
     public int Count => parts.Count;
+
+    /// <summary>
+    /// Parts and pieces: a part made of several separate meshes (no shared vertex position, such as a belt drawn with a jacket) has
+    /// its larger pieces after every part, at indices <see cref="Count"/> and up, in a fixed order (by part, then by size), so a saved
+    /// piece index finds the same piece again in the same model.
+    /// </summary>
+    public int Total => parts.Count + pieces.Count;
+
+    /// <summary>The part a piece belongs to (a part: itself).</summary>
+    public int ParentOf(int index) => index < parts.Count ? index : pieces[index - parts.Count].Parent;
+
+    /// <summary>The pieces (indices from <see cref="Count"/> up) of part <paramref name="part"/>; none when it is one mesh.</summary>
+    public IEnumerable<int> PiecesOf(int part) => Enumerable.Range(0, pieces.Count).Where(piece => pieces[piece].Parent == part).Select(piece => parts.Count + piece);
+
+    /// <summary>How many triangles part or piece <paramref name="index"/> has.</summary>
+    public int TriangleCount(int index) => Get(index).TriangleCount;
+
+    private Triangles Get(int index) => index < parts.Count ? parts[index] : pieces[index - parts.Count].Piece;
 
     /// <summary>
     /// The texels part <paramref name="index"/> covers in a <paramref name="width"/> x <paramref name="height"/> texture: its
     /// triangles drawn in UV space (wrapped into 0-1), grown by <paramref name="grow"/> texels so seams and mip levels keep the
     /// colour. 1 inside, 0 outside; rows top-down like the decoded texture. All zero when the part has no UVs.
     /// </summary>
-    public float[] Mask(int index, int width, int height, int grow = 2) => parts[index].Mask(width, height, grow);
+    public float[] Mask(int index, int width, int height, int grow = 2) => Get(index).Mask(width, height, grow);
 
-    /// <summary>The nearest part the ray hits, or null. <paramref name="hidden"/> parts are skipped.</summary>
+    /// <summary>The nearest part (or piece of it, when it has pieces) the ray hits, or null. <paramref name="hidden"/> parts are skipped.</summary>
     public int? Pick(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform, IReadOnlySet<int> hidden) =>
         PickWithUv(origin, direction, skin, transform, hidden)?.Part;
 
     /// <summary>Sets part <paramref name="index"/>'s shape change (bind pose) so picking and the highlight follow the preview.</summary>
-    public void SetShape(int index, Matrix4x4 shape) => parts[index].Shape = shape;
+    public void SetShape(int index, Matrix4x4 shape)
+    {
+        parts[index].Shape = shape;
+        foreach (var piece in PiecesOf(index))
+        {
+            Get(piece).Shape = shape;
+        }
+    }
 
     /// <summary>Part <paramref name="index"/>'s triangles in the current pose (three positions per triangle) for the highlight overlay.</summary>
-    public Vector3[] Posed(int index, Matrix4x4[] skin, Matrix4x4 transform) => parts[index].Posed(skin, transform);
+    public Vector3[] Posed(int index, Matrix4x4[] skin, Matrix4x4 transform) => Get(index).Posed(skin, transform);
 
-    /// <summary>The nearest visible part the ray hits and the texture coordinate at the hit (wrapped into 0-1), or null.</summary>
+    /// <summary>The nearest visible part (or its piece) the ray hits and the texture coordinate at the hit (wrapped into 0-1), or null.</summary>
     public (int Part, Vector2 Uv)? PickWithUv(Vector3 origin, Vector3 direction, Matrix4x4[] skin, Matrix4x4 transform, IReadOnlySet<int> hidden)
     {
         var best = float.MaxValue;
@@ -67,6 +99,17 @@ internal sealed class PartPicker
 
             best = found.Distance;
             hit = (index, new Vector2(found.Uv.X - MathF.Floor(found.Uv.X), found.Uv.Y - MathF.Floor(found.Uv.Y)));
+        }
+
+        if (hit is { } part)
+        {
+            foreach (var piece in PiecesOf(part.Item1))                     // the piece that holds the nearest triangle
+            {
+                if (Get(piece).Nearest(origin, direction, skin, transform) is { } found && found.Distance <= best * 1.0001f)
+                {
+                    return (piece, part.Item2);
+                }
+            }
         }
 
         return hit;
@@ -90,7 +133,7 @@ internal sealed class PartPicker
         private Vector3[] positions = [];
         private Vector2[] uvs = [];
         private ushort[] bones = [];
-        private Vector4[] weights = [];
+        private float[] weights = [];                                     // perVertex per vertex (SkinWeights)
         private int perVertex;
         private int[] indices = [];
 
@@ -128,10 +171,75 @@ internal sealed class PartPicker
                 positions = all,
                 uvs = texcoord.SemanticName is null ? [] : VBIB.GetVector2AttributeArray(buffer, texcoord),
                 bones = allBones,
-                weights = weightField.SemanticName is null ? [.. Enumerable.Repeat(new Vector4(1, 0, 0, 0), all.Length)] : VBIB.GetBlendWeightsArray(buffer, weightField),
+                weights = SkinWeights.Read(buffer, weightField, all.Length, Math.Max(1, allBones.Length / Math.Max(1, all.Length))),
                 perVertex = Math.Max(1, allBones.Length / Math.Max(1, all.Length)),
                 indices = indices,
             };
+        }
+
+        public int TriangleCount => indices.Length / 3;
+
+        /// <summary>
+        /// The separate meshes of this part: triangles joined through vertex positions (welded to 0.01 units, so texture seams do not
+        /// split a mesh), largest first. Only pieces with at least 4% of the triangles count, at most 12; none when fewer than two.
+        /// </summary>
+        public IReadOnlyList<Triangles> Pieces()
+        {
+            var triangles = indices.Length / 3;
+            if (triangles < 16)
+            {
+                return [];
+            }
+
+            var weld = new Dictionary<(int, int, int), int>();
+            var welded = new int[indices.Length];
+            for (var i = 0; i < indices.Length; i++)
+            {
+                var p = positions[indices[i]];
+                var key = ((int)MathF.Round(p.X * 100), (int)MathF.Round(p.Y * 100), (int)MathF.Round(p.Z * 100));
+                if (!weld.TryGetValue(key, out var id))
+                {
+                    weld[key] = id = weld.Count;
+                }
+
+                welded[i] = id;
+            }
+
+            var root = Enumerable.Range(0, weld.Count).ToArray();
+            int Find(int x)
+            {
+                while (root[x] != x)
+                {
+                    x = root[x] = root[root[x]];
+                }
+
+                return x;
+            }
+
+            for (var t = 0; t < triangles; t++)
+            {
+                var a = Find(welded[t * 3]);
+                root[Find(welded[(t * 3) + 1])] = a;
+                root[Find(welded[(t * 3) + 2])] = a;
+            }
+
+            var groups = Enumerable.Range(0, triangles).GroupBy(t => Find(welded[t * 3]))
+                .Select(group => group.ToArray()).Where(group => group.Length >= triangles * 0.04)
+                .OrderByDescending(group => group.Length).ThenBy(group => group[0]).Take(12).ToArray();
+            if (groups.Length < 2)
+            {
+                return [];
+            }
+
+            return [.. groups.Select(group => new Triangles
+            {
+                positions = positions,
+                uvs = uvs,
+                bones = bones,
+                weights = weights,
+                perVertex = perVertex,
+                indices = [.. group.SelectMany(t => new[] { indices[t * 3], indices[(t * 3) + 1], indices[(t * 3) + 2] })],
+            })];
         }
 
         /// <summary>The part's shape change in bind pose (identity: as compiled); picking and the highlight follow it.</summary>
@@ -163,9 +271,9 @@ internal sealed class PartPicker
         {
             var p = Vector3.Zero;
             var total = 0f;
-            for (var k = 0; k < Math.Min(4, perVertex); k++)
+            for (var k = 0; k < perVertex; k++)
             {
-                var w = k switch { 0 => weights[v].X, 1 => weights[v].Y, 2 => weights[v].Z, _ => weights[v].W };
+                var w = weights[(v * perVertex) + k];
                 var bone = bones[(v * perVertex) + k];
                 if (w > 0)
                 {
@@ -247,9 +355,9 @@ internal sealed class PartPicker
 
                 var p = Vector3.Zero;
                 var total = 0f;
-                for (var k = 0; k < Math.Min(4, perVertex); k++)
+                for (var k = 0; k < perVertex; k++)
                 {
-                    var w = k switch { 0 => weights[v].X, 1 => weights[v].Y, 2 => weights[v].Z, _ => weights[v].W };
+                    var w = weights[(v * perVertex) + k];
                     var bone = bones[v * perVertex + k];
                     if (w > 0)
                     {

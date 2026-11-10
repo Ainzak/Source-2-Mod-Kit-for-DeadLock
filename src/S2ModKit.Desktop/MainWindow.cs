@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Avalonia.VisualTree;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -66,6 +67,7 @@ internal sealed class MainWindow : Window
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly SelectableTextBlock managerBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly StackPanel reapplyBanner = new() { Spacing = 4, IsVisible = false };
     private readonly StackPanel appUpdate = new() { Spacing = 4, IsVisible = false };
     private List<ListRow> rows = [];
     private bool byHero;
@@ -97,8 +99,8 @@ internal sealed class MainWindow : Window
             sounds?.Release();
         };
         catalog = new ModCatalog(settings);
-        pane = new PreviewPane(settings);
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects);
+        pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto || options.SelfTest is not null || options.UiShot is not null };
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines);
         list.ItemTemplate = new FuncDataTemplate<ListRow>((row, _) => row switch
         {
             HeaderRow header => new TextBlock
@@ -176,6 +178,7 @@ internal sealed class MainWindow : Window
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
         header.Children.Add(managerBanner);
+        header.Children.Add(reapplyBanner);
         header.Children.Add(listStatus);
         DockPanel.SetDock(header, Dock.Top);
         side.Children.Add(header);
@@ -214,6 +217,7 @@ internal sealed class MainWindow : Window
             var test = new SelfTest(prefix, pane.Control, () => Dispatcher.UIThread.Post(Close));
             pane.Control.Opened += test.Opened;
             test.Abilities = () => pane.AbilityClips;
+            test.Overlay = pane.EffectOverlayFor;
             pane.Control.AfterFrame = test.Step;
             pane.Control.Outline = options.Outline ?? pane.Control.Outline;
             title.Text = "Self-test: " + options.Model;
@@ -223,6 +227,44 @@ internal sealed class MainWindow : Window
             pane.Show(entry, entry is null ? [] : [entry], options.Model);
             return;
         }
+
+        // drag and drop in the load order: press on an enabled mod, release on another (Load order sorting)
+        ModEntry? dragFrom = null;
+        var dragStart = default(Point);
+        var dragging = false;
+        ModEntry? RowAt(Point at) => (list.InputHitTest(at) as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ModRow { Mod: var row } ? row : null;
+        list.AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            dragging = false;
+            dragFrom = sort.SelectedItem as string == "Load order" && e.GetCurrentPoint(list).Properties.IsLeftButtonPressed && RowAt(e.GetPosition(list)) is { Loaded: true } row ? row : null;
+            dragStart = e.GetPosition(list);
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        list.AddHandler(PointerMovedEvent, (_, e) =>
+        {
+            if (dragFrom is not null && !dragging && Point.Distance(e.GetPosition(list), dragStart) > 10)
+            {
+                dragging = true;
+                listStatus.Text = $"Moving '{dragFrom.Name}': release it on the mod whose place it should take.";
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        list.AddHandler(PointerReleasedEvent, async (_, e) =>
+        {
+            var (from, moved) = (dragFrom, dragging);
+            (dragFrom, dragging) = (null, false);
+            if (from is null || !moved)
+            {
+                return;
+            }
+
+            if (RowAt(e.GetPosition(list)) is { Loaded: true } target && target.Key != from.Key)
+            {
+                await RunAsync(() => catalog.MoveToPlaceOfAsync(from, target, mods));
+            }
+            else
+            {
+                listStatus.Text = "Not moved: release on another enabled mod.";
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
 
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
@@ -272,9 +314,26 @@ internal sealed class MainWindow : Window
             await Task.Delay(TimeSpan.FromSeconds(6));
         }
 
-        if (options.Select is { } name && mods.FirstOrDefault(mod => mod.Name.Contains(name, StringComparison.OrdinalIgnoreCase)) is { } wanted)
+        BaseRow? baseGame = null;
+        if (options.Select is { } baseName && baseName.EndsWith(" (base game)", StringComparison.OrdinalIgnoreCase))   // --by-hero --select "Celeste (base game)"
         {
-            ApplySearch(wanted.Key);
+            heroFilter.SelectedItem = baseName[..^" (base game)".Length];
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            baseGame = rows.OfType<BaseRow>().FirstOrDefault(row => string.Equals(row.Hero.Name + " (base game)", baseName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var wanted = options.Select is { } name ? mods.FirstOrDefault(mod => mod.Name.Contains(name, StringComparison.OrdinalIgnoreCase)) : null;
+        if (baseGame is not null || wanted is not null)
+        {
+            if (baseGame is not null)
+            {
+                list.SelectedItem = baseGame;
+            }
+            else
+            {
+                ApplySearch(wanted!.Key);
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(8));                      // preview session and shape capabilities
             pane.ShowForShot(options.Tab, options.Part);
             await Task.Delay(TimeSpan.FromSeconds(2));
@@ -320,6 +379,7 @@ internal sealed class MainWindow : Window
             var build = await current.GameBuildAsync();
             updateBanner.IsVisible = await current.GameUpdatedSinceCheckAsync();
             updateBanner.Text = $"Deadlock was updated (build {build}). Press 'Check mods' to see which mods the update affects.";
+            ShowReapplyBanner(EditRecipe.Outdated(mods, build));
             var stale = ManagerCompatibility.StaleWarning(ManagerCompatibility.Read(settings.Game), mods);
             managerBanner.Text = stale;
             managerBanner.IsVisible = stale is not null;
@@ -685,10 +745,9 @@ internal sealed class MainWindow : Window
             var order = ModCatalog.LoadOrderOf(mods).Select(item => item.Key).ToList();
             order = [.. mods.Where(other => order.Contains(other.Key)).OrderBy(other => other.FirstSlot).Select(other => other.Key)];
             var at = order.IndexOf(mod.Key);
-            Add("Load first (wins over every mod)", () => RunAsync(() => catalog.MoveToEndAsync(mod, first: true, mods)), at > 0);
+            Add("Move to slot...", () => MoveToSlotAsync(mod), at >= 0);
             Add("Load earlier (wins over one more mod)", () => RunAsync(() => catalog.MoveAsync(mod, -1, mods)), at > 0);
             Add("Load later", () => RunAsync(() => catalog.MoveAsync(mod, 1, mods)), at >= 0 && at < order.Count - 1);
-            Add("Load last", () => RunAsync(() => catalog.MoveToEndAsync(mod, first: false, mods)), at >= 0 && at < order.Count - 1);
         }
 
         if (GameBananaIdOf(mod) is { } gameBananaId)
@@ -698,6 +757,11 @@ internal sealed class MainWindow : Window
                 AppUpdates.OpenPage(new Uri($"https://gamebanana.com/mods/{gameBananaId}"));
                 return Task.CompletedTask;
             });
+        }
+
+        if (EditRecipe.Of(mod) is { HasEdits: true } recipe)
+        {
+            Add("Re-apply edits (build them again on the current game)", () => ReapplyAsync([mod]), mod.Loaded && recipe is not null);
         }
 
         Add("Delete...", () => DeleteAsync(mod));
@@ -758,6 +822,19 @@ internal sealed class MainWindow : Window
         foreach (var with in info.With)
         {
             content.Children.Add(new SelectableTextBlock { Text = $"{with.OtherName}: this mod wins {with.Wins}, loses {with.Loses}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+            if (mods.FirstOrDefault(other => other.Key == with.OtherKey) is { } otherMod)
+            {
+                var pair = with;
+                var fine = Button("Fine, stop warning", async () =>
+                {
+                    catalog.Dismissed.Dismiss(mod, otherMod, pair.Paths.Count);
+                    await LoadAsync(mod.Key);
+                    listStatus.Text = $"The conflict between '{mod.Name}' and '{otherMod.Name}' is hidden until they share more files. Settings > Show hidden conflicts brings it back.";
+                });
+                ToolTip.SetTip(fine, "Hides this conflict in the list and here. It comes back if the two mods start sharing more files.");
+                content.Children.Add(fine);
+            }
+
             foreach (var (kind, wins, loses) in with.ByKind)
             {
                 var paths = with.Paths.Where(path => path.Kind == kind).ToArray();
@@ -886,15 +963,17 @@ internal sealed class MainWindow : Window
 
     /// <summary>Builds one edited version with the hidden, recolored and reshaped parts (masks, boxes and movements taken from the open preview).</summary>
     private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes,
-        IReadOnlyDictionary<string, EffectColorChange> effects)
+        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines)
     {
         var session = pane.Control.Session;
+        var shiny = shines.Select(pair => session?.PartNormalTexture(pair.Key) is { } texture ? new PartShine(pair.Key, texture, pair.Value) : null).OfType<PartShine>().ToArray();
         var recolors = new List<PartRecolor>();
         foreach (var (part, change) in colors)
         {
             if (session?.PartColorTexture(part) is { } texture && session.PartColorMask(part) is { } mask)
             {
-                recolors.Add(new PartRecolor(part, texture, mask.Mask, mask.Width, mask.Height, change));
+                var range = session.PartColorRange(part);
+                recolors.Add(new PartRecolor(part, texture, mask.Mask, mask.Width, mask.Height, change, session.PartMaterial(part), range?.Target, range?.Tolerance ?? 0));
             }
         }
 
@@ -908,7 +987,70 @@ internal sealed class MainWindow : Window
         }
 
         listStatus.Text = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..." : "Building...";
-        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects));
+        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny));
+    }
+
+    /// <summary>Asks for a pak number (1-99, lower wins) and puts the mod there; when another mod has that slot, offers to swap them.</summary>
+    private async Task MoveToSlotAsync(ModEntry mod)
+    {
+        var current = mod.FirstSlot;
+        var answer = await new TextPromptDialog($"Move '{mod.Name}'", $"It is pak{current:00} now. Type a slot from 1 to 99: a lower number loads earlier and wins shared files.",
+            "Slot number", "Move").ShowDialog<string?>(this);
+        if (answer is null)
+        {
+            return;
+        }
+
+        if (!int.TryParse(answer.Trim().Replace("pak", string.Empty, StringComparison.OrdinalIgnoreCase), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var slot) || slot is < 1 or > 99)
+        {
+            listStatus.Text = $"'{answer}' is not a slot number from 1 to 99.";
+            return;
+        }
+
+        var holder = mods.FirstOrDefault(other => other.Key != mod.Key && other.Loaded && other.Slots.Contains(slot));
+        var swap = false;
+        if (holder is not null)
+        {
+            if (!await new ConfirmDialog($"pak{slot:00} is taken", $"'{holder.Name}' is pak{slot:00}. Swap them? '{mod.Name}' becomes pak{slot:00} and '{holder.Name}' pak{current:00}.", "Swap").ShowDialog<bool>(this))
+            {
+                return;
+            }
+
+            swap = true;
+        }
+
+        await RunAsync(() => catalog.MoveToSlotAsync(mod, slot, swap, mods));
+    }
+
+    /// <summary>The banner after a game update: mods built here for an earlier game build, with one button for all of them.</summary>
+    private void ShowReapplyBanner(IReadOnlyList<(ModEntry Mod, EditRecipe Recipe)> outdated)
+    {
+        reapplyBanner.Children.Clear();
+        reapplyBanner.IsVisible = outdated.Count > 0;
+        if (outdated.Count == 0)
+        {
+            return;
+        }
+
+        var text = $"{outdated.Count} edited mod{(outdated.Count == 1 ? " was" : "s were")} made for the previous game version: {string.Join(", ", outdated.Select(item => item.Mod.Name).Take(5))}"
+            + (outdated.Count > 5 ? $" and {outdated.Count - 5} more" : string.Empty) + ".";
+        reapplyBanner.Children.Add(new TextBlock { Text = text, Foreground = Warning, TextWrapping = TextWrapping.Wrap });
+        reapplyBanner.Children.Add(Button("Re-apply edits", () => ReapplyAsync([.. outdated.Select(item => item.Mod)])));
+        AppLog.Shown(text);
+    }
+
+    /// <summary>Builds each mod's saved edits again on the current game files and installs them as new versions (one after another).</summary>
+    private async Task ReapplyAsync(IReadOnlyList<ModEntry> edited)
+    {
+        var messages = new List<string>();
+        foreach (var (mod, index) in edited.Select((mod, index) => (mod, index)))
+        {
+            listStatus.Text = $"Re-applying the edits of '{mod.Name}' ({index + 1} of {edited.Count})...";
+            await RunAsync(() => catalog.ReapplyAsync(mods.FirstOrDefault(current => current.Key == mod.Key) ?? mod, mods));
+            messages.Add(listStatus.Text ?? string.Empty);
+        }
+
+        listStatus.Text = string.Join(" ", messages);
     }
 
     /// <summary>Runs the mod doctor over every mod (read-only) and shows what the last game update affected.</summary>
@@ -951,6 +1093,7 @@ internal sealed class MainWindow : Window
         try
         {
             await pane.ReleaseAsync();                                     // the preview keeps the mod's archive open
+            sounds?.Release();                                             // and so does the Sounds tab
             var change = await Task.Run(action);
             await LoadAsync(change.SelectKey.Length > 0 ? change.SelectKey : null);
             listStatus.Text = change.Message + ConflictNote(change.SelectKey);
@@ -1063,69 +1206,56 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>"Settings" with the rarely used choices in one menu: game folder, data folder, updates.</summary>
+    /// <summary>"Settings": the rarely used choices and actions in their own window (<see cref="SettingsWindow"/>).</summary>
     private Button SettingsButton()
     {
-        var button = new Button { Content = "Settings ▾" };
-        var updates = new MenuItem { Header = "Look for updates on start", ToggleType = MenuItemToggleType.CheckBox, IsChecked = settings.CheckUpdates };
-        updates.Click += (_, _) =>
-        {
-            settings = settings with { CheckUpdates = !settings.CheckUpdates };
-            settings.Save();
-            updates.IsChecked = settings.CheckUpdates;
-        };
-        var refresh = new MenuItem { Header = "Refresh the list" };
-        refresh.Click += async (_, _) => await LoadAsync(SelectedMod?.Key);
-        var addons = new MenuItem { Header = "Open addons folder" };
-        addons.Click += async (_, _) => await ShowInExplorer(settings.AddonsRoot, select: false);
-        var game = new MenuItem { Header = "Game folder..." };
-        game.Click += async (_, _) => await PickGameAsync();
-        var data = new MenuItem { Header = "Data folder..." };
-        data.Click += async (_, _) => await PickDataAsync();
-        var modUpdates = new MenuItem { Header = "Look for mod updates on GameBanana" };
-        modUpdates.Click += async (_, _) => await CheckModUpdatesAsync(quiet: false);
-        var openLog = new MenuItem { Header = "Open log" };
-        openLog.Click += async (_, _) =>
-        {
-            if (AppLog.CurrentPath is { } log)
+        var button = new Button { Content = "Settings" };
+        button.Click += async (_, _) => await new SettingsWindow(new SettingsActions(
+            () => settings,
+            changed =>
             {
-                await ShowInExplorer(log, select: true);
-            }
-        };
-        var copyLog = new MenuItem { Header = "Copy log" };
-        copyLog.Click += async (_, _) =>
-        {
-            if (Clipboard is { } clipboard)
-            {
-                await clipboard.SetTextAsync(AppLog.Read());
-                listStatus.Text = "The log is copied: paste it into your report. It holds the app's messages and errors, your folders and mod names.";
-            }
-        };
-        var now = new MenuItem { Header = "Look for updates now" };
-        now.Click += async (_, _) => await CheckForUpdateAsync(quiet: false);
-        var flyout = new MenuFlyout();
-        var speeds = PreviewSpeeds.Select(fps => new MenuItem { Header = $"Preview at {fps} fps", ToggleType = MenuItemToggleType.Radio, GroupName = "fps", IsChecked = settings.PreviewFps == fps, Tag = fps }).ToArray();
-        foreach (var speed in speeds)
-        {
-            speed.Click += (_, _) =>
-            {
-                settings = settings with { PreviewFps = (int)speed.Tag! };
+                settings = changed;
                 settings.Save();
+                pane.OpenAutomatically = settings.PreviewAuto;
                 pane.Control.MaxFps = settings.PreviewFps;
-                foreach (var other in speeds)
+            },
+            () => Report(PickGameAsync),
+            () => Report(PickDataAsync),
+            () => Report(() => ShowInExplorer(settings.AddonsRoot, select: false)),
+            () => Report(() => LoadAsync(SelectedMod?.Key)),
+            () => Report(() => CheckModUpdatesAsync(quiet: false)),
+            () => Report(async () =>
+            {
+                catalog.Dismissed.Clear();
+                await LoadAsync(SelectedMod?.Key);
+                listStatus.Text = "Every conflict shows again.";
+            }),
+            () => Report(() => CheckForUpdateAsync(quiet: false)),
+            () => Report(async () =>
+            {
+                if (AppLog.CurrentPath is { } log)
                 {
-                    other.IsChecked = other == speed;
+                    await ShowInExplorer(log, select: true);
                 }
-            };
-        }
-
-        foreach (var item in (MenuItem[])[refresh, addons, game, data, modUpdates, now, updates, openLog, copyLog, .. speeds])
-        {
-            flyout.Items.Add(item);
-        }
-
-        button.Flyout = flyout;
+            }),
+            () => Report(async () =>
+            {
+                if (Clipboard is { } clipboard)
+                {
+                    await clipboard.SetTextAsync(AppLog.Read());
+                    listStatus.Text = "The log is copied: paste it into your report. It holds the app's messages and errors, your folders and mod names.";
+                }
+            }),
+            PreviewSpeeds)).ShowDialog(this);
         return button;
+
+        // runs a main-window action and hands its new status line (if it set one) to the Settings window
+        async Task<string?> Report(Func<Task> run)
+        {
+            var before = listStatus.Text;
+            await run();
+            return listStatus.Text != before ? listStatus.Text : null;
+        }
     }
 
     /// <summary>Moves the app's data (journals, install records, caches) to a new empty folder; the old one is left as it was.</summary>
@@ -1455,8 +1585,8 @@ internal sealed class MainWindow : Window
     private async Task ApplySettingsAsync()
     {
         catalog = new ModCatalog(settings);
-        pane = new PreviewPane(settings);
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects);
+        pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto };
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines);
         paneHost.Content = pane;
         ShowBody(null);
         await LoadAsync();

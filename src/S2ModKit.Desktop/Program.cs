@@ -73,7 +73,7 @@ internal static class Program
 }
 
 /// <summary>Command-line options. <c>--ui-shot &lt;png&gt;</c> opens the window, shows <c>--select &lt;mod name&gt;</c> (and, in its preview,
-/// tool <c>--tab Parts|Colour|Shape</c> with part <c>--part &lt;number&gt;</c>), saves the window as a picture and closes (layout checks without
+/// tool <c>--tab Parts|Colour|Shape</c> with part <c>--part &lt;number&gt;</c>, 0: the first separate mesh), saves the window as a picture and closes (layout checks without
 /// controlling the desktop); <c>--by-hero</c> starts in the per-hero view.</summary>
 internal sealed record AppOptions(string? Game, string Model, string? SelfTest, string? Addon = null, float? Outline = null,
     string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false)

@@ -19,6 +19,8 @@ public sealed partial class PreviewSession
     private readonly Dictionary<int, (RgbColor Target, float Tolerance)> ranges = [];
     private readonly ConcurrentDictionary<string, Task<Pixels?>> unpacking = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<(int Part, int Width, int Height), float[]> uvMasks = new();   // computed beside the unpacking
+    private readonly Dictionary<Material, Dictionary<string, System.Numerics.Vector4>> materialColours = [];    // original colour settings
+    private readonly Dictionary<Material, (RenderTexture Original, RenderTexture? Replacement, byte[] Rgba, int Width, int Height, bool Srgb)> glows = [];
 
     /// <summary>Whether part <paramref name="index"/>'s colour texture is unpacked, so a recolor applies at once (no colour texture: true).</summary>
     public bool ColorReady(int index) =>
@@ -98,6 +100,10 @@ public sealed partial class PreviewSession
         return material.TextureParams.TryGetValue(ColorTexture, out var path) ? path : null;
     }
 
+    /// <summary>Part <paramref name="index"/>'s colour range ("only this colour"), if one is set: saved with a build so the recolor can be
+    /// re-applied.</summary>
+    public (RgbColor Target, float Tolerance)? PartColorRange(int index) => ranges.TryGetValue(index, out var range) ? range : null;
+
     /// <summary>The part's UV mask in its colour texture's size (1 = texels the part covers); null without a colour texture.</summary>
     public (float[] Mask, int Width, int Height)? PartColorMask(int index)
     {
@@ -106,7 +112,7 @@ public sealed partial class PreviewSession
             return null;
         }
 
-        return (Mask(index, source.Width, source.Height), source.Width, source.Height);
+        return (ColourMask(index, source.Width, source.Height), source.Width, source.Height);
     }
 
     /// <summary>Recolors part <paramref name="index"/> in the preview (null: back to the original colours).</summary>
@@ -127,12 +133,69 @@ public sealed partial class PreviewSession
         }
 
         Refresh(path);
+        ApplyMaterialColours(index, change);
+    }
+
+    /// <summary>
+    /// The part's material colours follow the recolor (<see cref="MaterialColors"/>): tints, the see-through glow colour and its texture,
+    /// and the outline. Every part with that material shows it, as in the built mod (the material file is shared).
+    /// </summary>
+    private void ApplyMaterialColours(int index, ColorAdjustment? change)
+    {
+        var draw = Draw(index);
+        var material = draw.Material.Material;
+        if (!materialColours.TryGetValue(material, out var originals))
+        {
+            originals = material.VectorParams.Where(pair => MaterialColors.Follows(pair.Key, pair.Value)).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            materialColours[material] = originals;
+        }
+
+        foreach (var (name, value) in originals)
+        {
+            material.VectorParams[name] = change is null ? value : MaterialColors.Apply(value, change);
+        }
+
+        ink.SetColor(index, change is null ? null : colour =>
+        {
+            var changed = MaterialColors.Apply(new System.Numerics.Vector4(colour, 0), change);
+            return new System.Numerics.Vector3(changed.X, changed.Y, changed.Z);
+        });
+        RecolorGlow(draw, material, change);
+    }
+
+    private void RecolorGlow(DrawCall draw, Material material, ColorAdjustment? change)
+    {
+        if (!glows.TryGetValue(material, out var glow))
+        {
+            if (!material.TextureParams.TryGetValue(MaterialColors.GlowTexture, out var path) || !draw.Material.Textures.TryGetValue(MaterialColors.GlowTexture, out var original)
+                || loader.LoadFileCompiled(path) is not { DataBlock: Texture texture } || Unpack(texture) is not { } pixels)
+            {
+                return;
+            }
+
+            GL.GetTextureLevelParameter(original.Handle, 0, GetTextureParameter.TextureInternalFormat, out int format);
+            glow = (original, null, pixels.Preview, pixels.PreviewWidth, pixels.PreviewHeight, format is 0x8E8D or 0x8C43 or 0x8C41 or 0x8C4C or 0x8C4D or 0x8C4E or 0x8C4F);
+        }
+
+        glow.Replacement?.Delete();
+        glow.Replacement = null;
+        if (change is not null)
+        {
+            var rgba = (byte[])glow.Rgba.Clone();
+            RecolorMath.Apply(rgba, null, change);
+            using var resource = new ValveResourceFormat.Resource { FileName = "s2mk_glow_c" };
+            resource.Read(new MemoryStream(RgbaTexture(rgba, glow.Width, glow.Height)));
+            glow.Replacement = context.MaterialLoader.LoadTexture(resource, srgbRead: glow.Srgb, isViewerRequest: false);
+        }
+
+        glows[material] = glow;
+        draw.Material.Textures[MaterialColors.GlowTexture] = glow.Replacement ?? glow.Original;
     }
 
     private void Refresh(string path)
     {
-        var users = Enumerable.Range(0, Parts.Count).Where(part => string.Equals(PartColorTexture(part), path, StringComparison.OrdinalIgnoreCase)).ToArray();
-        var changed = users.Where(partColors.ContainsKey).ToArray();
+        var users = Enumerable.Range(0, Parts.Count + Pieces.Count).Where(part => string.Equals(PartColorTexture(part), path, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var changed = users.Where(partColors.ContainsKey).ToArray();                // parts first, then their pieces
         if (Decode(path) is not { } source)
         {
             return;
@@ -154,7 +217,7 @@ public sealed partial class PreviewSession
         var rgba = (byte[])source.PreviewRgba.Clone();                      // the live preview works at most 2048 wide: big textures stay responsive
         foreach (var part in changed)
         {
-            RecolorMath.Apply(rgba, Mask(part, source.PreviewWidth, source.PreviewHeight), partColors[part]);
+            RecolorMath.Apply(rgba, ColourMask(part, source.PreviewWidth, source.PreviewHeight), partColors[part]);
         }
 
         source.Replacement?.Delete();
@@ -168,6 +231,21 @@ public sealed partial class PreviewSession
         }
     }
 
+    /// <summary>The mask a recolor of part or piece <paramref name="index"/> uses: a part's leaves out its pieces that have their own colour.</summary>
+    private float[] ColourMask(int index, int width, int height)
+    {
+        var mask = Mask(index, width, height);
+        var own = Pieces.Where(piece => piece.Part == index && partColors.ContainsKey(piece.Index)).ToArray();
+        if (own.Length == 0)
+        {
+            return mask;
+        }
+
+        mask = (float[])mask.Clone();
+        PartMasks.Exclude(mask, own.Select(piece => Mask(piece.Index, width, height)));
+        return mask;
+    }
+
     private float[] Mask(int part, int width, int height)
     {
         if (!masks.TryGetValue((part, width, height), out var mask))
@@ -175,18 +253,7 @@ public sealed partial class PreviewSession
             mask = uvMasks.TryRemove((part, width, height), out var ready) ? ready : picker.Mask(part, width, height);
             if (ranges.TryGetValue(part, out var range) && PartColorTexture(part) is { } path && Decode(path) is { } source && source.Colours(width, height) is { } colours)
             {
-                const float Soft = 0.05f;
-                for (var t = 0; t < mask.Length; t++)
-                {
-                    if (mask[t] <= 0)
-                    {
-                        continue;
-                    }
-
-                    var (dr, dg, db) = ((colours[t * 4] / 255f) - range.Target.R, (colours[(t * 4) + 1] / 255f) - range.Target.G, (colours[(t * 4) + 2] / 255f) - range.Target.B);
-                    var distance = MathF.Sqrt(((dr * dr) + (dg * dg) + (db * db)) / 3);
-                    mask[t] *= Math.Clamp(1 - ((distance - range.Tolerance) / Soft), 0, 1);
-                }
+                PartMasks.LimitToColour(mask, colours, range.Target, range.Tolerance);  // the same rule as a re-applied recolor
             }
 
             masks[(part, width, height)] = mask;
@@ -253,7 +320,7 @@ public sealed partial class PreviewSession
 
     private sealed record Pixels(byte[] Rgba, int Width, int Height, byte[] Preview, int PreviewWidth, int PreviewHeight);
 
-    private DrawCall Draw(int index) => node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
+    private DrawCall Draw(int index) => node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(picker.ParentOf(index));   // a piece draws with its part
 
     private void DeleteRecolored()
     {
@@ -264,6 +331,19 @@ public sealed partial class PreviewSession
 
         recolored.Clear();
         unpacking.Clear();
+        foreach (var glow in glows.Values)
+        {
+            glow.Replacement?.Delete();
+        }
+
+        glows.Clear();
+        foreach (var shine in shineTextures.Values)
+        {
+            shine.Replacement?.Delete();
+        }
+
+        shineTextures.Clear();
+        shineUnpacking.Clear();
         uvMasks.Clear();
     }
 

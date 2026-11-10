@@ -76,6 +76,30 @@ internal sealed class PreviewControl : OpenGlControlBase
     public void RequestPartColor(int part, S2ModKit.Application.ColorAdjustment? change) => colorRequests[part] = change;
 
     private readonly HashSet<int> colorPrepare = [];
+    private readonly Dictionary<int, float?> shineRequests = [];
+
+    /// <summary>Shine per part (0-1) since the model opened, for the build.</summary>
+    public Dictionary<int, float> PartShines { get; } = [];
+
+    /// <summary>Sets a part's shine (null or 0: as the game has it); applied once its normal-roughness texture is unpacked.</summary>
+    public void RequestPartShine(int part, float? shine)
+    {
+        shineRequests[part] = shine;
+        RequestNextFrameRendering();
+    }
+    private (string? Path, byte[]? Overlay, Action<string?>? Done)? effectRequest;
+    private string? effectError;
+
+    /// <summary>Plays an effect alone, looping (null: stop and show the model); <paramref name="overlay"/>: a VPK with recolored effect
+    /// files searched first. <paramref name="done"/> gets why it cannot play, or null (on the window's thread).</summary>
+    public void RequestEffect(string? path, byte[]? overlay, Action<string?>? done = null)
+    {
+        effectRequest = (path, overlay, done);
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>An effect stopped by itself because the preview could not draw it (the reason).</summary>
+    public event Action<string>? EffectStopped;
 
     /// <summary>Starts unpacking a part's colour texture before its first recolor (when the part is picked in the Colour tab).</summary>
     public void PrepareColor(int part)
@@ -125,6 +149,8 @@ internal sealed class PreviewControl : OpenGlControlBase
     {
         Hidden.Clear();
         PartColors.Clear();
+        PartShines.Clear();
+        shineRequests.Clear();
         colorRequests.Clear();
         rangeRequests.Clear();
         shapeRequests.Clear();
@@ -135,19 +161,24 @@ internal sealed class PreviewControl : OpenGlControlBase
     }
 
     /// <summary>Disposes the session on the next frame (releasing its archive files) and completes after that.</summary>
-    public Task CloseAsync()
+    public async Task CloseAsync()
     {
         if (session is null)                                           // nothing open (the control may not even be shown)
         {
             pending = null;
-            return Task.CompletedTask;
+            return;
         }
 
         pending = null;
         closeRequested = true;
         closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         RequestNextFrameRendering();
-        return closed.Task;
+        if (await Task.WhenAny(closed.Task, Task.Delay(600)).ConfigureAwait(true) != closed.Task)
+        {
+            // hidden (another tab) or not drawing: no frame will come; the archives are closed now, the GPU side on the next frame
+            session?.ReleaseFiles();
+            closed.TrySetResult();
+        }
     }
 
     private TaskCompletionSource? closed;
@@ -331,7 +362,22 @@ internal sealed class PreviewControl : OpenGlControlBase
             }
         }
 
-        foreach (var part in colorPrepare.Where(part => part >= 0 && part < session.Parts.Count))
+        if (effectRequest is { } wanted)
+        {
+            effectRequest = null;
+            session.SetOverlay(wanted.Overlay);
+            var refusal = session.ShowEffect(wanted.Path);
+            effectError = null;
+            Post(() => wanted.Done?.Invoke(refusal));
+        }
+
+        if (session.EffectError is { } stopped && stopped != effectError)
+        {
+            effectError = stopped;
+            Post(() => EffectStopped?.Invoke(stopped));
+        }
+
+        foreach (var part in colorPrepare.Where(part => part >= 0 && part < session.Parts.Count + session.Pieces.Count))
         {
             session.PrepareColor(part);                                        // unpacks in the background: the window keeps drawing
         }
@@ -340,14 +386,14 @@ internal sealed class PreviewControl : OpenGlControlBase
         var waiting = false;
         foreach (var (part, range) in rangeRequests.ToArray())
         {
-            if (part >= 0 && part < session.Parts.Count && !session.ColorReady(part))
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count && !session.ColorReady(part))
             {
                 session.PrepareColor(part);
                 waiting = true;                                                // applied on a later frame, once unpacked
                 continue;
             }
 
-            if (part >= 0 && part < session.Parts.Count)
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count)
             {
                 session.SetPartColorRange(part, range.Target, range.Tolerance);
             }
@@ -355,16 +401,33 @@ internal sealed class PreviewControl : OpenGlControlBase
             rangeRequests.Remove(part);
         }
 
+        foreach (var (part, shine) in shineRequests.ToArray())
+        {
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count && !session.ShineReady(part))
+            {
+                session.PrepareShine(part);
+                waiting = true;
+                continue;
+            }
+
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count)
+            {
+                session.SetPartShine(part, shine);
+            }
+
+            shineRequests.Remove(part);
+        }
+
         foreach (var (part, change) in colorRequests.ToArray())
         {
-            if (part >= 0 && part < session.Parts.Count && !session.ColorReady(part))
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count && !session.ColorReady(part))
             {
                 session.PrepareColor(part);
                 waiting = true;
                 continue;
             }
 
-            if (part >= 0 && part < session.Parts.Count)
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count)
             {
                 session.SetPartColor(part, change);
             }

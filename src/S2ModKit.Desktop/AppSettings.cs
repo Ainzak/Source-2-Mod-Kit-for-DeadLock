@@ -8,7 +8,7 @@ namespace S2ModKit.Desktop;
 /// (<c>%LocalAppData%\S2ModKit</c>, data in its <c>data</c> folder unless moved); a portable copy (a <c>portable</c> marker,
 /// a settings file or a <c>data</c> folder beside the executable) keeps both beside the executable, as before.
 /// </summary>
-internal sealed record AppSettings(string Game, string Data, bool CheckUpdates = true, int PreviewFps = 60)
+internal sealed record AppSettings(string Game, string Data, bool CheckUpdates = true, int PreviewFps = 60, bool PreviewAuto = false)
 {
     private const string FileName = "S2ModKit.settings.json";
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -62,7 +62,7 @@ internal sealed record AppSettings(string Game, string Data, bool CheckUpdates =
         var found = SteamGameFolders().FirstOrDefault(folder => File.Exists(Path.Combine(folder, "citadel", "pak01_dir.vpk")));
         var game = gameOverride ?? stored?.Game ?? found ?? Path.Combine(AppContext.BaseDirectory, "game");
         var data = stored?.Data ?? Path.Combine(Portable ? AppContext.BaseDirectory : ProfileRoot, "data");
-        return new AppSettings(Path.GetFullPath(game), data, stored?.CheckUpdates ?? true, stored?.PreviewFps is 30 or 60 ? stored.PreviewFps : 60);
+        return new AppSettings(Path.GetFullPath(game), data, stored?.CheckUpdates ?? true, stored?.PreviewFps is 30 or 60 ? stored.PreviewFps : 60, stored?.PreviewAuto ?? false);
     }
 
     /// <summary>Deadlock's game folder in every Steam library: Steam's own folder (registry) and the libraries listed in its

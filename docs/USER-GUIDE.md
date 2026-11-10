@@ -489,8 +489,8 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
 
 1. **Install and start.** Run `S2ModKit-<version>-setup.exe` and choose where to install it, or unzip the portable
    zip anywhere you can write. `S2ModKit.exe` finds Deadlock in the usual Steam folders; otherwise use
-   **Settings > Game folder...** and pick the `game` folder (the one with `citadel`). An installed app keeps its
-   settings, journals and caches in `%LocalAppData%\S2ModKit` (**Settings > Data folder...** moves them, for example
+   **Settings**, **Game: Change...** and pick the `game` folder (the one with `citadel`). An installed app keeps its
+   settings, journals and caches in `%LocalAppData%\S2ModKit` (**Settings**, **Data: Move...** moves them, for example
    to another drive); the portable copy keeps them in `data` beside the app. On start the app asks GitHub whether a
    newer version exists and offers **Update now** (installed app) or the release page (portable copy); turn this off
    under **Settings**.
@@ -529,14 +529,13 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
      (black and white work; shading is kept) and its strength. For clothes painted on the same texture as skin, tick
      **Only colours like**, **Pick on model** (Esc cancels) and set the tolerance. No Valve tools are needed.
    - **Shape**: change the picked part's width, height and depth (**Keep proportions** locks them together), move it and
-     tilt, turn or roll it around its centre, base or top, live in the preview. Only parts the CLI's checked operations
-     accept can be reshaped (today mostly weapons and accessories of the game's own heroes); other parts say why in plain
-     words.
+     tilt, turn or roll it around its centre, base or top, live in the preview. Any part with its own vertices can be
+     reshaped: clothes, hair, bodies and weapons of the game's heroes and of most mods; a refused part says why in plain
+     words. Hit boxes stay as they were, so a much bigger part is still hit where the original was.
 8. **Build edited mod.** The bottom of the part tools lists the changes; **Cancel all** drops them and **Build edited
    mod** installs one edited version with every hidden, recolored and reshaped part (the original stays as a disabled
-   version; for the game's own model, a new small mod). Each reshaped part goes through the CLI's checked operations
-   (one verified build per part, so several reshaped parts take a little longer); the build's records are kept in the
-   data folder (`shape-work`).
+   version; for the game's own model, a new small mod). Reshaped parts move in every level of detail, and the size
+   data the game uses for drawing follows them; the build checks the result by reading it back.
 9. **Sounds.** The **Sounds** tab (a sound-only mod opens on it) lists the sound events it
    changes or adds and the sound files it ships. **▶ Mod** plays the mod's sound and **▶ Game's** the game's
    original, to compare; an event plays its sounds in turn on repeated clicks. Nothing is changed.
@@ -548,7 +547,7 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
     it against the size and checksum GameBanana lists and installs it like a dropped file (an archive with several
     variants asks which). **More > Open on GameBanana** opens the page of a mod that came from there (installed here or
     by Deadlock Mod Manager).
-11. **New files on GameBanana.** Once a day on start (with **Look for updates on start**) or with **Settings > Look for
+11. **New files on GameBanana.** Once a day on start (with **Settings > Look for app updates and new mod files on start**) or with **Settings > Look for
     mod updates on GameBanana**, the app asks GameBanana about every installed mod that came from it: a file uploaded
     after the one installed here, or after Mod Manager's download, marks the mod **new file** (kind filter **New files on
     GameBanana**). **Update...** shows the file and its description first (a new file can be an update or an optional
@@ -564,11 +563,31 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
     colours. Tick abilities and pick a colour: the squares show the colours now and, after the arrow, after the change.
     Colours keep their brightness (glows stay glows); **Exactly this colour** makes them flat. **Build edited mod** makes the
     version. Effects shared by every hero are never changed.
-15. **Load first / Load last.** **More > Load first** puts a mod before every other one, so it wins all shared files;
-    **Load last** puts it after all. The other mods keep their order.
-16. **Log.** Each session writes a log in the data folder (`logs`, the last five are kept): the app's version and folders,
+15. **Material colours.** A part's recolor also turns its material's colours to the same hue: the see-through glow of the
+    cartoon shading, the outline colour and coloured tints (white and grey settings stay). A purple glowing cat painted
+    yellow glows yellow, as in the community's best skin mods. Parts that share a material share these colours.
+16. **Re-apply edits.** Every **Build edited mod** saves its edits (hidden parts, colours with their colour range, shapes,
+    effect colours) and the game version beside the built mod. After a Deadlock update, a banner lists the edited mods made
+    for the previous version; **Re-apply edits** builds them again on the current game files (or the current file of the mod
+    they were made from) and installs each as a new version; the old one stays as a disabled version. One mod at a time:
+    **More > Re-apply edits**. For an edit of someone else's mod the app says that the original may still need its
+    author's update. Mods built before this feature have no saved edits.
+17. **Move to slot.** **More > Move to slot...** puts a mod at a pak number from 1 to 99 (lower numbers load earlier and win
+    shared files). When another mod has that number, the app offers to swap the two. Mods split over several archives move
+    one place at a time with **Load earlier** / **Load later**. The 3D preview opens with **Show 3D preview** (so switching
+    mods stays quick and no mod file is held open); **Settings > Open the 3D preview automatically** opens it at once.
+18. **Log.** Each session writes a log in the data folder (`logs`, the last five are kept): the app's version and folders,
     the messages it showed and error details. **Settings > Open log** shows the file, **Copy log** copies it for a problem
     report. Nothing is sent anywhere.
+19. **Shine.** The colour panel's **Shine** slider lowers the selected part's roughness, so it reflects its surroundings like
+    latex or polished metal (0 leaves the part as the game has it). The preview shows it at once; **Build edited mod** writes
+    it into the part's normal-roughness texture (only where the part's UVs are) and Re-apply edits keeps it.
+20. **Separate meshes.** A part drawn as several separate meshes (a belt with a jacket, a weapon's grip and blade) lists its
+    larger meshes under it as 3.1, 3.2 and so on. Each takes its own colour; the part's colour no longer reaches a mesh that
+    has one. Clicking the model picks the mesh. Each also takes its own shine; hiding and shapes stay on the whole part.
+21. **Settings window.** **Settings** opens one window with every rarely used choice: the game and data folders, the addons
+    folder, refreshing the list, GameBanana updates, hidden conflicts, the preview (open automatically, 60 or 30 fps), app
+    updates (on start or now, with the app's version) and the log. Choices are saved as they change.
 
 Previews are offline evidence: they are close to the game but not a game test.
 

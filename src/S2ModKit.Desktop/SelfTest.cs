@@ -27,6 +27,15 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
     private double openSeconds;
     private string? error;
 
+    // S2MODKIT_SELFTEST_EFFECTS: effects (.vpcf paths, ';'-separated) to play one after another after the model captures
+    private readonly string[] effects = (Environment.GetEnvironmentVariable("S2MODKIT_SELFTEST_EFFECTS") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private readonly List<string> effectInfo = [];
+
+    /// <summary>The preview archive for an effect (as the Effects tab builds it).</summary>
+    public Func<string, byte[]?>? Overlay { get; set; }
+    private int effectIndex = -1;
+    private double effectAt;
+
     /// <summary>The ability buttons of the preview, for the record.</summary>
     public Func<IReadOnlyList<(int Slot, string Name, IReadOnlyList<string> Clips)>>? Abilities { get; set; }
 
@@ -86,6 +95,36 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
             }
 
             session.SetPartColor(hiddenPart, null);
+            if (Environment.GetEnvironmentVariable("S2MODKIT_SELFTEST_MATERIAL") is { Length: > 0 } wanted
+                && Enumerable.Range(0, session.Parts.Count).FirstOrDefault(part => session.Parts[part].Material.Contains(wanted, StringComparison.OrdinalIgnoreCase), -1) is var materialPart and >= 0)
+            {
+                // a part found by its material, painted yellow: its material colours (glow, outline) follow
+                session.SetPartColor(materialPart, new S2ModKit.Application.ColorAdjustment(Colorize: new S2ModKit.Application.RgbColor(0.95f, 0.8f, 0.2f)));
+                File.WriteAllBytes(prefix + "-material.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                session.SetPartColor(materialPart, null);
+                File.WriteAllBytes(prefix + "-material-reset.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+            }
+
+            if (Environment.GetEnvironmentVariable("S2MODKIT_SELFTEST_SHINE") is { Length: > 0 } shiny)
+            {
+                // parts found by their material at full shine (roughness lowered): they should reflect like latex or metal
+                var shineParts = Enumerable.Range(0, session.Parts.Count).Where(part => session.Parts[part].Material.Contains(shiny, StringComparison.OrdinalIgnoreCase)).ToArray();
+                File.WriteAllBytes(prefix + "-shine-before.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                foreach (var part in shineParts)
+                {
+                    session.PrepareShine(part);
+                    session.SetPartShine(part, 1f);
+                }
+
+                File.WriteAllBytes(prefix + "-shine.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                foreach (var part in shineParts)
+                {
+                    session.SetPartShine(part, null);
+                }
+
+                shapeInfo = $"shine on parts {string.Join(", ", shineParts)} ({string.Join(", ", shineParts.Select(part => session.PartNormalTexture(part)).Distinct())}); ";
+            }
+
             var shaped = Enumerable.Range(0, session.Parts.Count).Where(part => session.PartShapeRefusal(part) is null)
                 .OrderByDescending(part => session.Parts[part].Indices).Cast<int?>().FirstOrDefault();
             if (shaped is { } shapedPart)                                   // a whole-part shape change: bigger, raised and turned
@@ -95,19 +134,58 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
                 File.WriteAllBytes(prefix + "-shape.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
                 session.SetPartShape(shapedPart, null);
                 File.WriteAllBytes(prefix + "-shape-reset.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
-                shapeInfo = $"part {shapedPart} ({session.Parts[shapedPart].Material}): {refusal ?? "reshaped"}";
+                shapeInfo += $"part {shapedPart} ({session.Parts[shapedPart].Material}): {refusal ?? "reshaped"}";
             }
             else
             {
-                shapeInfo = "no part can be reshaped in the preview: " + string.Join("; ", Enumerable.Range(0, session.Parts.Count).Select(part => session.PartShapeRefusal(part)).Distinct());
+                shapeInfo += "no part can be reshaped in the preview: " + string.Join("; ", Enumerable.Range(0, session.Parts.Count).Select(part => session.PartShapeRefusal(part)).Distinct());
             }
 
             preview.Highlight = -1;
             preview.Playing = true;
             preview.ForcedSize = (1920, 1080);                     // the pass criterion's size, whatever the window
+            if (effects.Length > 0)
+            {
+                effectIndex = 0;
+                effectAt = now;
+                session.SetOverlay(Overlay?.Invoke(effects[0]));
+                if (session.ShowEffect(effects[0]) is { } refusal)
+                {
+                    effectInfo.Add($"{effects[0]}: {refusal}");
+                }
+            }
+
             stage = 2;
         }
-        else if (stage == 2 && now > 9)
+        else if (stage == 2 && effectIndex >= 0 && effectIndex < effects.Length && now - effectAt > 1.3)
+        {
+            if (session.Effect is not null)
+            {
+                File.WriteAllBytes($"{prefix}-effect{effectIndex}.png", new PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                effectInfo.Add($"{effects[effectIndex]}: {session.EffectError ?? "drawn"}");
+            }
+            else if (session.EffectError is { } stopped)
+            {
+                effectInfo.Add($"{effects[effectIndex]}: {stopped}");
+            }
+
+            effectIndex++;
+            effectAt = now;
+            if (effectIndex < effects.Length)
+            {
+                session.SetOverlay(Overlay?.Invoke(effects[effectIndex]));
+            }
+
+            if (effectIndex < effects.Length && session.ShowEffect(effects[effectIndex]) is { } refusal)
+            {
+                effectInfo.Add($"{effects[effectIndex]}: {refusal}");
+            }
+            else if (effectIndex >= effects.Length)
+            {
+                session.ShowEffect(null);
+            }
+        }
+        else if (stage == 2 && now > 9 + (effects.Length * 1.4))
         {
             stage = 3;
             Write(session, width, height);
@@ -135,6 +213,7 @@ internal sealed class SelfTest(string prefix, PreviewControl preview, Action clo
             pickedAfterHide,
             sampleInfo,
             shapeInfo,
+            effects = effectInfo,
             animations = session?.Animations.Count,
             animationNames = session?.Animations.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             abilities = Abilities?.Invoke().Select(item => new { item.Slot, item.Name, item.Clips }).ToArray(),

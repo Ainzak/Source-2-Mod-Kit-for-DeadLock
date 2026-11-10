@@ -26,7 +26,7 @@ This is pre-alpha community software, independent of Valve. Game assets are not 
 
 Download the [latest Windows release](https://github.com/Ainzak/Source-2-Mod-Kit-for-DeadLock/releases/latest):
 run the setup program and choose where to install it (the app then offers new versions itself), or extract the
-portable zip anywhere you can write. The app looks for Deadlock through Steam; use **Settings > Game folder...** if it
+portable zip anywhere you can write. The app looks for Deadlock through Steam; use **Settings** (**Game: Change...**) if it
 cannot find the installation. The 3D preview needs OpenGL 4.6.
 
 See [the desktop guide](docs/USER-GUIDE.md#7-desktop-app-mod-manager-preview-parts-and-colours) for the app,

@@ -27,7 +27,7 @@ public sealed class EffectColorTests
         using var root = new ModTestRoot();
         var effects = new Dictionary<string, EffectColorChange> { ["particles/abilities/nobody/missing.vpcf"] = new(Blue) };
         var refusal = await Assert.ThrowsAsync<S2ModKit.Domain.S2ModKitException>(() =>
-            root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, effects, TestContext.Current.CancellationToken));
+            root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, effects, null, TestContext.Current.CancellationToken));
         Assert.Equal("EFFECT_EDIT_NOTHING", refusal.Error.Code);
         Assert.Empty(root.AddonNames());
     }
@@ -67,6 +67,8 @@ public sealed class EffectColorTests
                 }
 
                 recolored += changed > 0 ? 1 : 0;
+                var (simple, _) = CompiledParticleEdit.ForPreview(after, path);           // the preview's copy keeps every colour
+                Assert.Equal(read.Select(value => (value.R, value.G, value.B)), CompiledParticleEdit.ReadColors(simple, path).Select(value => (value.R, value.G, value.B)));
             }
 #pragma warning disable CA1031 // collected and reported
             catch (Exception exception)

@@ -197,6 +197,84 @@ public sealed class ModConflictAndOrderTests
         Assert.DoesNotContain(root.AddonNames(), name => name.StartsWith("s2mk_tmp_", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AModMovesToAFreeSlotOrSwapsWithTheModThere()
+    {
+        using var root = new ModTestRoot();
+        var token = TestContext.Current.CancellationToken;
+        await root.VpkAsync(root.In("pak03_dir.vpk"), "sounds/a.vsnd_c");
+        await root.VpkAsync(root.In("pak10_dir.vpk"), "sounds/b.vsnd_c");
+        await root.VpkAsync(root.In("pak97_dir.vpk"), "sounds/c.vsnd_c");
+        await File.WriteAllBytesAsync(root.In("pak97_000.vpk"), [7], token);              // a chunk follows its archive
+        var catalog = root.Catalog();
+        var mods = await catalog.LoadAsync(token);
+
+        await catalog.MoveToSlotAsync(Mod(mods, "pak97_dir.vpk"), 5, swap: false, mods, token);   // a free slot
+        mods = await catalog.LoadAsync(token);
+        Assert.Contains("sounds/c.vsnd_c", Mod(mods, "pak05_dir.vpk").Entries);
+        Assert.Contains("pak05_000.vpk", root.AddonNames());
+
+        var refused = await Assert.ThrowsAsync<S2ModKitException>(() => catalog.MoveToSlotAsync(Mod(mods, "pak05_dir.vpk"), 3, swap: false, mods, token));
+        Assert.Equal("ADDON_SLOT_TAKEN", refused.Error.Code);
+        Assert.Contains("pak03", refused.Error.Summary, StringComparison.Ordinal);
+
+        await catalog.MoveToSlotAsync(Mod(mods, "pak05_dir.vpk"), 3, swap: true, mods, token);    // swapped with the mod in pak03
+        mods = await catalog.LoadAsync(token);
+        Assert.Contains("sounds/c.vsnd_c", Mod(mods, "pak03_dir.vpk").Entries);
+        Assert.Contains("sounds/a.vsnd_c", Mod(mods, "pak05_dir.vpk").Entries);
+        Assert.Contains("pak03_000.vpk", root.AddonNames());
+        Assert.DoesNotContain(root.AddonNames(), name => name.StartsWith("s2mk_tmp_", StringComparison.Ordinal));
+        Assert.Equal("ADDON_SLOT_RANGE", (await Assert.ThrowsAsync<S2ModKitException>(() => catalog.MoveToSlotAsync(Mod(mods, "pak03_dir.vpk"), 100, swap: false, mods, token))).Error.Code);
+    }
+
+    [Fact]
+    public async Task DroppingAModOnAnotherGivesItThatPlace()
+    {
+        using var root = new ModTestRoot();
+        var token = TestContext.Current.CancellationToken;
+        await root.VpkAsync(root.In("pak03_dir.vpk"), "sounds/a.vsnd_c");
+        await root.VpkAsync(root.In("pak10_dir.vpk"), "sounds/b.vsnd_c");
+        await root.VpkAsync(root.In("pak11_dir.vpk"), "sounds/c.vsnd_c");
+        await root.VpkAsync(root.In("pak98_dir.vpk"), "sounds/d.vsnd_c");
+        var catalog = root.Catalog();
+        var mods = await catalog.LoadAsync(token);
+        string[] markers = ["sounds/a.vsnd_c", "sounds/b.vsnd_c", "sounds/c.vsnd_c", "sounds/d.vsnd_c"];
+
+        await catalog.MoveToPlaceOfAsync(Mod(mods, "pak98_dir.vpk"), Mod(mods, "pak10_dir.vpk"), mods, token);   // d dropped on b
+
+        Assert.Equal(["a", "d", "b", "c"], await SlotOrderAsync(catalog, markers, token));
+        mods = await catalog.LoadAsync(token);
+        await catalog.MoveToPlaceOfAsync(Mod(mods, "pak03_dir.vpk"), Mod(mods, "pak11_dir.vpk"), mods, token);   // a dropped on b (now pak11)
+        Assert.Equal(["d", "b", "a", "c"], await SlotOrderAsync(catalog, markers, token));
+        Assert.Equal(2, Journals(root).Length);
+    }
+
+    [Fact]
+    public async Task AConflictMarkedFineIsHiddenUntilTheModsShareMore()
+    {
+        using var root = new ModTestRoot();
+        var token = TestContext.Current.CancellationToken;
+        await root.VpkAsync(root.In("pak03_dir.vpk"), "sounds/shared.vsnd_c", "sounds/a.vsnd_c");
+        await root.VpkAsync(root.In("pak10_dir.vpk"), "sounds/shared.vsnd_c", "sounds/b.vsnd_c");
+        var catalog = root.Catalog();
+        var mods = await catalog.LoadAsync(token);
+        var (first, second) = (Mod(mods, "pak03_dir.vpk"), Mod(mods, "pak10_dir.vpk"));
+        Assert.Single(first.ConflictInfo.With);
+
+        catalog.Dismissed.Dismiss(first, second, 1);
+        mods = await catalog.LoadAsync(token);
+        Assert.Empty(Mod(mods, "pak03_dir.vpk").ConflictInfo.With);                       // hidden on both sides
+        Assert.Empty(Mod(mods, "pak10_dir.vpk").ConflictInfo.With);
+
+        catalog.Dismissed.Dismiss(second, first, 0);                                        // marked when they shared fewer files
+        mods = await catalog.LoadAsync(token);
+        Assert.Single(Mod(mods, "pak03_dir.vpk").ConflictInfo.With);                      // more shared now: it shows again
+
+        catalog.Dismissed.Dismiss(first, second, 1);
+        catalog.Dismissed.Clear();
+        Assert.Single(Mod(await catalog.LoadAsync(token), "pak03_dir.vpk").ConflictInfo.With);   // Show hidden conflicts
+    }
+
     private static async Task<string[]> SlotOrderAsync(ModCatalog catalog, string[] markers, CancellationToken token)
     {
         var mods = await catalog.LoadAsync(token);

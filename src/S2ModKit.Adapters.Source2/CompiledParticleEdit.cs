@@ -71,6 +71,66 @@ public static class CompiledParticleEdit
         }
     }
 
+    /// <summary>
+    /// A copy for the app's preview only (never for a built mod): every literal number provider (<c>{ m_nType = "PF_TYPE_LITERAL",
+    /// m_flLiteralValue = x }</c>) becomes the plain number <c>x</c>. ValveResourceFormat 20.1 reads some of these fields as plain
+    /// numbers and stops on the structure ("Cannot convert Collection to Single"); its later versions fall back to the literal value
+    /// the same way. Returns the bytes and how many providers were simplified.
+    /// </summary>
+    public static (byte[] Bytes, int Simplified) ForPreview(byte[] compiled, string logicalPath)
+    {
+        var (resource, root) = Open(compiled, logicalPath);
+        using (resource)
+        {
+            var simplified = SimplifyLiterals(root);
+            if (simplified == 0)
+            {
+                return (compiled, 0);
+            }
+
+            var data = resource.DataBlock!;
+            using var stream = new MemoryStream();
+            data.Serialize(stream);
+            return (CompiledModelEdit.ReplaceBlocks(compiled, resource, new Dictionary<int, byte[]> { [resource.Blocks.IndexOf(data)] = stream.ToArray() }), simplified);
+        }
+    }
+
+    private static int SimplifyLiterals(KVObject node)
+    {
+        var count = 0;
+        if (node.IsArray)
+        {
+            for (var i = 0; i < node.Count; i++)
+            {
+                count += SimplifyLiterals(node[i]);
+            }
+
+            return count;
+        }
+
+        if (node.ValueType != KVValueType.Collection)
+        {
+            return 0;
+        }
+
+        foreach (var key in node.Keys.ToArray())
+        {
+            var child = node[key];
+            if (child.ValueType == KVValueType.Collection && child.TryGetValue("m_nType", out var type) && type.ToString(null) == "PF_TYPE_LITERAL"
+                && child.TryGetValue("m_flLiteralValue", out var literal) && !literal.IsArray && literal.ValueType != KVValueType.Collection)
+            {
+                node[key] = literal;
+                count++;
+            }
+            else
+            {
+                count += SimplifyLiterals(child);
+            }
+        }
+
+        return count;
+    }
+
     private static (Resource Resource, KVObject Root) Open(byte[] compiled, string logicalPath)
     {
         ArgumentNullException.ThrowIfNull(compiled);

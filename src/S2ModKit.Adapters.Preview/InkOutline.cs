@@ -119,6 +119,20 @@ internal sealed class InkOutline : IDisposable
         }
     }
 
+    /// <summary>Recolors draw call <paramref name="drawIndex"/>'s outline from its material colour (null: back to the material's).</summary>
+    public void SetColor(int drawIndex, Func<Vector3, Vector3>? change)
+    {
+        foreach (var part in parts.Where(part => part.DrawIndex == drawIndex))
+        {
+            if (part.OriginalColor.X < 0)
+            {
+                part.OriginalColor = part.Color;
+            }
+
+            part.Color = change is null ? part.OriginalColor : change(part.OriginalColor);
+        }
+    }
+
     /// <summary>Skins the current pose, then draws the shell into <paramref name="framebuffer"/> (its depth is the scene's).</summary>
     public void Draw(int framebuffer, int width, int height, Matrix4x4 viewProjectionMatrix, float thickness)
     {
@@ -286,9 +300,12 @@ internal sealed class InkOutline : IDisposable
         public required Vector3[] Normals { get; init; }
         public required float[] Masks { get; init; }
         public required ushort[] Bones { get; init; }
-        public required Vector4[] Weights { get; init; }
+        public required float[] Weights { get; init; }                  // BonesPerVertex per vertex (SkinWeights)
         public required int BonesPerVertex { get; init; }
-        public required Vector3 Color { get; init; }
+        public required Vector3 Color { get; set; }
+
+        /// <summary>The colour the material gave (before a recolor).</summary>
+        public Vector3 OriginalColor { get; set; } = new(-1);
 
         public int DrawIndex { get; set; }
 
@@ -321,7 +338,7 @@ internal sealed class InkOutline : IDisposable
             }                                                               // it every vertex followed its first bone only
             var allBones = blend.SemanticName is null ? new ushort[allPositions.Length * 4] : VBIB.GetBlendIndicesArray(buffer, blend, remap);
             var perVertex = Math.Max(1, allBones.Length / allPositions.Length);
-            var allWeights = weightField.SemanticName is null ? null : VBIB.GetBlendWeightsArray(buffer, weightField);
+            var allWeights = SkinWeights.Read(buffer, weightField, allPositions.Length, perVertex);
 
             var indexRef = draw["m_indexBuffer"];
             var indexBuffer = vbib.IndexBuffers[(int)indexRef["m_hBuffer"].ToInt64(CultureInfo.InvariantCulture)];
@@ -364,7 +381,7 @@ internal sealed class InkOutline : IDisposable
                 Normals = used.Select(i => allNormals[i]).ToArray(),
                 Masks = used.Select(i => uvs is null ? 1f : style.Mask(uvs[i])).ToArray(),
                 Bones = used.SelectMany(i => allBones.AsSpan(i * perVertex, perVertex).ToArray()).ToArray(),
-                Weights = used.Select(i => allWeights is null ? new Vector4(1, 0, 0, 0) : allWeights[i]).ToArray(),
+                Weights = used.SelectMany(i => allWeights.AsSpan(i * perVertex, perVertex).ToArray()).ToArray(),
                 BonesPerVertex = perVertex,
                 Color = style.Color,
             };
@@ -377,13 +394,12 @@ internal sealed class InkOutline : IDisposable
             {
                 var position = shaped ? Vector3.Transform(Positions[v], Shape) : Positions[v];
                 var normal = shaped ? Vector3.TransformNormal(Normals[v], NormalShape) : Normals[v];
-                var weights = Weights[v];
                 var p = Vector3.Zero;
                 var n = Vector3.Zero;
                 var total = 0f;
-                for (var k = 0; k < Math.Min(4, BonesPerVertex); k++)
+                for (var k = 0; k < BonesPerVertex; k++)
                 {
-                    var w = k switch { 0 => weights.X, 1 => weights.Y, 2 => weights.Z, _ => weights.W };
+                    var w = Weights[(v * BonesPerVertex) + k];
                     if (w <= 0)
                     {
                         continue;

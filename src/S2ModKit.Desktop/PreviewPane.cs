@@ -23,6 +23,12 @@ internal sealed partial class PreviewPane : UserControl
     private readonly AppSettings settings;
     private readonly PreviewControl preview = new();
     private readonly TextBlock overlay = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 16 };
+    private readonly Button loadPreview = new() { Content = "Show 3D preview", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 16, Padding = new Thickness(18, 10), IsVisible = false };
+    private bool previewWanted;
+
+    /// <summary>Opens the 3D preview as soon as a mod is shown (false: only after "Show 3D preview", so switching mods stays quick and
+    /// the mod's file is not held open).</summary>
+    public bool OpenAutomatically { get; set; }
     private readonly ComboBox compare = new() { MinWidth = 220 };
     private readonly ComboBox model = new() { MinWidth = 220 };
     private readonly CheckBox withLoaded = new() { Content = "Include my enabled mods" };
@@ -54,6 +60,8 @@ internal sealed partial class PreviewPane : UserControl
     private readonly Slider hue = new() { Minimum = -180, Maximum = 180, Value = 0 };
     private readonly Slider saturation = new() { Minimum = 0, Maximum = 2, Value = 1 };
     private readonly Slider brightness = new() { Minimum = 0, Maximum = 3, Value = 1 };
+    private readonly Slider shine = new() { Minimum = 0, Maximum = 1, Value = 0 };
+    private readonly TextBlock shineNote = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
     private readonly CheckBox paint = new() { Content = "Paint a colour" };
     private readonly ColorPicker paintColor = new();
     private readonly Slider paintStrength = new() { Minimum = 0, Maximum = 1, Value = 1 };
@@ -75,14 +83,14 @@ internal sealed partial class PreviewPane : UserControl
     private readonly ComboBox pivot = new() { ItemsSource = new[] { "the part's centre", "the part's base", "the part's top" }, SelectedIndex = 0, MinWidth = 170 };
     private readonly StackPanel shapeControls = new() { Spacing = 2 };
     private readonly Avalonia.Threading.DispatcherTimer shapeDelay = new() { Interval = TimeSpan.FromMilliseconds(40) };
-    private IReadOnlyDictionary<string, PartShapeCapability> capabilities = new Dictionary<string, PartShapeCapability>();
+    private IReadOnlyDictionary<int, PartShapeCapability> refusedShapes = new Dictionary<int, PartShapeCapability>();   // parts the direct reshape refuses
     private string? modelRefusal = "Checking which parts can be reshaped...";
     private readonly Dictionary<int, string> previewRefusals = [];
     private int capabilityRequest;
 
     /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
     /// parts and the reshaped parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>>? BuildRequested;
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
     private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
@@ -109,6 +117,13 @@ internal sealed partial class PreviewPane : UserControl
         var view = new Grid { Background = new SolidColorBrush(Color.FromRgb(30, 31, 34)) };
         view.Children.Add(preview);
         view.Children.Add(overlay);
+        view.Children.Add(loadPreview);
+        loadPreview.Click += (_, _) =>
+        {
+            previewWanted = true;
+            loadPreview.IsVisible = false;
+            Reopen();
+        };
         view.Children.Add(cameras);
         view.Children.Add(abilityBar);
         view.Children.Add(stats);
@@ -128,7 +143,7 @@ internal sealed partial class PreviewPane : UserControl
         partList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<PartRow>((row, _) => row is null ? new StackPanel() : PartItem(row));   // null while a recycled row is cleared
         partPicker.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<PartRow>((row, _) =>
         {
-            var text = new TextBlock { Text = row is null ? string.Empty : $"{row.Index + 1}. {row.Name}", Background = Brushes.Transparent };
+            var text = new TextBlock { Text = row is null ? string.Empty : $"{row.Label}. {row.Name}", Background = Brushes.Transparent };
             if (row is not null)
             {
                 text.PointerEntered += (_, _) => preview.Highlight = partPicker.IsDropDownOpen && !ReferenceEquals(selected, row) ? row.Index : -1;   // hovering a dropdown item shows that part
@@ -140,6 +155,23 @@ internal sealed partial class PreviewPane : UserControl
         partPicker.DropDownClosed += (_, _) => preview.Highlight = -1;
         partList.SelectionChanged += (_, _) => SelectPart(partList.SelectedItem as PartRow);
         partPicker.SelectionChanged += (_, _) => SelectPart(partPicker.SelectedItem as PartRow);
+        shine.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == RangeBase.ValueProperty && !settingSliders && selected is { } row)
+            {
+                if (shine.Value > 0.005)
+                {
+                    preview.PartShines[row.Index] = (float)shine.Value;
+                }
+                else
+                {
+                    preview.PartShines.Remove(row.Index);
+                }
+
+                preview.RequestPartShine(row.Index, shine.Value > 0.005 ? (float)shine.Value : null);
+                UpdateSummary();
+            }
+        };
         foreach (var slider in new[] { hue, saturation, brightness, paintStrength })
         {
             slider.PropertyChanged += (_, e) =>
@@ -231,7 +263,7 @@ internal sealed partial class PreviewPane : UserControl
             if (model.SelectedItem is string modelPath && CanBuild)
             {
                 BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
-                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges);
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines));
             }
         };
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
@@ -324,7 +356,7 @@ internal sealed partial class PreviewPane : UserControl
     {
         if (part is { } number)
         {
-            SelectPart(parts.FirstOrDefault(row => row.Index == number - 1));
+            SelectPart(number == 0 ? parts.FirstOrDefault(row => row.Piece is not null) : parts.FirstOrDefault(row => row.Index == number - 1));   // 0: the first separate mesh
         }
 
         ShowTab(tab?.ToUpperInvariant() switch { "COLOUR" or "COLOR" => colourTab, "SHAPE" => shapeTab, "EFFECTS" => effectsTab, _ => partsTab });
@@ -341,7 +373,7 @@ internal sealed partial class PreviewPane : UserControl
     public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
 
     private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
-        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0);
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
@@ -358,7 +390,23 @@ internal sealed partial class PreviewPane : UserControl
         compare.ItemsSource = entry is null ? new[] { Vanilla } : (string[])["This mod", Vanilla, .. others.Select(other => other.Name)];
         compare.SelectedIndex = 0;
         updating = false;
-        Reopen();
+        previewWanted = OpenAutomatically;
+        if (previewWanted)
+        {
+            Reopen();
+            return;
+        }
+
+        _ = preview.CloseAsync();                                           // the previous model: its archives are let go at once
+        effectGroups = [];
+        effectsView = null;
+        if (effectsTab.IsChecked == true)
+        {
+            toolHost.Content = EffectsView();
+        }
+
+        overlay.IsVisible = false;
+        loadPreview.IsVisible = true;
     }
 
     private Grid BuildTools()
@@ -401,6 +449,8 @@ internal sealed partial class PreviewPane : UserControl
         colorPanel.Children.Add(Labelled("Strength", paintStrength));
         colorPanel.Children.Add(Wrap(onlyLike, sampleSwatch, pickColor));
         colorPanel.Children.Add(Labelled("Tolerance", tolerance));
+        colorPanel.Children.Add(Labelled("Shine", shine, "0%"));
+        colorPanel.Children.Add(shineNote);
         colorPanel.Children.Add(Wrap(Button("Reset colour", ResetColor)));
 
         // shape
@@ -440,10 +490,12 @@ internal sealed partial class PreviewPane : UserControl
             return;
         }
 
+        StopEffectPreview();                                                // the other tools work on the model
+
         if (tab == partsTab)
         {
             var view = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-            view.Children.Add(Wrap(Button("Show all", () => SetHidden(parts.Select(part => part.Index), false)), Button("Hide picked part", () => ToggleSelected())));
+            view.Children.Add(Wrap(Button("Show all", () => SetHidden(parts.Where(part => part.Piece is null).Select(part => part.Index), false)), Button("Hide picked part", () => ToggleSelected())));
             Grid.SetRow(partList, 1);
             partList.Margin = new Thickness(4, 0);
             Detach(partList);
@@ -488,7 +540,7 @@ internal sealed partial class PreviewPane : UserControl
 
     private void Reopen()
     {
-        if (updating || model.SelectedItem is not string modelPath)
+        if (updating || model.SelectedItem is not string modelPath || !previewWanted)
         {
             return;
         }
@@ -523,22 +575,22 @@ internal sealed partial class PreviewPane : UserControl
         _ = ReadCapabilitiesAsync(archives, modelPath);
     }
 
-    /// <summary>Asks the CLI's checked operations, in the background, which parts of the opened model can be reshaped.</summary>
+    /// <summary>Asks the direct reshape, in the background, which parts of the opened model can be reshaped.</summary>
     private async Task ReadCapabilitiesAsync(IReadOnlyList<string> archives, string modelPath)
     {
         var request = ++capabilityRequest;
-        capabilities = new Dictionary<string, PartShapeCapability>();
+        refusedShapes = new Dictionary<int, PartShapeCapability>();
         modelRefusal = "Checking which parts can be reshaped...";
         ShowShape();
         try
         {
-            var (byMaterial, refusal) = await Task.Run(() => ShapeCapabilities.ReadAsync(archives, modelPath)).ConfigureAwait(true);
+            var (refused, refusal) = await Task.Run(() => ShapeCapabilities.ReadAsync(archives, modelPath)).ConfigureAwait(true);
             if (request != capabilityRequest)
             {
                 return;                                                     // another model opened meanwhile
             }
 
-            (capabilities, modelRefusal) = (byMaterial, refusal);
+            (refusedShapes, modelRefusal) = (refused, refusal);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or NotSupportedException or InvalidOperationException)
         {
@@ -565,7 +617,8 @@ internal sealed partial class PreviewPane : UserControl
 
         overlay.IsVisible = false;
         stats.Text = $"opened in {elapsed.TotalSeconds:F1} s";
-        parts = [.. session.Parts.Select((part, index) => new PartRow(index, part))];
+        parts = [.. session.Parts.SelectMany((part, index) => session.Pieces.Where(piece => piece.Part == index).Select(piece => new PartRow(piece.Index, part, piece))
+            .Prepend(new PartRow(index, part)))];                           // a part made of separate meshes lists them under it, for their own colours
         ranges.Clear();
         previewRefusals.Clear();
         selected = null;
@@ -649,12 +702,13 @@ internal sealed partial class PreviewPane : UserControl
 
     private StackPanel PartItem(PartRow row)
     {
-        var visible = new CheckBox { IsChecked = !preview.Hidden.Contains(row.Index), VerticalAlignment = VerticalAlignment.Center };
+        var visible = new CheckBox { IsChecked = !preview.Hidden.Contains(row.Index), VerticalAlignment = VerticalAlignment.Center, IsVisible = row.Piece is null };
         visible.IsCheckedChanged += (_, _) => SetHidden([row.Index], visible.IsChecked != true);
         var item = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 6,
+            Margin = new Thickness(row.Piece is null ? 0 : 28, 0, 0, 0),
             Children =
             {
                 visible,
@@ -662,8 +716,8 @@ internal sealed partial class PreviewPane : UserControl
                 {
                     Children =
                     {
-                        new TextBlock { Text = $"{row.Index + 1}. {row.Name}", FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
-                        new TextBlock { Text = $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Muted, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
+                        new TextBlock { Text = $"{row.Label}. {row.Name}", FontWeight = row.Piece is null ? FontWeight.SemiBold : FontWeight.Normal, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
+                        new TextBlock { Text = row.Piece is { } piece ? $"separate mesh - {piece.Triangles:N0} triangles, own colour" : $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Muted, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
                     },
                 },
             },
@@ -675,7 +729,7 @@ internal sealed partial class PreviewPane : UserControl
 
     private void SetHidden(IEnumerable<int> indices, bool hidden)
     {
-        foreach (var index in indices.ToArray())
+        foreach (var index in indices.Select(index => parts.FirstOrDefault(row => row.Index == index)?.PartIndex ?? index).Distinct().ToArray())   // a piece hides with its part
         {
             _ = hidden ? preview.Hidden.Add(index) : preview.Hidden.Remove(index);
         }
@@ -706,6 +760,11 @@ internal sealed partial class PreviewPane : UserControl
             changes.Add($"{preview.PartShapes.Count} reshaped");
         }
 
+        if (preview.PartShines.Count > 0)
+        {
+            changes.Add($"{preview.PartShines.Count} shiny");
+        }
+
         if (effectChanges.Count > 0)
         {
             changes.Add($"effects of {effectChanges.Count} group{(effectChanges.Count == 1 ? string.Empty : "s")} recolored");
@@ -729,12 +788,16 @@ internal sealed partial class PreviewPane : UserControl
         colorPanel.IsVisible = true;
         colorHint.IsVisible = false;
         preview.PrepareColor(row.Index);                                    // unpack its texture now, not on the first colour change
-        colorTitle.Text = $"Colour of part {row.Index + 1} ({texture[(texture.LastIndexOf('/') + 1)..]})";
+        colorTitle.Text = $"Colour of part {row.Label} ({texture[(texture.LastIndexOf('/') + 1)..]})";
         var change = preview.PartColors.GetValueOrDefault(row.Index) ?? new ColorAdjustment();
         settingSliders = true;
         hue.Value = change.HueShiftDegrees;
         saturation.Value = change.Saturation;
         brightness.Value = change.Brightness;
+        shine.Value = preview.PartShines.GetValueOrDefault(row.Index);
+        shine.IsEnabled = preview.Session?.PartNormalTexture(row.Index) is not null;
+        shineNote.Text = shine.IsEnabled ? "Shine lowers the part's roughness: it reflects like latex or metal in game."
+            : "This part's material has no roughness texture, so shine cannot change it.";
         paint.IsChecked = change.Colorize is not null;
         if (change.Colorize is { } painted)
         {
@@ -794,6 +857,8 @@ internal sealed partial class PreviewPane : UserControl
     {
         if (selected is { } row)
         {
+            preview.PartShines.Remove(row.Index);
+            preview.RequestPartShine(row.Index, null);
             preview.PartColors.Remove(row.Index);
             ranges.Remove(row.Index);
             preview.RequestColorRange(row.Index, null, 0);
@@ -807,7 +872,8 @@ internal sealed partial class PreviewPane : UserControl
     private void ShowShape()
     {
         var capability = selected is { } row ? CapabilityOf(row) : null;
-        var previewRefusal = selected is { } picked ? previewRefusals.GetValueOrDefault(picked.Index) ?? preview.Session?.PartShapeRefusal(picked.Index) : null;
+        var previewRefusal = selected is { Piece: not null } piece ? $"A separate mesh takes its own colour; reshape or hide its whole part {piece.PartIndex + 1}."
+            : selected is { } picked ? previewRefusals.GetValueOrDefault(picked.Index) ?? preview.Session?.PartShapeRefusal(picked.Index) : null;
         var level = previewRefusal is null ? capability?.Level ?? ShapeLevel.None : ShapeLevel.None;
         (shapeStatus.Text, shapeStatus.Foreground) = selected is null ? ("Pick a part to reshape it.", Muted)
             : modelRefusal is { } refused && capability is null ? (refused, Warn)
@@ -846,7 +912,7 @@ internal sealed partial class PreviewPane : UserControl
         parts.FirstOrDefault(row => row.Index == index) is { } row ? CapabilityOf(row)?.Level ?? ShapeLevel.None : ShapeLevel.None;
 
     private PartShapeCapability? CapabilityOf(PartRow row) =>
-        capabilities.GetValueOrDefault(ShapeCapabilities.Normalize(row.Part.Material));
+        modelRefusal is not null ? null : refusedShapes.GetValueOrDefault(row.PartIndex) ?? ShapeCapabilities.Allowed;
 
     private void ShapeSliderChanged(AvaloniaPropertyChangedEventArgs e)
     {
@@ -916,7 +982,7 @@ internal sealed partial class PreviewPane : UserControl
     {
         if (selected is { } row)
         {
-            SetHidden([row.Index], !preview.Hidden.Contains(row.Index));
+            SetHidden([row.Index], !preview.Hidden.Contains(row.PartIndex));
         }
     }
 
@@ -936,6 +1002,13 @@ internal sealed partial class PreviewPane : UserControl
             preview.RequestPartColor(part, null);
         }
 
+        foreach (var part in preview.PartShines.Keys.ToArray())
+        {
+            preview.RequestPartShine(part, null);
+        }
+
+        preview.PartShines.Clear();
+
         foreach (var part in ranges.Keys.ToArray())
         {
             preview.RequestColorRange(part, null, 0);
@@ -950,7 +1023,7 @@ internal sealed partial class PreviewPane : UserControl
         preview.PartShapes.Clear();
         ranges.Clear();
         SetSampling(false);
-        SetHidden(parts.Select(part => part.Index), false);
+        SetHidden(parts.Where(part => part.Piece is null).Select(part => part.Index), false);
         ShowColor();
         ShowShape();
     }
@@ -1029,7 +1102,13 @@ internal sealed partial class PreviewPane : UserControl
 }
 
 /// <summary>A part card: its index in draw order and what the preview reports about it.</summary>
-internal sealed record PartRow(int Index, PreviewPart Part)
+/// <summary>A row of the parts list: a part, or a separate mesh (<paramref name="Piece"/>) of the part above it.</summary>
+internal sealed record PartRow(int Index, PreviewPart Part, S2ModKit.Adapters.Preview.PartPiece? Piece = null)
 {
+    public int PartIndex => Piece?.Part ?? Index;
+
+    /// <summary>"3" for part 3, "3.2" for its second-largest separate mesh.</summary>
+    public string Label => Piece is { } piece ? $"{piece.Part + 1}.{piece.Number}" : $"{Index + 1}";
+
     public string Name => Part.Material[(Part.Material.LastIndexOf('/') + 1)..];
 }

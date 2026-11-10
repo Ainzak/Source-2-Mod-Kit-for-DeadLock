@@ -53,9 +53,30 @@ public sealed class VrfTextureWorkshop(string? resourceCompiler = null, string? 
             }
         }
 
+        if (bitmap.Width != texture.Width || bitmap.Height != texture.Height)
+        {
+            rgba = Fill(rgba, bitmap.Width, bitmap.Height, texture.Width, texture.Height);   // a small picture in a larger block (1x1 in 4x4)
+        }
+
         var definition = new TextureExtract(resource) { IgnoreVtexFile = false }.ToValveTexture();
         return Task.FromResult(new DecodedTexture(texturePath, texture.Width, texture.Height, rgba, definition, texture.Format.ToString(),
             texture.NumMipLevels, archive, ContentHash.Compute(bytes)));
+    }
+
+    /// <summary>The picture stretched (nearest texel) to the texture's stored size, so its pixels match the size the texture declares.</summary>
+    private static byte[] Fill(byte[] rgba, int width, int height, int toWidth, int toHeight)
+    {
+        var output = new byte[toWidth * toHeight * 4];
+        for (var y = 0; y < toHeight; y++)
+        {
+            for (var x = 0; x < toWidth; x++)
+            {
+                var source = ((Math.Min(height - 1, y * height / toHeight) * width) + Math.Min(width - 1, x * width / toWidth)) * 4;
+                Array.Copy(rgba, source, output, ((y * toWidth) + x) * 4, 4);
+            }
+        }
+
+        return output;
     }
 
     public Task<float[]> ReadMaskAsync(string path, int width, int height, CancellationToken cancellationToken = default)

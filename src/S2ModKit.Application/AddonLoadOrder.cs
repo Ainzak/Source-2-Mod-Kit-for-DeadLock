@@ -78,6 +78,31 @@ public static partial class AddonLoadOrder
         return Move(ordered, index, target, allNames, tempTag, ordered[target].Mod.Label, summary);
     }
 
+    /// <summary>Moves a mod to the place of <paramref name="targetKey"/> (drag and drop): the mods between keep their order and shift by one;
+    /// the slots are shared out again, as in <see cref="PlanToEnd"/>.</summary>
+    public static AddonReorderPlan PlanToPlaceOf(IReadOnlyList<LoadOrderMod> enabled, string key, string targetKey, IReadOnlyCollection<string> allNames, string tempTag)
+    {
+        ArgumentNullException.ThrowIfNull(enabled);
+        ArgumentNullException.ThrowIfNull(allNames);
+        var ordered = enabled.Select(mod => (Mod: mod, Slots: SlotsOf(mod))).OrderBy(item => item.Slots.Min()).ThenBy(item => item.Mod.Key, StringComparer.Ordinal).ToArray();
+        var index = Array.FindIndex(ordered, item => item.Mod.Key == key);
+        var target = Array.FindIndex(ordered, item => item.Mod.Key == targetKey);
+        if (index < 0 || target < 0)
+        {
+            throw Errors.Input("ADDON_REORDER_NOT_ENABLED", "Only enabled mods have a place in the load order.", "Enable both mods first.");
+        }
+
+        if (index == target)
+        {
+            throw Errors.Verification("ADDON_REORDER_RANGE", "The mod is already there.", "Drop it on another mod.");
+        }
+
+        var summary = target < index
+            ? $"'{ordered[index].Mod.Label}' now loads before '{ordered[target].Mod.Label}'"
+            : $"'{ordered[index].Mod.Label}' now loads after '{ordered[target].Mod.Label}'";
+        return Move(ordered, index, target, allNames, tempTag, ordered[target].Mod.Label, summary);
+    }
+
     private static AddonReorderPlan Move((LoadOrderMod Mod, int[] Slots)[] ordered, int index, int target, IReadOnlyCollection<string> allNames, string tempTag, string neighbourLabel, string summaryStart)
     {
         var moved = ordered[index];
@@ -94,6 +119,72 @@ public static partial class AddonLoadOrder
             at += item.Slots.Length;
         }
 
+        return Steps(moved.Mod.Label, neighbourLabel, summaryStart, net, allNames, tempTag);
+    }
+
+    /// <summary>
+    /// Puts a mod (one archive) at pak number <paramref name="slot"/> (1-99). A free slot: its files are renamed there. A slot an enabled
+    /// mod (one archive) holds: refused unless <paramref name="swap"/>, then the two exchange slots. Mods in several archives, files of
+    /// unknown mods in the slot and slots outside 01-99 are refused.
+    /// </summary>
+    public static AddonReorderPlan PlanToSlot(IReadOnlyList<LoadOrderMod> enabled, string key, int slot, bool swap, IReadOnlyCollection<string> allNames, string tempTag)
+    {
+        ArgumentNullException.ThrowIfNull(enabled);
+        ArgumentNullException.ThrowIfNull(allNames);
+        if (slot is < 1 or > 99)
+        {
+            throw Errors.Input("ADDON_SLOT_RANGE", $"pak{slot:00} is not a load order slot.", "Pick a number from 1 to 99.");
+        }
+
+        var mods = enabled.Select(mod => (Mod: mod, Slots: SlotsOf(mod))).ToArray();
+        var moved = mods.FirstOrDefault(item => item.Mod.Key == key);
+        if (moved.Mod is null)
+        {
+            throw Errors.Input("ADDON_REORDER_NOT_ENABLED", "Only an enabled mod has a place in the load order.", "Enable the mod first.");
+        }
+
+        if (moved.Slots.Length != 1)
+        {
+            throw Errors.Input("ADDON_SLOT_SPLIT", $"'{moved.Mod.Label}' is in {moved.Slots.Length} archives (slots {string.Join(", ", moved.Slots.Select(item => $"pak{item:00}"))}).", "Move it one place at a time with Load earlier or Load later.");
+        }
+
+        var from = moved.Slots[0];
+        if (from == slot)
+        {
+            throw Errors.Verification("ADDON_REORDER_RANGE", $"'{moved.Mod.Label}' is already pak{slot:00}.", "Nothing to move.");
+        }
+
+        var holder = mods.FirstOrDefault(item => item.Slots.Contains(slot));
+        var net = new List<AddonRename>();
+        Assign(moved.Mod, moved.Slots, [slot], allNames, net);
+        if (holder.Mod is null)
+        {
+            if (allNames.Any(name => name.Equals($"pak{slot:00}_dir.vpk", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw Errors.Verification("ADDON_SLOT_TAKEN", $"pak{slot:00}_dir.vpk belongs to no enabled mod in the list.", "Refresh the list, or pick another number.");
+            }
+
+            return Steps(moved.Mod.Label, $"pak{slot:00}", $"'{moved.Mod.Label}' is now pak{slot:00}", net, allNames, tempTag);
+        }
+
+        if (holder.Slots.Length != 1)
+        {
+            throw Errors.Input("ADDON_SLOT_SPLIT", $"pak{slot:00} belongs to '{holder.Mod.Label}', which is in {holder.Slots.Length} archives.", "Pick another number.");
+        }
+
+        if (!swap)
+        {
+            throw Errors.Verification("ADDON_SLOT_TAKEN", $"pak{slot:00} belongs to '{holder.Mod.Label}'.", "Swap the two mods, or pick another number.");
+        }
+
+        Assign(holder.Mod, holder.Slots, [from], allNames, net);
+        return Steps(moved.Mod.Label, holder.Mod.Label, $"'{moved.Mod.Label}' is now pak{slot:00} and '{holder.Mod.Label}' pak{from:00}", net, allNames, tempTag);
+    }
+
+    /// <summary>The renames that reach <paramref name="net"/> one by one: direct ones first, files that move into each other's names through
+    /// a temporary name; never onto an existing file.</summary>
+    private static AddonReorderPlan Steps(string movedLabel, string neighbourLabel, string summaryStart, List<AddonRename> net, IReadOnlyCollection<string> allNames, string tempTag)
+    {
         var changed = net.Where(item => !item.From.Equals(item.To, StringComparison.OrdinalIgnoreCase)).ToArray();
 
         var names = new HashSet<string>(allNames, StringComparer.OrdinalIgnoreCase);
@@ -113,7 +204,7 @@ public static partial class AddonLoadOrder
         }
 
         AddonRename[] steps = [.. direct, .. temporary, .. cyclic.Select((item, i) => new AddonRename(temporary[i].To, item.To))];
-        return new AddonReorderPlan(moved.Mod.Label, neighbourLabel, $"{summaryStart} ({changed.Length} file(s) renamed).", changed, steps);
+        return new AddonReorderPlan(movedLabel, neighbourLabel, $"{summaryStart} ({changed.Length} file(s) renamed).", changed, steps);
     }
 
     private static void Assign(LoadOrderMod mod, int[] oldSlots, int[] newSlots, IReadOnlyCollection<string> allNames, List<AddonRename> net)
