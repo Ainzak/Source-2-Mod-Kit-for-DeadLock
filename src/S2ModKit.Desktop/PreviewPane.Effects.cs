@@ -104,7 +104,7 @@ internal sealed partial class PreviewPane
         Detach(effectExact);
         effectRows.Clear();
         var panel = new StackPanel { Margin = new Thickness(10, 4), Spacing = 4 };
-        if (previewWanted && AddedEffectsOffered)
+        if (previewWanted)
         {
             panel.Children.Add(AddedEffectsSection());
         }
@@ -249,7 +249,7 @@ internal sealed partial class PreviewPane
 
     /// <summary>Plays the picked effect alone in the 3D view; when its ability has a new colour, with the recolored files of every changed
     /// ability in front (so child effects change too).</summary>
-    private async Task PlayEffectAsync(string effect)
+    private async Task PlayEffectAsync(string effect, string? source = null)
     {
         placing = null;
         effectStatus.Text = "Preparing the effect...";
@@ -258,8 +258,10 @@ internal sealed partial class PreviewPane
         var archives = shownArchives;
         try
         {
-            var added = addedEffects.Select(row => row.Effect).ToArray();    // their files stay prepared while one effect plays alone
-            overlay = await Task.Run(() => EffectOverlay(archives, [effect, .. added], changes, settings.StagingRoot)).ConfigureAwait(true);
+            var added = addedEffects.Select(row => (Effect: row.Effect, Source: row.Source)).Append((Effect: effect, Source: source)).ToArray();
+            var children = addedEffects.Where(row => row.Parent is not null).ToLookup(row => row.Parent!, row => row.Effect, StringComparer.OrdinalIgnoreCase);   // the added effects' files stay prepared while one effect plays alone
+            overlay = await Task.Run(() => EffectOverlay(archives, added.Where(item => item.Source is null).Select(item => item.Effect), changes, settings.StagingRoot,
+                added.Where(item => item.Source is not null).Select(item => (item.Effect, item.Source!)), children)).ConfigureAwait(true);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or S2ModKit.Domain.S2ModKitException)
         {
@@ -297,14 +299,41 @@ internal sealed partial class PreviewPane
     /// </summary>
     internal byte[]? EffectOverlayFor(string effect) => EffectOverlay(shownArchives, [effect], EffectChanges, settings.StagingRoot);
 
-    private static byte[]? EffectOverlay(IReadOnlyList<string> archives, IEnumerable<string> effects, IReadOnlyDictionary<string, EffectColorChange> changes, string staging)
+    /// <param name="children">Effects added to an ability effect (parent path to child paths): the parent's preview copy gets them.</param>
+    /// <param name="sourced">Effects from another mod or a loose file (effect, source): every file the source ships for them goes in
+    /// under its own path, so the preview shows them without the source among the shown archives.</param>
+    private static byte[]? EffectOverlay(IReadOnlyList<string> archives, IEnumerable<string> effects, IReadOnlyDictionary<string, EffectColorChange> changes, string staging,
+        IEnumerable<(string Effect, string Source)>? sourced = null, ILookup<string, string>? children = null)
     {
         var entries = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+        var plain = effects.ToList();
+        foreach (var (effect, source) in (sourced ?? []).Distinct())
+        {
+            var closure = EffectClosure.Read(source, effect);
+            foreach (var (file, bytes) in closure.Effects)
+            {
+                entries[file + "_c"] = S2ModKit.Adapters.Source2.CompiledParticleEdit.ForPreview(bytes, file + "_c").Bytes;
+                plain.AddRange(S2ModKit.Adapters.Source2.CompiledAddedEffects.References(bytes, file + "_c")
+                    .Where(name => name.EndsWith(".vpcf", StringComparison.OrdinalIgnoreCase) && !closure.Effects.ContainsKey(name)));   // children the game has
+            }
+
+            foreach (var (file, bytes) in closure.Extras)
+            {
+                entries[file + "_c"] = bytes;
+            }
+        }
+
+        effects = plain;
         foreach (var (file, original) in effects.Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(effect => EffectFiles.ReadTree(archives, effect)).DistinctBy(pair => pair.Key))
         {
             var bytes = changes.TryGetValue(file, out var change) ? S2ModKit.Adapters.Source2.CompiledParticleEdit.Recolor(original, file + "_c", change).Bytes : original;
+            foreach (var child in children?[file] ?? [])                    // effects added to this ability effect play with it
+            {
+                bytes = S2ModKit.Adapters.Source2.CompiledAddedEffects.AddChild(bytes, file + "_c", child);
+            }
+
             var (simple, simplified) = S2ModKit.Adapters.Source2.CompiledParticleEdit.ForPreview(bytes, file + "_c");
-            if (simplified > 0 || !ReferenceEquals(bytes, original))
+            if ((simplified > 0 || !ReferenceEquals(bytes, original)) && !entries.ContainsKey(file + "_c"))
             {
                 entries[file + "_c"] = simple;
             }

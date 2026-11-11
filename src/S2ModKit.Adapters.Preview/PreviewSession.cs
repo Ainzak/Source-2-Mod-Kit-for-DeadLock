@@ -43,6 +43,9 @@ public sealed partial class PreviewSession : IDisposable
     private readonly PartPicker picker;
     private readonly PartGeometry geometry;
     private readonly HighlightOverlay highlight = new();
+
+    /// <summary>The draw calls in the order the parts are numbered (fixed at opening).</summary>
+    private readonly (RenderableMesh Mesh, DrawCall Draw)[] drawOrder;
     private readonly Dictionary<int, int> hiddenIndexCounts = [];
     private Framebuffer? main;
     private Framebuffer? display;
@@ -108,6 +111,7 @@ public sealed partial class PreviewSession : IDisposable
         renderer.Postprocess.State = state;
         Bounds = node.BoundingBox;
 
+        drawOrder = [.. node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls.Select(draw => (mesh, draw)))];
         Parts = node.RenderableMeshes
             .SelectMany(mesh => mesh.DrawCalls.Select(draw => new PreviewPart(mesh.Name, draw.Material.Material.Name, draw.Material.ShaderName, draw.IndexCount)))
             .ToArray();
@@ -245,7 +249,7 @@ public sealed partial class PreviewSession : IDisposable
     /// <summary>Multiplies part <paramref name="index"/> (order of <see cref="Parts"/>) by an RGBA tint; (1,1,1,1) clears it.</summary>
     public void SetPartTint(int index, Vector4 tint)
     {
-        var draw = node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
+        var draw = drawOrder[index].Draw;
         draw.TintColor = tint;
     }
 
@@ -258,7 +262,7 @@ public sealed partial class PreviewSession : IDisposable
     /// <summary>Hides or shows part <paramref name="index"/> (its draw call and its outline shell); the model is not changed.</summary>
     public void SetPartHidden(int index, bool hidden)
     {
-        var draw = node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(index);
+        var draw = drawOrder[index].Draw;
         if (hidden && !hiddenIndexCounts.ContainsKey(index))
         {
             hiddenIndexCounts[index] = draw.IndexCount;

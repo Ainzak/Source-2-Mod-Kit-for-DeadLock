@@ -63,7 +63,12 @@ public sealed partial class PreviewSession
             {
                 var at = v * part.Stride;
                 PartGeometry.Part.WriteVector(bytes, at + part.PositionOffset, Vector3.Transform(PartGeometry.Part.ReadVector(bytes, at + part.PositionOffset), matrix));
-                if (part.NormalOffset >= 0)
+                if (part.NormalPacked)
+                {
+                    var packed = BitConverter.ToUInt32(bytes, at + part.NormalOffset);
+                    BitConverter.TryWriteBytes(bytes.AsSpan(at + part.NormalOffset, 4), S2ModKit.Application.PackedNormalTangent.Turn(packed, normals, matrix));
+                }
+                else if (part.NormalOffset >= 0)
                 {
                     var n = Vector3.TransformNormal(PartGeometry.Part.ReadVector(bytes, at + part.NormalOffset), normals);
                     PartGeometry.Part.WriteVector(bytes, at + part.NormalOffset, n.LengthSquared() > 0 ? Vector3.Normalize(n) : n);

@@ -73,6 +73,85 @@ public static class CompiledMaterialEdit
         return (CompiledModelEdit.ReplaceBlocks(compiled, resource, new Dictionary<int, byte[]> { [resource.Blocks.IndexOf(material)] = stream.ToArray() }), changed, glow);
     }
 
+    /// <summary>
+    /// A copy of a compiled material drawn see-through (<c>set_material_opacity@1</c>): the hero shader's own translucency
+    /// (<c>F_TRANSLUCENT</c> with <c>F_WRITE_DEPTH_BEFORE_ALPHA_BLENDING</c>, as the game's translucent hero materials such as
+    /// Shiv's glasses have them), no outline (<c>F_DISABLE_NPR_OUTLINE</c>) and <c>g_flOpacityScale1</c> = <paramref name="opacity"/> (1 solid, 0 invisible). Settings the
+    /// material lacks are added in the layout of its own settings; everything else stays. Only <c>pbr.vfx</c> materials.
+    /// </summary>
+    public static byte[] SetOpacity(byte[] compiled, string logicalPath, float opacity)
+    {
+        ArgumentNullException.ThrowIfNull(compiled);
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(compiled));
+        if (resource.DataBlock is not Material material)
+        {
+            throw Errors.Input("MATERIAL_EDIT_NOT_A_MATERIAL", $"'{logicalPath}' is not a material.", "Pass a compiled .vmat_c.");
+        }
+
+        if (!string.Equals(material.ShaderName, "pbr.vfx", StringComparison.OrdinalIgnoreCase))
+        {
+            throw Errors.Unsupported("MATERIAL_OPACITY_SHADER", $"'{Path.GetFileName(logicalPath)}' uses the shader '{material.ShaderName}', which has no see-through setting the app knows.", "Only parts with the game's usual hero material can be made see-through.");
+        }
+
+        var root = material.Data;
+        if (!root.TryGetValue("m_intParams", out var ints) || !ints.IsArray || ints.Count == 0 || !root.TryGetValue("m_floatParams", out var floats) || !floats.IsArray || floats.Count == 0)
+        {
+            throw Errors.Unsupported("MATERIAL_OPACITY_LAYOUT", $"'{Path.GetFileName(logicalPath)}' has no settings to copy the layout from.", "Report the file.");
+        }
+
+        Set(ints, "F_TRANSLUCENT", "m_nValue", like => Whole(like, 1));
+        Set(ints, "F_WRITE_DEPTH_BEFORE_ALPHA_BLENDING", "m_nValue", like => Whole(like, 1));
+        Set(ints, "F_DISABLE_NPR_OUTLINE", "m_nValue", like => Whole(like, 1));   // a dark outline shell would show through the part
+        Set(floats, "g_flOpacityScale1", "m_flValue", like => Same(like, Math.Clamp(opacity, 0f, 1f)));
+        if (!floats.Values.Any(item => item["m_name"].ToString(CultureInfo.InvariantCulture) == "g_flAlphaAnglePower1"))
+        {
+            Set(floats, "g_flAlphaAnglePower1", "m_flValue", like => Same(like, 0f));
+        }
+
+        using var stream = new MemoryStream();
+        material.Serialize(stream);
+        return CompiledModelEdit.ReplaceBlocks(compiled, resource, new Dictionary<int, byte[]> { [resource.Blocks.IndexOf(material)] = stream.ToArray() });
+
+        static void Set(KVObject list, string name, string valueKey, Func<KVObject, KVObject> value)
+        {
+            var found = list.Values.FirstOrDefault(item => item["m_name"].ToString(CultureInfo.InvariantCulture) == name);
+            if (found is not null)
+            {
+                found[valueKey] = value(found[valueKey]);
+                return;
+            }
+
+            var template = list[0];
+            var entry = KVObject.Collection();
+            entry.Flag = template.Flag;
+            foreach (var (key, item) in template.Children)
+            {
+                entry.Add(key, key == "m_name" ? new KVObject(name) { Flag = item.Flag } : key == valueKey ? value(item) : item);
+            }
+
+            list.Add(entry);
+        }
+
+        static KVObject Whole(KVObject like, int number) => like.ValueType switch
+        {
+            KVValueType.UInt64 => (KVObject)(ulong)number,
+            KVValueType.UInt32 => (KVObject)(uint)number,
+            KVValueType.Int64 => (KVObject)(long)number,
+            _ => (KVObject)number,
+        };
+    }
+
+    /// <summary>The opacity a compiled material is drawn with: null when it is not see-through.</summary>
+    public static float? Opacity(byte[] compiled, string logicalPath)
+    {
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(compiled));
+        return resource.DataBlock is Material material && material.IntParams.GetValueOrDefault("F_TRANSLUCENT") == 1
+            ? material.FloatParams.GetValueOrDefault("g_flOpacityScale1", 1f)
+            : null;
+    }
+
     /// <summary>A material's texture settings (name to <c>.vtex</c> path without <c>_c</c>).</summary>
     public static IReadOnlyDictionary<string, string> Textures(byte[] compiled, string logicalPath)
     {

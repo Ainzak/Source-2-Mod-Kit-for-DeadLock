@@ -34,6 +34,24 @@ internal static class EffectFiles
         return found;
     }
 
+    /// <summary>A compiled file (a path with <c>_c</c>) from the first archive that has it, or null.</summary>
+    public static byte[]? ReadFirst(IReadOnlyList<string> archives, string compiledPath)
+    {
+        ArgumentNullException.ThrowIfNull(archives);
+        foreach (var archive in archives.Where(File.Exists))
+        {
+            using var package = new Package();
+            package.Read(archive);
+            if (package.FindEntry(compiledPath) is { } entry)
+            {
+                package.ReadEntry(entry, out var bytes);
+                return bytes;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>An effect and every child effect under it (any depth, at most <paramref name="limit"/> files), each from the first archive
     /// that has it.</summary>
     public static Dictionary<string, byte[]> ReadTree(IReadOnlyList<string> archives, string effect, int limit = 400)

@@ -320,7 +320,7 @@ public sealed partial class PreviewSession
 
     private sealed record Pixels(byte[] Rgba, int Width, int Height, byte[] Preview, int PreviewWidth, int PreviewHeight);
 
-    private DrawCall Draw(int index) => node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).ElementAt(picker.ParentOf(index));   // a piece draws with its part
+    private DrawCall Draw(int index) => drawOrder[picker.ParentOf(index)].Draw;   // a piece draws with its part
 
     private void DeleteRecolored()
     {

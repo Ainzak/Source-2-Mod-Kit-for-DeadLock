@@ -30,6 +30,9 @@ internal sealed record PartRecolor(int Part, string Texture, float[] Mask, int W
 /// <summary>One shiny part for a build: its normal-roughness texture (path without <c>_c</c>) and the shine (0-1, lower roughness).</summary>
 internal sealed record PartShine(int Part, string Texture, float Shine);
 
+/// <summary>A part drawn see-through: its material (<c>.vmat</c> path) gets <paramref name="Opacity"/> (1 solid, 0 invisible).</summary>
+internal sealed record PartOpacity(int Part, string Material, float Opacity);
+
 /// <summary>The last doctor check: the game build, the build it was compared with (null for a first check) and its findings.</summary>
 internal sealed record DoctorReport(int Build, int? ComparedWith, IReadOnlyList<DoctorFinding> Findings);
 
@@ -94,7 +97,7 @@ internal sealed record ModEntry(
 /// in place (<see cref="AddonModOperations"/>). <paramref name="managerState"/>: Deadlock Mod Manager state file (default:
 /// the installed manager's, if any); it is only read. The game probe and the Recycle Bin are replaceable for tests.
 /// </summary>
-internal sealed class ModCatalog(AppSettings settings, string? managerState = null, IGameProcessProbe? gameProbe = null, IRecycleBin? recycleBin = null)
+internal sealed partial class ModCatalog(AppSettings settings, string? managerState = null, IGameProcessProbe? gameProbe = null, IRecycleBin? recycleBin = null)
 {
     private readonly string? managerState = managerState ?? AppSettings.ManagerState;
     private readonly AddonFileStore store = new();
@@ -768,7 +771,12 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
     /// <paramref name="drop"/> (its other files unchanged, byte for byte), installs it and keeps the original disabled as the
     /// "old version" of the same mod (versions in the library). Nothing inside a file is rewritten. Refused while the game runs.
     /// </summary>
-    public async Task<CatalogChange> RepairAsync(ModEntry mod, IReadOnlyList<string> drop, CancellationToken cancellationToken = default)
+    public async Task<CatalogChange> RepairAsync(ModEntry mod, IReadOnlyList<string> drop, CancellationToken cancellationToken = default) =>
+        await RepairAsync(mod, drop, null, null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>The repair copy: the mod without <paramref name="drop"/> and with <paramref name="replace"/> (files written instead of the
+    /// mod's own); <paramref name="evidence"/> goes beside the package as <c>repair.json</c>.</summary>
+    private async Task<CatalogChange> RepairAsync(ModEntry mod, IReadOnlyList<string> drop, Dictionary<string, byte[]>? replace, object? evidence, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(mod);
         ArgumentNullException.ThrowIfNull(drop);
@@ -785,7 +793,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             foreach (var entry in source.Entries!.SelectMany(group => group.Value))
             {
                 var path = entry.GetFullPath();
-                if (!drop.Contains(path, StringComparer.OrdinalIgnoreCase))
+                if (replace is not null && replace.TryGetValue(path, out var replaced))
+                {
+                    entries[path] = replaced;
+                }
+                else if (!drop.Contains(path, StringComparer.OrdinalIgnoreCase))
                 {
                     source.ReadEntry(entry, out var bytes);
                     entries[path] = bytes;
@@ -803,6 +815,10 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         Directory.CreateDirectory(repairs);
         var package = Path.Combine(repairs, $"{Sanitize(mod.Name)}-repaired-{clock.UtcNow:yyyyMMdd-HHmmss}_dir.vpk");
         await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(package, entries, cancellationToken).ConfigureAwait(false);
+        if (evidence is not null)
+        {
+            await File.WriteAllTextAsync(Path.ChangeExtension(package, ".repair.json"), System.Text.Json.JsonSerializer.Serialize(evidence, IndentedJson), cancellationToken).ConfigureAwait(false);
+        }
 
         var disabled = await DisableAsync(mod, cancellationToken).ConfigureAwait(false);   // the original must not win over its repair
         AddonFileResult installed;
@@ -836,16 +852,21 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
         versions.Add(new ModLibraryVersion { Key = repairedKey, Label = $"repaired {day}" });
         await libraryStore.SaveAsync(settings.LibraryPath, library.WithVersions(known?.Name ?? mod.Name, versions, clock.UtcNow), cancellationToken).ConfigureAwait(false);
-        return new CatalogChange(repairedKey, $"Repaired '{mod.Name}': {drop.Count} outdated game file(s) left out. The original is kept disabled as the old version.");
+        var what = new[]
+        {
+            replace is { Count: > 0 } ? $"{replace.Count} model(s) got the game's current settings and attachment points" : null,
+            drop.Count > 0 ? $"{drop.Count} outdated game file(s) left out" : null,
+        };
+        return new CatalogChange(repairedKey, $"Repaired '{mod.Name}': {string.Join("; ", what.OfType<string>())}. The original is kept disabled as the old version.");
     }
 
     /// <summary>Builds an edited copy with parts hidden (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildEditedAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, hidden, [], null, null, null, null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, hidden, [], null, null, null, null, null, cancellationToken);
 
     /// <summary>Builds a recolored copy (see <see cref="BuildEditsAsync"/>).</summary>
     public Task<CatalogChange> BuildRecoloredAsync(ModEntry? mod, string modelPath, IReadOnlyList<PartRecolor> parts, CancellationToken cancellationToken = default) =>
-        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, null, null, null, cancellationToken);
+        BuildEditsAsync(mod, modelPath, new HashSet<int>(), parts, null, null, null, null, null, cancellationToken);
 
     /// <summary>
     /// Builds one edited copy of <paramref name="modelPath"/> with every change made in the app: <paramref name="hidden"/> parts get
@@ -857,8 +878,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
     /// </summary>
     public Task<CatalogChange> BuildEditsAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
         IReadOnlyList<PartShapeEdit>? shapes = null, IReadOnlyDictionary<string, EffectColorChange>? effects = null, IReadOnlyList<PartShine>? shines = null,
-        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added = null, CancellationToken cancellationToken = default) =>
-        BuildEditsCoreAsync(mod, modelPath, hidden, recolors, shapes, effects, shines, added, null, cancellationToken);
+        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added = null, IReadOnlyList<PartOpacity>? opacities = null, CancellationToken cancellationToken = default) =>
+        BuildEditsCoreAsync(mod, modelPath, hidden, recolors, shapes, effects, shines, added, opacities, null, cancellationToken);
 
     /// <summary>
     /// Re-apply edits: builds a mod the app made again from its recipe (<see cref="EditRecipe"/>) on the current game files, or the base
@@ -903,7 +924,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             new PartShape(Vector(shape.Scale), Vector(shape.RotationDegrees), Vector(shape.Move), shape.Pivot), Vector(shape.BoundsMin), Vector(shape.BoundsMax), shape.Displacement, shape.Level)).ToArray();
         var change = await BuildEditsCoreAsync(baseMod, recipe.Model, recipe.Hidden.ToHashSet(), recolors, shapes, recipe.Effects,
             [.. (recipe.Shines ?? []).Select(shine => new PartShine(shine.Part, shine.Texture, shine.Shine))],
-            [.. (recipe.Added ?? []).Select(effect => new S2ModKit.Adapters.Source2.AddedEffect(effect.Effect, effect.Bone, Vector(effect.Offset)))], edited, cancellationToken).ConfigureAwait(false);
+            [.. (recipe.Added ?? []).Select(effect => new S2ModKit.Adapters.Source2.AddedEffect(effect.Effect, effect.Bone, Vector(effect.Offset), effect.Source, effect.Parent))],
+            [.. (recipe.Opacities ?? []).Select(part => new PartOpacity(part.Part, part.Material, part.Opacity))], edited, cancellationToken).ConfigureAwait(false);
         return baseMod is null ? change : change with { Message = change.Message + " Edits re-applied. The original mod may still need an update from its author." };
 
         static System.Numerics.Vector3 Vector(float[] values) => new(values[0], values[1], values[2]);
@@ -911,8 +933,9 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
 
     private async Task<CatalogChange> BuildEditsCoreAsync(ModEntry? mod, string modelPath, IReadOnlySet<int> hidden, IReadOnlyList<PartRecolor> recolors,
         IReadOnlyList<PartShapeEdit>? shapes, IReadOnlyDictionary<string, EffectColorChange>? effects, IReadOnlyList<PartShine>? shines,
-        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added, ModEntry? installAs, CancellationToken cancellationToken)
+        IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>? added, IReadOnlyList<PartOpacity>? opacities, ModEntry? installAs, CancellationToken cancellationToken)
     {
+        opacities ??= [];
         shines ??= [];
         added ??= [];
         ArgumentNullException.ThrowIfNull(hidden);
@@ -920,7 +943,7 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         shapes ??= [];
         effects ??= new Dictionary<string, EffectColorChange>();
         Management.EnsureGameStopped();
-        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0 && effects.Count == 0 && shines.Count == 0 && added.Count == 0)
+        if (hidden.Count == 0 && recolors.Count == 0 && shapes.Count == 0 && effects.Count == 0 && shines.Count == 0 && added.Count == 0 && opacities.Count == 0)
         {
             throw Errors.Input("MODEL_EDIT_NOTHING", "Nothing is changed.", "Hide, recolor or reshape a part, or recolor or add effects first.");
         }
@@ -976,23 +999,57 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             entries[logical] = S2ModKit.Adapters.Source2.CompiledModelEdit.HideDrawCalls(model.ToArray(), logical, hidden);
         }
 
+        var withAbilities = new List<S2ModKit.Adapters.Source2.AddedEffect>();   // added to an ability's effect after the recolors, below
         if (added.Count > 0)
         {
-            // always-on effects: the model lists them and gets a point per placed effect (add_model_effects@1)
             var game = Path.Combine(settings.Game, "citadel", "pak01_dir.vpk");
-            var model = entries.TryGetValue(logical, out var current) ? current.ToArray()
-                : ReadFirst([game], logical)
-                ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
-            var template = ReadFirst([game], S2ModKit.Adapters.Source2.CompiledAddedEffects.TemplateEffect + "_c")
-                ?? throw Errors.Unsupported("ADDED_EFFECT_TEMPLATE", "The game no longer has the effect that added effects are built from.", "Update S2ModKit.");
-            if (added.FirstOrDefault(effect => !entries.ContainsKey(effect.Effect + "_c") && ReadFirst([game], effect.Effect + "_c") is null) is { } missing)
+            // effects from another mod or a loose file: their files are copied under new names, the source is not touched
+            var placed = new List<S2ModKit.Adapters.Source2.AddedEffect>();
+            using (var gamePackage = new SteamDatabase.ValvePak.Package())
             {
-                throw Errors.Input("ADDED_EFFECT_MISSING", $"The effect '{missing.Effect}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Choose the effect again; a game update may have removed it.");
+                gamePackage.Read(game);
+                foreach (var effect in added)
+                {
+                    if (effect.Source is null)
+                    {
+                        if (!entries.ContainsKey(effect.Effect + "_c") && gamePackage.FindEntry(effect.Effect + "_c") is null)
+                        {
+                            throw Errors.Input("ADDED_EFFECT_MISSING", $"The effect '{effect.Effect}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Choose the effect again; a game update may have removed it.");
+                        }
+
+                        placed.Add(effect);
+                        continue;
+                    }
+
+                    if (!File.Exists(effect.Source))
+                    {
+                        throw Errors.Input("ADDED_EFFECT_SOURCE", $"'{effect.Source}', where the effect '{Path.GetFileName(effect.Effect)}' came from, is not there any more.", "Install that mod again (or put the file back), or remove the effect and build again.");
+                    }
+
+                    var copy = EffectClosure.Read(effect.Source, effect.Effect).Copy($"particles/s2modkit/{Path.GetFileNameWithoutExtension(logical[..^2])}/copied/", path => gamePackage.FindEntry(path) is not null);
+                    foreach (var (path, bytes) in copy.Files)
+                    {
+                        entries[path] = bytes;
+                    }
+
+                    placed.Add(effect with { Effect = copy.Effect });
+                }
             }
 
-            foreach (var (path, bytes) in await Task.Run(() => S2ModKit.Adapters.Source2.CompiledAddedEffects.Build(model, logical, template, added), cancellationToken).ConfigureAwait(false))
+            withAbilities.AddRange(placed.Where(effect => effect.Parent is not null));
+            var always = placed.Where(effect => effect.Parent is null).ToArray();
+            if (always.Length > 0)
             {
-                entries[path] = bytes;
+                // always-on effects: the model lists them and gets a point per placed effect (add_model_effects@1)
+                var model = entries.TryGetValue(logical, out var current) ? current.ToArray()
+                    : ReadFirst([game], logical)
+                    ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
+                var template = ReadFirst([game], S2ModKit.Adapters.Source2.CompiledAddedEffects.TemplateEffect + "_c")
+                    ?? throw Errors.Unsupported("ADDED_EFFECT_TEMPLATE", "The game no longer has the effect that added effects are built from.", "Update S2ModKit.");
+                foreach (var (path, bytes) in await Task.Run(() => S2ModKit.Adapters.Source2.CompiledAddedEffects.Build(model, logical, template, always), cancellationToken).ConfigureAwait(false))
+                {
+                    entries[path] = bytes;
+                }
             }
         }
 
@@ -1193,6 +1250,84 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
             }
         }
 
+        var opacityEvidence = new List<object>();
+        if (opacities.Count > 0)
+        {
+            // see-through (set_material_opacity@1): the hero shader's translucency is the colour texture's alpha times the material's
+            // opacity. The material turns translucent and its colour texture gets a solid alpha with the chosen parts lowered, so only
+            // they show through (an opaque material's colour alpha is unused, often 0, which would hide the whole material).
+            var archives = new List<string>();
+            if (mod is not null)
+            {
+                archives.Add(mod.Files[0]);
+            }
+
+            string[] gameArchives = [Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"), Path.Combine(settings.Game, "core", "pak01_dir.vpk")];
+            archives.AddRange(gameArchives);
+            var model = entries.TryGetValue(logical, out var built) ? built.ToArray() : ReadFirst(archives, logical)
+                ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
+            foreach (var group in opacities.GroupBy(part => part.Material, StringComparer.OrdinalIgnoreCase))
+            {
+                var material = group.Key + "_c";
+                var bytes = entries.TryGetValue(material, out var shipped) ? shipped.ToArray()
+                    : ReadFirst(archives, material)
+                    ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The material '{group.Key}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again and set the part see-through again.");
+                var gameMaterial = ReadFirst(gameArchives, material);
+                var gameOpacity = gameMaterial is null ? null : S2ModKit.Adapters.Source2.CompiledMaterialEdit.Opacity(gameMaterial, material);
+                var colour = S2ModKit.Adapters.Source2.CompiledMaterialEdit.Textures(bytes, material).GetValueOrDefault("g_tColor");
+                if (colour is null || colour.StartsWith("materials/default/", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw Errors.Unsupported("MATERIAL_OPACITY_NO_TEXTURE", $"'{group.Key}' has no colour texture of its own, so its parts cannot be made see-through one by one.", "Leave See-through off for this part.");
+                }
+
+                var texture = colour + "_c";
+                var compiled = (entries.TryGetValue(texture, out var recolored) ? recolored.ToArray() : ReadFirst(archives, texture))
+                    ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The texture '{colour}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again.");
+                try
+                {
+                    var (rgba, width, height, _) = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(compiled, texture);
+                    // the alpha starts from the game's own texture, so building again does not stack: solid, or the game's when it was translucent
+                    if (gameOpacity is null)
+                    {
+                        S2ModKit.Adapters.Preview.SeeThroughMath.Solid(rgba);
+                    }
+                    else if (ReadFirst(gameArchives, texture) is { } gameTexture)
+                    {
+                        var original = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(gameTexture, texture);
+                        if (original.Width == width && original.Height == height)
+                        {
+                            S2ModKit.Adapters.Preview.SeeThroughMath.CopyAlpha(rgba, original.Rgba);
+                        }
+                    }
+
+                    foreach (var part in group)
+                    {
+                        var mask = S2ModKit.Adapters.Preview.PartMasks.Mask(model, logical, part.Part, width, height);
+                        S2ModKit.Adapters.Preview.SeeThroughMath.Apply(rgba, mask, part.Opacity);
+                        opacityEvidence.Add(new { part = part.Part, material = group.Key, texture = colour, opacity = part.Opacity, texels = mask.Count(value => value > 0) });
+                    }
+
+                    entries[texture] = S2ModKit.Adapters.Source2.InPlaceTexture.Write(compiled, texture, width, height, rgba);
+                }
+                catch (S2ModKitException exception) when (exception.Error.Code.StartsWith("RECOLOR_", StringComparison.Ordinal))
+                {
+                    throw Errors.Input("MATERIAL_OPACITY_TEXTURE", $"The colour texture of '{group.Key}' cannot be written: {exception.Error.Summary}", "Leave See-through off for this part.");
+                }
+
+                entries[material] = S2ModKit.Adapters.Source2.CompiledMaterialEdit.SetOpacity(bytes, material, gameOpacity ?? 1f);
+            }
+        }
+
+        foreach (var effect in withAbilities)
+        {
+            // during an ability: the effect becomes a child of one of the ability's effects (its recolored copy when there is one)
+            var parent = effect.Parent! + "_c";
+            var bytes = entries.TryGetValue(parent, out var shipped) ? shipped.ToArray()
+                : ReadFirst([Path.Combine(settings.Game, "citadel", "pak01_dir.vpk")], parent)
+                ?? throw Errors.Input("ADDED_EFFECT_MISSING", $"The ability effect '{effect.Parent}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Choose the ability effect again; a game update may have removed it.");
+            entries[parent] = S2ModKit.Adapters.Source2.CompiledAddedEffects.AddChild(bytes, parent, effect.Effect);
+        }
+
         var changes = new List<string>();
         if (hidden.Count > 0)
         {
@@ -1212,6 +1347,11 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
         if (shines.Count > 0)
         {
             changes.Add($"{shines.Count} part{(shines.Count == 1 ? string.Empty : "s")} shiny");
+        }
+
+        if (opacities.Count > 0)
+        {
+            changes.Add($"{opacities.Count} part{(opacities.Count == 1 ? string.Empty : "s")} see-through");
         }
 
         if (effectEvidence.Count > 0)
@@ -1244,8 +1384,10 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 shapeOutputHash = shapeHashes?.Output,
                 effects = effectEvidence,
                 shines = shineEvidence,
+                opacityOperation = opacities.Count > 0 ? "set_material_opacity@1" : null,
+                opacities = opacityEvidence,
                 addedOperation = added.Count > 0 ? "add_model_effects@1" : null,
-                added = added.Select(effect => new { effect = effect.Effect, bone = effect.Bone, offset = new[] { effect.Offset.X, effect.Offset.Y, effect.Offset.Z } }),
+                added = added.Select(effect => new { effect = effect.Effect, source = effect.Source, withAbilityEffect = effect.Parent, bone = effect.Bone, offset = new[] { effect.Offset.X, effect.Offset.Y, effect.Offset.Z } }),
             }, IndentedJson), cancellationToken).ConfigureAwait(false);
         new EditRecipe(EditRecipe.CurrentSchema, await GameBuildAsync(cancellationToken).ConfigureAwait(false), modelPath, mod?.Name, mod?.ModId, mod?.Key,
             [.. hidden.Order()],
@@ -1255,7 +1397,8 @@ internal sealed class ModCatalog(AppSettings settings, string? managerState = nu
                 edit.Shape.Pivot, [edit.BoundsMin.X, edit.BoundsMin.Y, edit.BoundsMin.Z], [edit.BoundsMax.X, edit.BoundsMax.Y, edit.BoundsMax.Z], edit.Displacement, edit.Level))],
             new Dictionary<string, EffectColorChange>(effects, StringComparer.Ordinal), clock.UtcNow,
             [.. shines.Select(part => new RecipeShine(part.Part, part.Texture, part.Shine))],
-            [.. added.Select(effect => new RecipeAddedEffect(effect.Effect, effect.Bone, [effect.Offset.X, effect.Offset.Y, effect.Offset.Z]))]).Write(folder);   // for Re-apply edits after a game update
+            [.. added.Select(effect => new RecipeAddedEffect(effect.Effect, effect.Bone, [effect.Offset.X, effect.Offset.Y, effect.Offset.Z], effect.Source, effect.Parent))],
+            [.. opacities.Select(part => new RecipeOpacity(part.Part, part.Material, part.Opacity))]).Write(folder);   // for Re-apply edits after a game update
         return installAs is null
             ? await InstallVersionAsync(mod, name, package, label, cancellationToken).ConfigureAwait(false)
             : await InstallVersionAsync(installAs, installAs.Name, package, label, cancellationToken).ConfigureAwait(false);

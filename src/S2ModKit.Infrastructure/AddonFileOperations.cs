@@ -137,9 +137,8 @@ public sealed class SystemGameProcessProbe : IGameProcessProbe
     }
 }
 
-/// <summary>Sends files to the Windows Recycle Bin through the shell (the file system class in Microsoft.VisualBasic, part of the
-/// base runtime). Shell dialogs stay enabled so that a file the bin cannot hold (too large, bin disabled) asks before it
-/// would be deleted for good.</summary>
+/// <summary>Sends files to the Windows Recycle Bin through the shell. A file the bin cannot hold (too large, bin disabled) asks
+/// before it would be deleted for good; other shell error dialogs are off (the app reports the failure itself).</summary>
 public sealed class WindowsRecycleBin : IRecycleBin
 {
     public void Recycle(IReadOnlyList<string> paths)
@@ -152,9 +151,208 @@ public sealed class WindowsRecycleBin : IRecycleBin
 
         foreach (var path in paths)
         {
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path, Microsoft.VisualBasic.FileIO.UIOption.AllDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            WaitUntilFree(path);
+        }
+
+        foreach (var path in paths)
+        {
+            if (ShellRecycle(path))
+            {
+                continue;
+            }
+
+            // Windows sometimes refuses one particular file (seen 2026-11-11 with an addon: "in use" in the app, "invalid path"
+            // elsewhere, while nothing held it and a byte-identical copy went to the bin at once). A fresh copy under the same
+            // name goes to the bin instead, so restoring it gives the same file; the refused original is then removed.
+            var refused = path + ".s2mk-" + Guid.NewGuid().ToString("N")[..8];
+            File.Move(path, refused);
+            try
+            {
+                File.Copy(refused, path);
+                File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(refused));
+                if (!ShellRecycle(path))
+                {
+                    throw new IOException($"Windows did not move '{Path.GetFileName(path)}' to the Recycle Bin.");
+                }
+            }
+            catch
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);                                         // the copy; the original goes back
+                }
+
+                File.Move(refused, path);
+                throw;
+            }
+
+            File.Delete(refused);
         }
     }
+
+    /// <summary>Sends one file to the Recycle Bin without the shell's error dialogs; a file the bin cannot hold (too large, bin
+    /// disabled) still asks before it would be deleted for good. False when Windows refused it and the file is still there.</summary>
+    private static bool ShellRecycle(string path)
+    {
+        var operation = new ShFileOperation
+        {
+            Function = 3,                                                       // FO_DELETE
+            From = Path.GetFullPath(path) + "\0\0",
+            Flags = 0x0040 | 0x0010 | 0x0400 | 0x0004 | 0x4000,               // ALLOWUNDO, NOCONFIRMATION, NOERRORUI, SILENT, WANTNUKEWARNING
+        };
+        var result = SHFileOperation(ref operation);
+        if (operation.Aborted)
+        {
+            throw new OperationCanceledException($"Deleting '{Path.GetFileName(path)}' was cancelled.");
+        }
+
+        return result == 0 && !File.Exists(path);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct ShFileOperation
+    {
+        public IntPtr Window;
+        public uint Function;
+        public string From;
+        public string? To;
+        public ushort Flags;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public bool Aborted;
+        public IntPtr NameMappings;
+        public string? ProgressTitle;
+    }
+
+#pragma warning disable SYSLIB1054, CA5392 // classic shell interop with a structure; shell32 is a system library
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int SHFileOperation(ref ShFileOperation operation);
+#pragma warning restore SYSLIB1054, CA5392
+
+    /// <summary>
+    /// Waits up to two seconds for nothing to hold <paramref name="path"/> open (an archive reader that was let go but not yet
+    /// collected is closed by a collection), so the shell does not stop on its "file in use" dialog. A file still held is refused
+    /// with the programs that hold it.
+    /// </summary>
+    private static void WaitUntilFree(string path)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    return;
+                }
+            }
+            catch (IOException) when (attempt < 8)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                Thread.Sleep(250);
+            }
+            catch (IOException)
+            {
+                var holders = OpenFileHolders.Of(path);
+                throw Errors.Verification("ADDON_FILE_IN_USE",
+                    $"'{Path.GetFileName(path)}' is open in {(holders.Count == 0 ? "another program" : string.Join(", ", holders))}.",
+                    holders.Any(name => name.StartsWith("S2ModKit", StringComparison.OrdinalIgnoreCase))
+                        ? "Pick another mod in the list and delete again."
+                        : "Close it there and delete again.");
+            }
+        }
+    }
+}
+
+/// <summary>The programs that hold a file open, from the Windows Restart Manager (names with process ids; empty when unknown).</summary>
+internal static class OpenFileHolders
+{
+    public static IReadOnlyList<string> Of(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return [];
+        }
+
+        try
+        {
+            if (RmStartSession(out var session, 0, Guid.NewGuid().ToString("N")) != 0)
+            {
+                return [];
+            }
+
+            try
+            {
+                if (RmRegisterResources(session, 1, [path], 0, IntPtr.Zero, 0, null) != 0)
+                {
+                    return [];
+                }
+
+                uint needed = 0, count = 0;
+                uint reasons = 0;
+                var result = RmGetList(session, out needed, ref count, null, ref reasons);
+                if (result != 234 || needed == 0)                           // ERROR_MORE_DATA: there are holders
+                {
+                    return [];
+                }
+
+                var list = new RmProcessInfo[needed];
+                count = needed;
+                if (RmGetList(session, out needed, ref count, list, ref reasons) != 0)
+                {
+                    return [];
+                }
+
+                return [.. list.Take((int)count).Select(item => $"{item.AppName} ({item.Process.ProcessId})")];
+            }
+            finally
+            {
+                _ = RmEndSession(session);
+            }
+        }
+#pragma warning disable CA1031 // only a better message: the refusal stands without it
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return [];
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RmUniqueProcess
+    {
+        public int ProcessId;
+        public System.Runtime.InteropServices.ComTypes.FILETIME StartTime;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct RmProcessInfo
+    {
+        public RmUniqueProcess Process;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string AppName;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string ServiceShortName;
+        public int ApplicationType;
+        public uint AppStatus;
+        public uint TSSessionId;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public bool Restartable;
+    }
+
+#pragma warning disable SYSLIB1054, CA5392 // classic interop with arrays of structures; Restart Manager is a system library
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int RmStartSession(out uint session, int flags, string key);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll")]
+    private static extern int RmEndSession(uint session);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int RmRegisterResources(uint session, uint files, string[] names, uint applications, IntPtr processes, uint services, string[]? serviceNames);
+
+    [System.Runtime.InteropServices.DllImport("rstrtmgr.dll")]
+    private static extern int RmGetList(uint session, out uint needed, ref uint count, [System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out] RmProcessInfo[]? list, ref uint reasons);
+#pragma warning restore SYSLIB1054, CA5392
 }
 
 public sealed class ModLibraryStore : IModLibraryStore

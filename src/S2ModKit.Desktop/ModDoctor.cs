@@ -16,13 +16,18 @@ internal sealed record ModFacts(
     string Name,
     IReadOnlyDictionary<string, uint> Overrides,
     IReadOnlyList<string> MissingReferences,
-    IReadOnlyDictionary<string, IReadOnlyList<string>> MissingBones);
+    IReadOnlyDictionary<string, IReadOnlyList<string>> MissingBones,
+    IReadOnlyDictionary<string, ModelSettingsGap>? ModelGaps = null);
+
+/// <summary>What a mod's hero model lacks that the current game model has and the app can restore (settings blocks and attachment points).</summary>
+internal sealed record ModelSettingsGap(IReadOnlyList<string> Settings, IReadOnlyList<string> Attachments);
 
 /// <summary>One doctor run: the game build it saw and the facts of every mod (enabled or not).</summary>
 internal sealed record DoctorSnapshot(int Build, DateTimeOffset CheckedUtc, IReadOnlyList<ModFacts> Mods);
 
 /// <summary>What the doctor says about one mod after comparing two snapshots.</summary>
-internal sealed record DoctorFinding(string Key, string Name, DoctorVerdict Verdict, IReadOnlyList<string> Reasons, IReadOnlyList<string> StaleOverrides);
+internal sealed record DoctorFinding(string Key, string Name, DoctorVerdict Verdict, IReadOnlyList<string> Reasons, IReadOnlyList<string> StaleOverrides,
+    IReadOnlyList<string>? RestoreModels = null);
 
 internal enum DoctorVerdict
 {
@@ -43,6 +48,9 @@ internal enum DoctorVerdict
 /// particles) or the game's hero model gained bones the mod's model lacks (that part may not move; often harmless);</item>
 /// <item>Works otherwise.</item>
 /// </list>
+/// Settings and attachment points a replaced hero model lacks (<see cref="S2ModKit.Adapters.Source2.CompiledModelRestore"/>) are
+/// added by a repair that happens for another reason, but never flag a mod on their own: the owner's in-game check (2026-11-11)
+/// found no visible defect from them, and a repaired broken mod stayed broken.
 /// </summary>
 internal static class DoctorRules
 {
@@ -59,6 +67,9 @@ internal static class DoctorRules
         foreach (var mod in current.Mods)
         {
             var reasons = new List<string>();
+            var gaps = (mod.ModelGaps ?? new Dictionary<string, ModelSettingsGap>()).Where(pair => pair.Value.Settings.Count > 0 || pair.Value.Attachments.Count > 0)
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+            IReadOnlyList<string> restore = [.. gaps.Select(pair => pair.Key)];
             if (baseline is null || !before.TryGetValue(mod.Key, out var old))
             {
                 findings.Add(new DoctorFinding(mod.Key, mod.Name, DoctorVerdict.Works, [], []));    // nothing to compare with yet
@@ -92,11 +103,32 @@ internal static class DoctorRules
             }
 
             var verdict = newMissing.Length > 0 ? DoctorVerdict.Broken : stale.Length > 0 ? DoctorVerdict.Repairable : reasons.Count > 0 ? DoctorVerdict.Look : DoctorVerdict.Works;
-            findings.Add(new DoctorFinding(mod.Key, mod.Name, verdict, reasons, stale));
+            if (verdict == DoctorVerdict.Repairable)
+            {
+                foreach (var (model, gap) in gaps)                         // added by a repair that happens anyway; never a reason on its own
+                {
+                    reasons.Add($"The repair also gives its {Path.GetFileNameWithoutExtension(model.Replace("_c", string.Empty, StringComparison.Ordinal))} model what the game's has and it lacks: "
+                        + string.Join(", ", gap.Settings.Select(Describe).Concat(gap.Attachments.Count > 0 ? [$"{gap.Attachments.Count} attachment point(s)"] : [])) + ".");
+                }
+            }
+
+            findings.Add(new DoctorFinding(mod.Key, mod.Name, verdict, reasons, stale, verdict == DoctorVerdict.Repairable ? restore : []));
         }
 
         return findings;
     }
+
+    /// <summary>A plain name for a settings block of a hero model.</summary>
+    public static string Describe(string block) => block switch
+    {
+        "CitadelCameraSettings_t" => "camera",
+        "AttachmentCameraData" => "cameras",
+        "CitadelUnitStatusSettings_t" => "health bar position",
+        "TaggedSoundSettings_t" => "animation sounds",
+        "CitadelModelSceneData_t" => "hero-select scene",
+        "CitadelModelDamageNumberSettings_t" => "damage numbers",
+        _ => block,
+    };
 
     /// <summary>A reference worth checking: a full path to a compiled kind that shows in game. Legacy animation-graph references,
     /// the game's default textures and bare editor names are left out: mods that work carry them.</summary>
@@ -125,6 +157,7 @@ internal sealed class DoctorScanner(string game) : IDisposable
         var overrides = new SortedDictionary<string, uint>(StringComparer.Ordinal);
         var missing = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var bones = new SortedDictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var gaps = new SortedDictionary<string, ModelSettingsGap>(StringComparer.Ordinal);
         var packages = archives.Where(File.Exists).Select(path => { var package = new Package(); package.Read(path); return package; }).ToArray();
         try
         {
@@ -158,6 +191,18 @@ internal sealed class DoctorScanner(string game) : IDisposable
                         && BonesOf(bytes) is { } modBones && ReadVanilla(original) is { } gameBytes && BonesOf(gameBytes) is { } gameBones)
                     {
                         bones[path] = [.. gameBones.Except(modBones).Where(DoctorRules.IsCheckedBone).Order(StringComparer.Ordinal)];
+                        try
+                        {
+                            var gap = S2ModKit.Adapters.Source2.CompiledModelRestore.Gaps(bytes, gameBytes, path);
+                            if (gap.Any)
+                            {
+                                gaps[path] = new ModelSettingsGap(gap.Settings, gap.Attachments);
+                            }
+                        }
+                        catch (Exception exception) when (exception is S2ModKit.Domain.S2ModKitException or InvalidDataException or KeyNotFoundException or InvalidOperationException or ArgumentException)
+                        {
+                            AppLog.Error($"Comparing {path} of '{name}' with the game's model", exception);   // not restorable; the other checks stand
+                        }
                     }
                 }
             }
@@ -170,7 +215,7 @@ internal sealed class DoctorScanner(string game) : IDisposable
             }
         }
 
-        return new ModFacts(key, name, overrides, [.. missing], bones);
+        return new ModFacts(key, name, overrides, [.. missing], bones, gaps);
     }
 
     private void LoadVanilla()

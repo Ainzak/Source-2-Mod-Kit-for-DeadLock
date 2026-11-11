@@ -79,6 +79,9 @@ internal sealed class PartGeometry
 
         public int NormalOffset { get; private init; } = -1;
 
+        /// <summary>The normal (and tangent) is packed in one 32-bit value (see <see cref="S2ModKit.Application.PackedNormalTangent"/>).</summary>
+        public bool NormalPacked { get; private init; }
+
         public bool Shared { get; set; }
 
         /// <summary>Null when the part can be reshaped in the preview, else the reason in plain words.</summary>
@@ -142,7 +145,8 @@ internal sealed class PartGeometry
                 Max = max,
                 PositionOffset = position.SemanticName is null ? -1 : (int)position.Offset,
                 PositionIsFloat = position.SemanticName is not null && Float3(position),
-                NormalOffset = normal.SemanticName is not null && Float3(normal) ? (int)normal.Offset : -1,   // packed normals keep their direction
+                NormalOffset = normal.SemanticName is not null && (Float3(normal) || normal.Format.ToString() == "R32_UINT") ? (int)normal.Offset : -1,
+                NormalPacked = normal.SemanticName is not null && normal.Format.ToString() == "R32_UINT",
             };
         }
 

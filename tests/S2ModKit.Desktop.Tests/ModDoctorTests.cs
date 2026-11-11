@@ -22,6 +22,19 @@ public sealed class ModDoctorTests
     }
 
     [Fact]
+    public void AnOlderHeroModelAloneIsNotFlagged()
+    {
+        var gaps = new Dictionary<string, ModelSettingsGap> { ["models/heroes_wip/ivy/ivy.vmdl_c"] = new(["TaggedSoundSettings_t"], ["healthbar"]) };
+        var current = new DoctorSnapshot(100, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }]);
+        var later = new DoctorSnapshot(101, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }]);
+
+        Assert.Equal(DoctorVerdict.Works, Assert.Single(DoctorRules.Compare(null, current)).Verdict);
+        var finding = Assert.Single(DoctorRules.Compare(current, later));
+        Assert.Equal(DoctorVerdict.Works, finding.Verdict);
+        Assert.Empty(finding.Reasons);
+    }
+
+    [Fact]
     public void AfterAnUpdateEachKindOfChangeGetsItsVerdict()
     {
         var before = new DoctorSnapshot(100, DateTimeOffset.UnixEpoch,

@@ -46,6 +46,16 @@ internal sealed partial class PreviewPane : UserControl
     private readonly ToggleButton colourTab = new() { Content = "Colour" };
     private readonly ToggleButton shapeTab = new() { Content = "Shape" };
     private readonly ContentControl toolHost = new();
+    private readonly TextBlock buildingNote = new()
+    {
+        IsVisible = false,
+        FontSize = 14,
+        FontWeight = FontWeight.SemiBold,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 6),
+        Foreground = new SolidColorBrush(Color.FromRgb(250, 200, 90)),
+    };
+
     private readonly TextBlock changeSummary = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
     private readonly Button buildEdited = new() { Content = "Build edited mod", IsEnabled = false };
     private IReadOnlyList<PartRow> parts = [];
@@ -61,6 +71,8 @@ internal sealed partial class PreviewPane : UserControl
     private readonly Slider saturation = new() { Minimum = 0, Maximum = 2, Value = 1 };
     private readonly Slider brightness = new() { Minimum = 0, Maximum = 3, Value = 1 };
     private readonly Slider shine = new() { Minimum = 0, Maximum = 1, Value = 0 };
+    private readonly Slider seeThrough = new() { Minimum = 0, Maximum = 0.95, Value = 0 };
+    private readonly TextBlock seeThroughNote = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock shineNote = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
     private readonly CheckBox paint = new() { Content = "Paint a colour" };
     private readonly ColorPicker paintColor = new();
@@ -90,7 +102,7 @@ internal sealed partial class PreviewPane : UserControl
 
     /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
     /// parts and the reshaped parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>>? BuildRequested;
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>, IReadOnlyDictionary<int, float>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
     private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
@@ -169,6 +181,22 @@ internal sealed partial class PreviewPane : UserControl
                 }
 
                 preview.RequestPartShine(row.Index, shine.Value > 0.005 ? (float)shine.Value : null);
+                UpdateSummary();
+            }
+        };
+        seeThrough.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == RangeBase.ValueProperty && !settingSliders && selected is { } row)
+            {
+                if (seeThrough.Value > 0.005)
+                {
+                    preview.PartSeeThrough[row.Index] = (float)seeThrough.Value;
+                }
+                else
+                {
+                    preview.PartSeeThrough.Remove(row.Index);
+                }
+
                 UpdateSummary();
             }
         };
@@ -263,7 +291,7 @@ internal sealed partial class PreviewPane : UserControl
             if (model.SelectedItem is string modelPath && CanBuild)
             {
                 BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
-                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines), AddedEffects);
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines), AddedEffects, new Dictionary<int, float>(preview.PartSeeThrough));
             }
         };
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
@@ -370,6 +398,18 @@ internal sealed partial class PreviewPane : UserControl
         }
     }
 
+    /// <summary>Shows that a build is running (null: it ended): a large note above the changes, and the build button off.</summary>
+    public void ShowBuilding(string? note)
+    {
+        buildingNote.Text = note ?? string.Empty;
+        buildingNote.IsVisible = note is not null;
+        buildEdited.Content = note is null ? "Build edited mod" : "Building...";
+        buildEdited.IsEnabled = note is null && CanBuild;
+    }
+
+    /// <summary>For the window's screenshot mode: makes the selected part see-through by <paramref name="amount"/>.</summary>
+    public void SeeThroughForShot(double amount) => seeThrough.Value = amount;
+
     /// <summary>The parts currently hidden in the preview (indices into the session's parts).</summary>
     public IReadOnlyCollection<int> HiddenParts => preview.Hidden;
 
@@ -377,7 +417,7 @@ internal sealed partial class PreviewPane : UserControl
     public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
 
     private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
-        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartSeeThrough.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
@@ -386,6 +426,7 @@ internal sealed partial class PreviewPane : UserControl
     public void Show(ModEntry? entry, IReadOnlyList<ModEntry> all, string? vanillaModel = null)
     {
         mod = entry;
+        installed = all;
         updating = true;
         model.ItemsSource = entry?.Models ?? (vanillaModel is null ? [] : [vanillaModel]);
         model.SelectedIndex = 0;
@@ -436,6 +477,7 @@ internal sealed partial class PreviewPane : UserControl
         tools.Children.Add(toolHost);
 
         var footer = new StackPanel { Margin = new Thickness(10, 8) };
+        footer.Children.Add(buildingNote);
         footer.Children.Add(changeSummary);
         footer.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Button("Cancel all", CancelAll), buildEdited } });
         Grid.SetRow(footer, 3);
@@ -454,6 +496,8 @@ internal sealed partial class PreviewPane : UserControl
         colorPanel.Children.Add(Wrap(onlyLike, sampleSwatch, pickColor));
         colorPanel.Children.Add(Labelled("Tolerance", tolerance));
         colorPanel.Children.Add(Labelled("Shine", shine, "0%"));
+        colorPanel.Children.Add(Labelled("See-through (WIP)", seeThrough, "0%"));
+        colorPanel.Children.Add(seeThroughNote);
         colorPanel.Children.Add(shineNote);
         colorPanel.Children.Add(Wrap(Button("Reset colour", ResetColor)));
 
@@ -770,6 +814,11 @@ internal sealed partial class PreviewPane : UserControl
             changes.Add($"{preview.PartShines.Count} shiny");
         }
 
+        if (preview.PartSeeThrough.Count > 0)
+        {
+            changes.Add($"{preview.PartSeeThrough.Count} see-through");
+        }
+
         if (NewAddedCount > 0)
         {
             changes.Add($"{NewAddedCount} effect{(NewAddedCount == 1 ? string.Empty : "s")} added");
@@ -805,6 +854,12 @@ internal sealed partial class PreviewPane : UserControl
         saturation.Value = change.Saturation;
         brightness.Value = change.Brightness;
         shine.Value = preview.PartShines.GetValueOrDefault(row.Index);
+        seeThrough.Value = preview.PartSeeThrough.GetValueOrDefault(row.Index);
+        var sharers = preview.Session?.PartMaterialSharers(row.Index) ?? 0;
+        seeThroughNote.Text = "See-through (work in progress): every part painted from the same area of the colour texture turns see-through too "
+            + "(often both boots, or a boot and the skirt), and what is behind it or its hollow inside shows. "
+            + "Building takes up to a minute (the whole colour texture is written again). The preview does not show it: build and look in game"
+            + (sharers > 0 ? $". The {sharers} other part{(sharers == 1 ? " that shares" : "s that share")} its material lose their dark outline." : ".");
         shine.IsEnabled = preview.Session?.PartNormalTexture(row.Index) is not null;
         shineNote.Text = shine.IsEnabled ? "Shine lowers the part's roughness: it reflects like latex or metal in game."
             : "This part's material has no roughness texture, so shine cannot change it.";
@@ -1021,6 +1076,7 @@ internal sealed partial class PreviewPane : UserControl
         }
 
         preview.PartShines.Clear();
+        preview.PartSeeThrough.Clear();
 
         foreach (var part in ranges.Keys.ToArray())
         {
@@ -1059,7 +1115,7 @@ internal sealed partial class PreviewPane : UserControl
     /// <summary>A label and a slider on one line (and its value, when a format is given), to keep the tool column short.</summary>
     private static Grid Labelled(string label, Slider slider, string? format = null)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("72,*,52"), Margin = new Thickness(0, -4) };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("116,*,48"), Margin = new Thickness(0, -4) };
         row.Children.Add(new TextBlock { Text = label, Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         Detach(slider);
         Grid.SetColumn(slider, 1);

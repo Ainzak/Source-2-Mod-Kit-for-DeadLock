@@ -14,7 +14,7 @@ public sealed record PartReshape(int Part, Matrix4x4 Matrix);
 
 /// <summary>
 /// Reshapes parts of a compiled model directly (<c>shape_part@1</c>): the vertices a part's triangles use are transformed in bind
-/// pose (positions; normals only where stored as plain floats, as the preview does) in its own vertex buffer, in every level of detail
+/// pose (positions, normals and tangents, plain floats or packed in one 32-bit value) in its own vertex buffer, in every level of detail
 /// of the same mesh (meshes named <c>name</c>, <c>name_lod1</c>, ... with a draw call of the part's material). The vertex blocks are
 /// re-encoded in their own format (meshoptimizer when they were) and checked by decoding them again. The bounds the game reads for
 /// those meshes are recomputed from the vertices, as the compiler stores them (checked first against the file's own values): scene
@@ -140,13 +140,17 @@ public static partial class CompiledPartReshape
         return resource;
     }
 
-    /// <summary>Positions (and float normals) of vertices <paramref name="min"/>..<paramref name="max"/> through <paramref name="matrix"/>.</summary>
+    /// <summary>Positions, normals and tangents of vertices <paramref name="min"/>..<paramref name="max"/> through <paramref name="matrix"/>
+    /// (normals by its inverse transpose, so a turned or stretched part is lit as it now faces).</summary>
     private static void Transform(byte[] data, VBIB.OnDiskBufferData buffer, int min, int max, Matrix4x4 matrix)
     {
         var stride = (int)buffer.ElementSizeInBytes;
         var position = Field(buffer, "POSITION");
         var normal = Field(buffer, "NORMAL");
+        var tangent = Field(buffer, "TANGENT");
         var floatNormal = normal is { } n && n.Format.ToString() is "R32G32B32_FLOAT" or "R32G32B32A32_FLOAT";
+        var packedNormal = normal is { } p && p.Format.ToString() == "R32_UINT";
+        var floatTangent = tangent is { } t && t.Format.ToString() is "R32G32B32_FLOAT" or "R32G32B32A32_FLOAT";
         var normals = Matrix4x4.Invert(matrix, out var inverse) ? Matrix4x4.Transpose(inverse) : Matrix4x4.Identity;
         for (var v = min; v <= max; v++)
         {
@@ -156,6 +160,18 @@ public static partial class CompiledPartReshape
             {
                 var turned = Vector3.TransformNormal(Read(data, at + (int)normal!.Value.Offset), normals);
                 Write(data, at + (int)normal.Value.Offset, turned.LengthSquared() > 0 ? Vector3.Normalize(turned) : turned);
+            }
+            else if (packedNormal)
+            {
+                var offset = at + (int)normal!.Value.Offset;
+                var packed = BitConverter.ToUInt32(data, offset);
+                BitConverter.TryWriteBytes(data.AsSpan(offset, 4), S2ModKit.Application.PackedNormalTangent.Turn(packed, normals, matrix));
+            }
+
+            if (floatTangent)
+            {
+                var turned = Vector3.TransformNormal(Read(data, at + (int)tangent!.Value.Offset), matrix);   // its fourth value (the sign) stays
+                Write(data, at + (int)tangent.Value.Offset, turned.LengthSquared() > 0 ? Vector3.Normalize(turned) : turned);
             }
         }
     }

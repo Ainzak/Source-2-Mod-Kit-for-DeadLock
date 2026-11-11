@@ -515,7 +515,9 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
    (files it replaces, references and bones) and marks mods that work, are worth a look, can be repaired or need their
    author; the list then shows only the mods that are not marked as working (kind filter **Flagged by Check mods**; click one for the reasons).
    **Repair** makes a fixed copy and keeps the original as a disabled old version; nothing is disabled by
-   itself.
+   itself. A repaired hero model also gets settings later updates added to the game's model and it lacks (cameras,
+   health bar position, animation sounds, hero-select scene). **Repair all** (above the list) repairs every mod the last
+   check marked repairable, one after another.
 6. **Preview.** Tabs above the main area show the mod's **Preview**, **Sounds** and **Files** (tabs without content
    are hidden). A model mod opens in the game's hero-select lighting with the ink outline:
    - **Show**: this mod, the game's model, or another mod for the same hero; **Include my enabled mods** also loads
@@ -589,6 +591,28 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
 21. **Settings window.** **Settings** opens one window with every rarely used choice: the game and data folders, the addons
     folder, refreshing the list, GameBanana updates, hidden conflicts, the preview (open automatically, 60 or 30 fps), app
     updates (on start or now, with the app's version) and the log. Choices are saved as they change.
+22. **Added effects.** The Effects tab's **Added effects** puts any effect of the game on a hero, always on. Search the list
+    (hero, ability or file name), **Play** an effect to see it alone, then **Place on the hero** and click the body: the
+    effect sits on that body part and follows it in every animation. **Add at the feet** is for effects around the whole
+    hero. The selected effect has a marker at the clicked point and three sliders that move it. An effect made for another
+    body can sit off the marker: move it until the effect itself is where you want it. **Build edited mod** writes the
+    effects into the hero's model, Re-apply edits keeps them, and the preview of the built mod plays them. Looping effects
+    suit best: one that plays once shows only when the hero appears. The preview draws some effects more coarsely than
+    the game does; their place is right.
+    Effects of installed mods are in the same list (search the mod's name), and **Browse...** takes a compiled effect file
+    (`.vpcf_c`); their files are copied into your build under new names, so the other mod is not changed and need not stay
+    installed for the game (Re-apply edits needs it again). **Add to this ability effect** makes the chosen effect play
+    during an ability instead: it starts with the ability effect you pick and plays at the same place.
+23. **See-through (work in progress).** The colour panel's **See-through** slider makes the selected part translucent in
+    game (0 leaves it solid). It works on the part's area of the colour texture, so every part painted from the same area
+    turns see-through too: often both boots, or a boot and the skirt. Heroes are not made to be seen through, so what is
+    behind the part, or its hollow inside, shows. Other parts that share its material lose their dark outline (the panel says
+    how many). Building takes up to a minute, because the whole colour texture is written again. The preview does not show
+    it yet: build and look in game.
+24. **Merge.** A mod's **More > Merge with other mods...** packs it with the mods you tick into one mod, for example a model
+    mod and a sound mod for the same hero. The window shows the load order and every file the mods share, with the copy
+    that is kept: the one from the mod the game loads first, as it does now. The originals are disabled, not deleted;
+    the merged mod's **More > Split** disables it and turns them back on.
 
 Previews are offline evidence: they are close to the game but not a game test.
 

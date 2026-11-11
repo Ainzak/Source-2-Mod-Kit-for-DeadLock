@@ -98,6 +98,9 @@ internal sealed class PreviewControl : OpenGlControlBase
         RequestNextFrameRendering();
     }
 
+    /// <summary>How see-through each changed part is (0-1; parts not listed are solid); the built mod gets it.</summary>
+    public Dictionary<int, float> PartSeeThrough { get; } = [];
+
     private (IReadOnlyList<PlacedEffect> Effects, byte[]? Overlay, Action<IReadOnlyList<string?>>? Done)? placedRequest;
     private (Point At, Action<(string Bone, System.Numerics.Vector3 Offset)?> Done)? pointRequest;
 
@@ -175,6 +178,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         PartColors.Clear();
         PartShines.Clear();
         shineRequests.Clear();
+        PartSeeThrough.Clear();
         colorRequests.Clear();
         rangeRequests.Clear();
         shapeRequests.Clear();

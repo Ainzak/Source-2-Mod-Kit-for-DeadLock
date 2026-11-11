@@ -15,7 +15,12 @@ public sealed record EffectAttachment(string Name, string Bone, Vector3 Offset);
 
 /// <summary>An effect to add to a model: the effect file (<c>.vpcf</c> path), the bone it sits on (null: at the model's origin,
 /// "follows the hero") and its place in that bone's space.</summary>
-public sealed record AddedEffect(string Effect, string? Bone, Vector3 Offset);
+/// <param name="Source">Where the effect comes from when it is not the game's or the edited mod's own: a mod's archive or a loose
+/// compiled effect file. Its files are copied into the build under new names (<see cref="CompiledAddedEffects.Rename"/>).</param>
+/// <param name="Parent">For an effect that plays during an ability: the ability's effect file it is added to as a child
+/// (<see cref="CompiledAddedEffects.AddChild"/>); it then plays where and when that effect plays, and <paramref name="Bone"/> and
+/// <paramref name="Offset"/> are not used. Null: always on.</param>
+public sealed record AddedEffect(string Effect, string? Bone, Vector3 Offset, string? Source = null, string? Parent = null);
 
 /// <summary>
 /// Always-on effects added to a compiled model (<c>add_model_effects@1</c>), by the route nine of the game's own hero models use
@@ -238,6 +243,151 @@ public static class CompiledAddedEffects
         });
     }
 
+    /// <summary>
+    /// A copy of a compiled effect with <paramref name="childEffect"/> added to its child effects, so the child starts with it and
+    /// shares its control points (the way community mods add effects to abilities). An effect that already has the child is
+    /// returned as it is.
+    /// </summary>
+    public static byte[] AddChild(byte[] parent, string logicalPath, string childEffect)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childEffect);
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(parent));
+        var root = resource.DataBlock switch
+        {
+            BinaryKV3 kv3 => kv3.Data.Root,
+            KeyValuesOrNTRO kv => kv.Data,
+            _ => throw Errors.Input("EFFECT_EDIT_NOT_AN_EFFECT", $"'{logicalPath}' has no effect data.", "Pass a compiled .vpcf_c."),
+        };
+        if (resource.ResourceType != ResourceType.Particle)
+        {
+            throw Errors.Input("EFFECT_EDIT_NOT_AN_EFFECT", $"'{logicalPath}' is not an effect.", "Pass a compiled .vpcf_c.");
+        }
+
+        var references = resource.Blocks.FirstOrDefault(block => block.Type == BlockType.RERL)
+            ?? throw Errors.Unsupported("ADDED_EFFECT_NO_REFERENCES", $"'{Path.GetFileName(logicalPath)}' uses no other files, so nothing can be added to it this way.", "Choose another of the ability's effects.");
+        KVObject entry;
+        if (root.TryGetValue("m_Children", out var children) && children.IsArray)
+        {
+            if (children.Values.Any(child => child.TryGetValue("m_ChildRef", out var existing) && string.Equals(existing.ToString(CultureInfo.InvariantCulture), childEffect, StringComparison.OrdinalIgnoreCase)))
+            {
+                return parent;
+            }
+
+            entry = KVObject.Collection();
+            entry.Add("m_ChildRef", children.Count > 0 && children[0].TryGetValue("m_ChildRef", out var like) ? Text(like, childEffect) : ResourceText(childEffect));
+            children.Add(entry);
+        }
+        else
+        {
+            entry = KVObject.Collection();
+            entry.Add("m_ChildRef", ResourceText(childEffect));
+            var list = KVObject.Array();
+            list.Add(entry);
+            root["m_Children"] = list;
+        }
+
+        var data = resource.DataBlock!;
+        return CompiledModelEdit.ReplaceBlocks(parent, resource, new Dictionary<int, byte[]>
+        {
+            [resource.Blocks.IndexOf(data)] = Serialize(data),
+            [resource.Blocks.IndexOf(references)] = WithReferences(parent.AsSpan((int)references.Offset, (int)references.Size), [childEffect], replace: false),
+        });
+
+        static KVObject ResourceText(string path) => new(path) { Flag = KVFlag.Resource };
+    }
+
+    /// <summary>The files a compiled resource refers to (paths without <c>_c</c>), in stored order.</summary>
+    public static IReadOnlyList<string> References(byte[] compiled, string logicalPath)
+    {
+        ArgumentNullException.ThrowIfNull(compiled);
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(compiled));
+        return [.. (resource.ExternalReferences?.ResourceRefInfoList ?? []).Select(reference => reference.Name)];
+    }
+
+    /// <summary>
+    /// A copy of a compiled effect whose references follow <paramref name="renames"/> (old path to new path, without <c>_c</c>, any
+    /// case): the path strings in its data and its external reference list. An effect that refers to none of them is returned as it is.
+    /// </summary>
+    public static byte[] Rename(byte[] effect, string logicalPath, IReadOnlyDictionary<string, string> renames)
+    {
+        ArgumentNullException.ThrowIfNull(effect);
+        ArgumentNullException.ThrowIfNull(renames);
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (from, to) in renames)
+        {
+            map[from.Replace('\\', '/')] = to;
+        }
+
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(effect));
+        var root = resource.DataBlock switch
+        {
+            BinaryKV3 kv3 => kv3.Data.Root,
+            KeyValuesOrNTRO kv => kv.Data,
+            _ => throw Errors.Input("EFFECT_EDIT_NOT_AN_EFFECT", $"'{logicalPath}' has no effect data.", "Pass a compiled .vpcf_c."),
+        };
+        var references = resource.Blocks.FirstOrDefault(block => block.Type == BlockType.RERL);
+        var names = (resource.ExternalReferences?.ResourceRefInfoList ?? []).Select(reference => reference.Name).ToArray();
+        if (references is null || !names.Any(map.ContainsKey))
+        {
+            return effect;
+        }
+
+        Retarget(root, map);
+        var data = resource.DataBlock!;
+        return CompiledModelEdit.ReplaceBlocks(effect, resource, new Dictionary<int, byte[]>
+        {
+            [resource.Blocks.IndexOf(data)] = Serialize(data),
+            [resource.Blocks.IndexOf(references)] = WithReferences(effect.AsSpan((int)references.Offset, (int)references.Size), [.. names.Select(name => map.GetValueOrDefault(name, name))], replace: true),
+        });
+    }
+
+    private static void Retarget(KVObject node, Dictionary<string, string> map)
+    {
+        if (node.IsArray)
+        {
+            for (var i = 0; i < node.Count; i++)
+            {
+                if (node[i].ValueType == KVValueType.String && map.TryGetValue(node[i].ToString(CultureInfo.InvariantCulture).Replace('\\', '/'), out var to))
+                {
+                    var replaced = Each(node, (item, at) => at == i ? Text(item, to) : item);
+                    node.Clear();
+                    foreach (var item in replaced.Values.ToArray())
+                    {
+                        node.Add(item);
+                    }
+                }
+                else
+                {
+                    Retarget(node[i], map);
+                }
+            }
+
+            return;
+        }
+
+        if (!node.IsCollection)
+        {
+            return;
+        }
+
+        foreach (var key in node.Keys.ToArray())
+        {
+            var child = node[key];
+            if (child.ValueType == KVValueType.String && map.TryGetValue(child.ToString(CultureInfo.InvariantCulture).Replace('\\', '/'), out var to))
+            {
+                node[key] = Text(child, to);
+            }
+            else
+            {
+                Retarget(child, map);
+            }
+        }
+    }
+
     /// <summary>The id the game stores for a referenced file: MurmurHash64B of the lower-case path with seed 0xEDABCDEF.</summary>
     public static ulong ResourceId(string path)
     {
@@ -339,7 +489,7 @@ public static class CompiledAddedEffects
         return bytes;
     }
 
-    private static Resource Open(byte[] compiled, string logicalPath, out Model model)
+    internal static Resource Open(byte[] compiled, string logicalPath, out Model model)
     {
         ArgumentNullException.ThrowIfNull(compiled);
         var resource = new Resource { FileName = logicalPath };
@@ -359,9 +509,9 @@ public static class CompiledAddedEffects
     private static S2ModKitException Layout(string what) =>
         Errors.Unsupported("ADDED_EFFECT_TEMPLATE", $"The game's effect '{TemplateEffect}' changed ({what}), so added effects cannot be built from it.", "Update S2ModKit.");
 
-    private static string KeyValueText(Model model) => model.Data["m_modelInfo"]["m_keyValueText"].ToString(CultureInfo.InvariantCulture);
+    internal static string KeyValueText(Model model) => model.Data["m_modelInfo"]["m_keyValueText"].ToString(CultureInfo.InvariantCulture);
 
-    private static KVObject? AttachmentList(Mesh mesh) => mesh.Data.TryGetValue("m_attachments", out var list) && list.IsArray ? list : null;
+    internal static KVObject? AttachmentList(Mesh mesh) => mesh.Data.TryGetValue("m_attachments", out var list) && list.IsArray ? list : null;
 
     /// <summary>The effect paths in the text's <c>particle_cfg_list</c>.</summary>
     private static IEnumerable<string> Listed(string text)
@@ -436,7 +586,7 @@ public static class CompiledAddedEffects
         return slots >= 1 ? entry : throw Errors.Unsupported("ADDED_EFFECT_NO_ATTACHMENTS", "The model's attachment points have an unknown layout.", "Report the file.");
     }
 
-    private static KVObject Each(KVObject list, Func<KVObject, int, KVObject> item)
+    internal static KVObject Each(KVObject list, Func<KVObject, int, KVObject> item)
     {
         var copy = KVObject.Array();
         copy.Flag = list.Flag;
@@ -456,7 +606,7 @@ public static class CompiledAddedEffects
     }
 
     /// <summary>A deep copy (lists and collections are new; plain values are shared, they are never changed in place).</summary>
-    private static KVObject Clone(KVObject node)
+    internal static KVObject Clone(KVObject node)
     {
         if (node.IsArray)
         {
@@ -478,25 +628,25 @@ public static class CompiledAddedEffects
         return copy;
     }
 
-    private static KVObject Flagged(KVObject value, KVObject like)
+    internal static KVObject Flagged(KVObject value, KVObject like)
     {
         value.Flag = like.Flag;
         return value;
     }
 
-    private static KVObject Text(KVObject like, string text) => Flagged(new KVObject(text), like);
+    internal static KVObject Text(KVObject like, string text) => Flagged(new KVObject(text), like);
 
-    private static float Float(KVObject value) => value.ToSingle(CultureInfo.InvariantCulture);
+    internal static float Float(KVObject value) => value.ToSingle(CultureInfo.InvariantCulture);
 
     /// <summary>The number in the value's own type (the game reads typed values).</summary>
-    private static KVObject Number(KVObject like, float number) => Flagged(like.ValueType switch
+    internal static KVObject Number(KVObject like, float number) => Flagged(like.ValueType switch
     {
         KVValueType.FloatingPoint64 => new KVObject((double)number),
         KVValueType.FloatingPoint => new KVObject(number),
         _ => Integer(like, (int)number),
     }, like);
 
-    private static KVObject Integer(KVObject like, int number) => Flagged(like.ValueType switch
+    internal static KVObject Integer(KVObject like, int number) => Flagged(like.ValueType switch
     {
         KVValueType.UInt64 => new KVObject((ulong)number),
         KVValueType.UInt32 => new KVObject((uint)number),
@@ -506,7 +656,7 @@ public static class CompiledAddedEffects
         _ => new KVObject(number),
     }, like);
 
-    private static byte[] Serialize(Block block)
+    internal static byte[] Serialize(Block block)
     {
         using var stream = new MemoryStream();
         block.Serialize(stream);

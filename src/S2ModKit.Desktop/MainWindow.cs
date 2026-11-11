@@ -66,6 +66,7 @@ internal sealed class MainWindow : Window
     private IReadOnlyList<ModEntry> mods = [];
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly Button repairAll = new() { IsVisible = false };
     private readonly SelectableTextBlock managerBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly SelectableTextBlock crashBanner = new()
     {
@@ -111,7 +112,7 @@ internal sealed class MainWindow : Window
         };
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto || options.SelfTest is not null || options.UiShot is not null };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough);
         list.ItemTemplate = new FuncDataTemplate<ListRow>((row, _) => row switch
         {
             HeaderRow header => new TextBlock
@@ -153,9 +154,17 @@ internal sealed class MainWindow : Window
                     openGroups.Remove(folded.Group);
                 }
 
+                var viewer = list.Scroll as ScrollViewer;                   // folding keeps the list where it is scrolled to
+                var offset = viewer?.Offset ?? default;
                 folding = true;
                 ApplySearch(lastKey);                                       // the shown mod stays shown (selected when visible)
                 folding = false;
+                if (viewer is not null)
+                {
+                    viewer.Offset = offset;
+                    Dispatcher.UIThread.Post(() => viewer.Offset = offset, DispatcherPriority.Loaded);   // again once the new rows are laid out
+                }
+
                 return;
             }
 
@@ -193,6 +202,8 @@ internal sealed class MainWindow : Window
         header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { heroFilter, kindFilter } });
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
+        header.Children.Add(repairAll);
+        repairAll.Click += async (_, _) => await RepairAllAsync();
         header.Children.Add(managerBanner);
         header.Children.Add(crashBanner);
         header.Children.Add(reapplyBanner);
@@ -329,14 +340,28 @@ internal sealed class MainWindow : Window
     private async Task UiShotAsync(string path, AppOptions options)
     {
         var placeEffect = string.Equals(options.Tab, "addeffect", StringComparison.OrdinalIgnoreCase);
-        var effectsShot = placeEffect || string.Equals(options.Tab, "effects", StringComparison.OrdinalIgnoreCase);
-        PreviewPane.AddedEffectsOffered |= effectsShot;
+        var seeThroughShot = string.Equals(options.Tab, "seethrough", StringComparison.OrdinalIgnoreCase);   // --part N see-through, with the 3D view
+        var effectsShot = placeEffect || seeThroughShot || string.Equals(options.Tab, "effects", StringComparison.OrdinalIgnoreCase);
         if (string.Equals(options.Tab, "browse", StringComparison.OrdinalIgnoreCase))     // the GameBanana browser with its first mod open
         {
             await SetBrowseAsync(true);
             await Task.Delay(TimeSpan.FromSeconds(4));
             browse?.OpenFirstForShot();
             await Task.Delay(TimeSpan.FromSeconds(6));
+        }
+
+        if (string.Equals(options.Tab, "fold", StringComparison.OrdinalIgnoreCase) && list.Scroll is ScrollViewer scroller)   // does folding a hero keep the scroll position?
+        {
+            scroller.Offset = new Vector(0, 600);
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var before = scroller.Offset.Y;
+            var header = rows.OfType<HeaderRow>().Where(row => row.Foldable).ElementAt(14);
+            list.SelectedItem = header;
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var unfolded = scroller.Offset.Y;
+            list.SelectedItem = rows.OfType<HeaderRow>().First(row => row.Group == header.Group);
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            await File.WriteAllTextAsync(path + ".txt", $"scroll before {before}; after unfolding '{header.Title}' {unfolded}; after folding it again {scroller.Offset.Y}");
         }
 
         BaseRow? baseGame = null;
@@ -360,7 +385,12 @@ internal sealed class MainWindow : Window
             }
 
             await Task.Delay(TimeSpan.FromSeconds(8));                      // preview session and shape capabilities
-            pane.ShowForShot(options.Tab, options.Part);
+            pane.ShowForShot(seeThroughShot ? "colour" : options.Tab, options.Part);
+            if (seeThroughShot)
+            {
+                pane.SeeThroughForShot(0.6);
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(2));
             if (effectsShot)                                                 // the 3D view itself as <path>-3d.png; "addeffect": after an effect is placed by a click on the chest
             {
@@ -796,7 +826,7 @@ internal sealed class MainWindow : Window
 
         if (doctor.GetValueOrDefault(mod.Key) is { Verdict: DoctorVerdict.Repairable } repairable)
         {
-            actions.Children.Add(Button("Repair", () => RunAsync(() => catalog.RepairAsync(mod, repairable.StaleOverrides))));
+            actions.Children.Add(Button("Repair", () => RunAsync(() => catalog.RepairFindingAsync(mod, repairable))));
         }
 
         if (mod.Loaded && !mod.Key.StartsWith("app:", StringComparison.Ordinal))
@@ -823,6 +853,12 @@ internal sealed class MainWindow : Window
             Add("Re-apply edits (build them again on the current game)", () => ReapplyAsync([mod]), mod.Loaded && recipe is not null);
         }
 
+        Add("Merge with other mods...", () => MergeAsync(mod), mod.Files.Count > 0);
+        if (MergeRecord.Of(mod) is not null)
+        {
+            Add("Split (turn the merged mods back on)", () => RunAsync(() => catalog.SplitAsync(mod)));
+        }
+
         Add("Delete...", () => DeleteAsync(mod));
         actions.Children.Add(new Button { Content = "More ▾", Flyout = more });
 
@@ -842,6 +878,13 @@ internal sealed class MainWindow : Window
         }
 
         var hasSounds = mod.Entries.Any(entry => entry.EndsWith(".vsnd_c", StringComparison.OrdinalIgnoreCase) || entry.EndsWith(".vsndevts_c", StringComparison.OrdinalIgnoreCase));
+        if (mod.Models.Count == 0 && EditRecipe.Of(mod) is { HasEdits: true, Model: { Length: > 0 } edited })
+        {
+            // an edit built here without the model itself (effect colours, an effect added to an ability): shown on the hero it was
+            // made for, the game's model with this mod's files, so more can be added to it
+            mod = mod with { Models = [edited.EndsWith("_c", StringComparison.Ordinal) ? edited[..^2] : edited] };
+        }
+
         ShowTabs(mod, preview: mod.Models.Count > 0, hasSounds);
         if (mod.Models.Count > 0)
         {
@@ -1011,6 +1054,15 @@ internal sealed class MainWindow : Window
         await RunAsync(() => catalog.EnableAsync(mod));
     }
 
+    private async Task MergeAsync(ModEntry mod)
+    {
+        if (await new MergeDialog(mod, mods).ShowDialog<(IReadOnlyList<ModEntry> Mods, string Name)?>(this) is { } choice)
+        {
+            listStatus.Text = $"Merging {choice.Mods.Count} mods...";
+            await RunAsync(() => catalog.MergeAsync(choice.Mods, choice.Name));
+        }
+    }
+
     private async Task DeleteAsync(ModEntry mod)
     {
         var shown = mod.Files.Select(file => Path.GetFileName(file)).Take(6);
@@ -1022,7 +1074,7 @@ internal sealed class MainWindow : Window
 
     /// <summary>Builds one edited version with the hidden, recolored and reshaped parts (masks, boxes and movements taken from the open preview).</summary>
     private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes,
-        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect> added)
+        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect> added, IReadOnlyDictionary<int, float> seeThrough)
     {
         var session = pane.Control.Session;
         var shiny = shines.Select(pair => session?.PartNormalTexture(pair.Key) is { } texture ? new PartShine(pair.Key, texture, pair.Value) : null).OfType<PartShine>().ToArray();
@@ -1045,8 +1097,19 @@ internal sealed class MainWindow : Window
             }
         }
 
-        listStatus.Text = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..." : "Building...";
-        await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny, added));
+        var slow = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..."
+            : seeThrough.Count > 0 || shiny.Length > 0 ? "Building: see-through and shine write large textures again; this can take a minute..." : null;
+        listStatus.Text = slow ?? "Building...";
+        pane.ShowBuilding(slow ?? "Building the edited mod...");
+        try
+        {
+            await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny, added,
+                [.. seeThrough.Where(_ => session is not null).Select(pair => new PartOpacity(pair.Key, session!.PartMaterialPath(pair.Key), 1 - pair.Value))]));
+        }
+        finally
+        {
+            pane.ShowBuilding(null);
+        }
     }
 
     /// <summary>Asks for a pak number (1-99, lower wins) and puts the mod there; when another mod has that slot, offers to swap them.</summary>
@@ -1113,6 +1176,42 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Runs the mod doctor over every mod (read-only) and shows what the last game update affected.</summary>
+    /// <summary>The findings that Repair can fix for mods that are still in the list.</summary>
+    private DoctorFinding[] Repairable => [.. doctor.Values.Where(finding => finding.Verdict == DoctorVerdict.Repairable && mods.Any(mod => mod.Key == finding.Key && mod.Loaded))];
+
+    private void ShowRepairAll()
+    {
+        var count = Repairable.Length;
+        repairAll.IsVisible = count > 1;
+        repairAll.Content = $"Repair all ({count})";
+        ToolTip.SetTip(repairAll, "Repairs every mod the last check found repairable, one after another. Each repair can be turned off or deleted like a mod.");
+    }
+
+    /// <summary>Repairs every repairable mod, one at a time (each a journaled operation); stops at the first failure and says which.</summary>
+    private async Task RepairAllAsync()
+    {
+        var done = new List<string>();
+        foreach (var finding in Repairable)
+        {
+            if (mods.FirstOrDefault(mod => mod.Key == finding.Key) is not { } mod)
+            {
+                continue;
+            }
+
+            listStatus.Text = $"Repairing {done.Count + 1}/{Repairable.Length}: {mod.Name}...";
+            if (!await RunAsync(() => catalog.RepairFindingAsync(mod, finding)))
+            {
+                break;
+            }
+
+            done.Add(mod.Name);
+            doctor = doctor.Where(pair => pair.Key != finding.Key).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        }
+
+        ShowRepairAll();
+        listStatus.Text = done.Count == 0 ? listStatus.Text : $"Repaired {done.Count} mod{(done.Count == 1 ? string.Empty : "s")}: {string.Join(", ", done)}. " + listStatus.Text;
+    }
+
     private async Task CheckModsAsync()
     {
         try
@@ -1127,6 +1226,7 @@ internal sealed class MainWindow : Window
                 .Select(finding => mods.FirstOrDefault(mod => mod.Key == finding.Key)?.Name).OfType<string>().Order(StringComparer.OrdinalIgnoreCase).ToArray();
             listStatus.Text = report.ComparedWith is null
                 ? $"Recorded what your {report.Findings.Count} mods depend on in game build {report.Build}. After the next game update, 'Check mods' shows what changed for each mod."
+                    + (Count(DoctorVerdict.Repairable) > 0 ? $" {Count(DoctorVerdict.Repairable)} can be repaired now (models older than the game's): {string.Join(", ", flagged)}. Click one to see why." : string.Empty)
                 : $"Compared with game build {report.ComparedWith}: {Count(DoctorVerdict.Broken)} broken, {Count(DoctorVerdict.Repairable)} repairable, {Count(DoctorVerdict.Look)} worth a look, {Count(DoctorVerdict.Works)} unaffected."
                     + (flagged.Length > 0 ? $" Showing only those: {string.Join(", ", flagged)}. Click one to see why; pick 'All kinds' to see every mod." : string.Empty);
             if (flagged.Length > 0)
@@ -1134,6 +1234,7 @@ internal sealed class MainWindow : Window
                 kindFilter.SelectedItem = NeedsAttention;                     // the flagged mods are what the user wants to see now
             }
 
+            ShowRepairAll();
             ApplySearch();
         }
 #pragma warning disable CA1031 // shown in the window
@@ -1147,7 +1248,7 @@ internal sealed class MainWindow : Window
 
     /// <summary>Runs an install, enable, disable, delete or version switch (refused with a message while the game runs), reloads the
     /// list and selects the mod under the key the operation reports.</summary>
-    private async Task RunAsync(Func<Task<CatalogChange>> action)
+    private async Task<bool> RunAsync(Func<Task<CatalogChange>> action)
     {
         try
         {
@@ -1156,6 +1257,7 @@ internal sealed class MainWindow : Window
             var change = await Task.Run(action);
             await LoadAsync(change.SelectKey.Length > 0 ? change.SelectKey : null);
             listStatus.Text = change.Message + ConflictNote(change.SelectKey);
+            return true;
         }
 #pragma warning disable CA1031 // shown in the window (a refused install names the conflicting mods)
         catch (Exception exception)
@@ -1165,6 +1267,7 @@ internal sealed class MainWindow : Window
             listStatus.Text = exception is S2ModKitException { Error: var error } ? $"{error.Summary} {error.Remediation}" : exception.Message;
             await LoadAsync();                                             // the preview was released: show the current state again
             listStatus.Text = exception is S2ModKitException { Error: var shown } ? $"{shown.Summary} {shown.Remediation}" : exception.Message;
+            return false;
         }
     }
 
@@ -1645,7 +1748,7 @@ internal sealed class MainWindow : Window
     {
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough);
         paneHost.Content = pane;
         ShowBody(null);
         await LoadAsync();

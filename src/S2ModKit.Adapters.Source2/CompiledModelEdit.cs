@@ -59,7 +59,7 @@ public static class CompiledModelEdit
     /// <summary>
     /// Rebuilds a compiled resource with new payloads for some blocks (by index in the block table); the header and the other
     /// blocks are copied unchanged, blocks stay in their order and 16-byte aligned. Data after the last block (a texture's
-    /// pixels, a sound's stream) is not supported here.
+    /// pixels, a sound's stream) is not supported here; zero padding up to 16 bytes is, and is not written back.
     /// </summary>
     public static byte[] ReplaceBlocks(byte[] original, Resource resource, IReadOnlyDictionary<int, byte[]> payloads)
     {
@@ -69,7 +69,8 @@ public static class CompiledModelEdit
         var table = 8 + (int)BitConverter.ToUInt32(original, 8);
         var count = (int)BitConverter.ToUInt32(original, 12);
         var last = resource.Blocks.Max(block => block.Offset + block.Size);
-        if (count != resource.Blocks.Count || last != original.Length)
+        var padding = original.Length - last;                               // some compilers pad the file to 16 bytes with zeros
+        if (count != resource.Blocks.Count || padding < 0 || padding >= 16 || original.AsSpan((int)last).ContainsAnyExcept((byte)0))
         {
             throw Errors.Unsupported("MODEL_EDIT_LAYOUT", "The resource has data after its blocks or an unexpected block table.", "Report the file.");
         }

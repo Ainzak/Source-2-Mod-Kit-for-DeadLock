@@ -142,14 +142,14 @@ public sealed class AddedEffectTests
         }, token);
         AddedEffect[] added = [new(Flame, "head", new Vector3(0, 2, 0)), new(Flame, null, Vector3.Zero)];
 
-        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, added, token);
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, added, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         Assert.Equal(2, Shipped(built.Files[0]).Count(path => path.StartsWith("particles/s2modkit/geist/added_", StringComparison.Ordinal)));
         Assert.Equal(2, EditRecipe.Of(built)!.Added!.Length);
         Assert.Equal("head", EditRecipe.Of(built)!.Added![0].Bone);
 
-        var missing = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect("particles/no/such.vpcf", null, Vector3.Zero)], token));
+        var missing = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect("particles/no/such.vpcf", null, Vector3.Zero)], null, token));
         Assert.Equal("ADDED_EFFECT_MISSING", missing.Error.Code);
 
         await root.Catalog().ReapplyAsync(built, await root.Catalog().LoadAsync(token), token);
@@ -165,6 +165,146 @@ public sealed class AddedEffectTests
             package.Read(archive);
             return [.. package.Entries!.SelectMany(group => group.Value).Select(entry => entry.GetFullPath())];
         }
+    }
+
+    [Fact]
+    public async Task AnEffectFromAnotherModIsCopiedUnderNewNamesAndTheSourceIsNotTouched()
+    {
+        if (Game() is not { } game)
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME to enable this proprietary local check.");
+            return;
+        }
+
+        const string Parent = "particles/abilities/inferno/inferno_hand_ambient.vpcf";
+        const string Ember = "particles/abilities/inferno/inferno_hand_ambient_ember.vpcf";
+        var token = TestContext.Current.CancellationToken;
+        using var root = new ModTestRoot();
+        var pak = Path.Combine(root.Game, "citadel", "pak01_dir.vpk");
+        File.Delete(pak);
+        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal)
+        {
+            [Geist + "_c"] = game(Geist),
+            [CompiledAddedEffects.TemplateEffect + "_c"] = game(CompiledAddedEffects.TemplateEffect),
+            [Parent + "_c"] = game(Parent),
+            [Flame + "_c"] = game(Flame),
+            [Ember + "_c"] = game(Ember),
+        }, token);
+        // another mod: its own versions of the parent and the ember (same paths as the game's); the flame stays the game's
+        var source = Path.Combine(root.Game, "other-mod_dir.vpk");
+        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(source, new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal)
+        {
+            [Parent + "_c"] = game(Parent),
+            [Ember + "_c"] = game(Ember),
+        }, token);
+        var before = File.ReadAllBytes(source);
+
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Parent, "head", Vector3.Zero, source)], null, token);
+
+        Assert.Equal(before, File.ReadAllBytes(source));
+        var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
+        using var package = new Package();
+        package.Read(built.Files[0]);
+        byte[] Shipped(string path)
+        {
+            package.ReadEntry(package.FindEntry(path)!, out var bytes);
+            return bytes;
+        }
+
+        var paths = package.Entries!.SelectMany(group => group.Value).Select(entry => entry.GetFullPath()).ToArray();
+        var parent = Assert.Single(paths, path => path.Contains("/copied/", StringComparison.Ordinal) && path.EndsWith("/inferno_hand_ambient.vpcf_c", StringComparison.Ordinal));
+        var ember = Assert.Single(paths, path => path.Contains("/copied/", StringComparison.Ordinal) && path.EndsWith("/inferno_hand_ambient_ember.vpcf_c", StringComparison.Ordinal));
+        Assert.DoesNotContain(Parent + "_c", paths);                         // the game's own paths are not replaced
+        Assert.DoesNotContain(Ember + "_c", paths);
+        Assert.Equal([ember[..^2], Flame], CompiledAddedEffects.References(Shipped(parent), parent));   // the copy uses its copied child and the game's flame
+        Assert.Equal([parent[..^2]], CompiledAddedEffects.References(Shipped("particles/s2modkit/geist/added_1.vpcf_c"), "added_1.vpcf_c"));
+        Assert.Equal(source, EditRecipe.Of(built)!.Added![0].Source);
+
+        File.Delete(source);
+        var all = await root.Catalog().LoadAsync(token);
+        var gone = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().ReapplyAsync(built, all, token));
+        Assert.Equal("ADDED_EFFECT_SOURCE", gone.Error.Code);
+    }
+
+    [Theory]
+    [InlineData("particles/abilities/inferno/inferno_hand_ambient.vpcf", 2)]    // has children
+    [InlineData("particles/abilities/inferno/inferno_hand_ambient_flame.vpcf", 0)]   // has none (it refers to its material only)
+    public void AnAbilityEffectGetsTheAddedEffectAsAChild(string parentPath, int childrenBefore)
+    {
+        if (Game() is not { } game)
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME to enable this proprietary local check.");
+            return;
+        }
+
+        const string Added = "particles/abilities/doorman/doorman_ambient_magic.vpcf";
+        var original = game(parentPath);
+
+        var edited = CompiledAddedEffects.AddChild(original, parentPath + "_c", Added);
+
+        using var resource = Read(edited, parentPath);
+        var children = ((ParticleSystem)resource.DataBlock!).Data["m_Children"].Values.Select(child => child["m_ChildRef"].ToString(System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        Assert.Equal(childrenBefore + 1, children.Length);
+        Assert.Equal(Added, children[^1]);
+        Assert.Equal(Added, CompiledAddedEffects.References(edited, parentPath + "_c")[^1]);
+        Assert.Equal(CompiledAddedEffects.References(original, parentPath + "_c").Count + 1, CompiledAddedEffects.References(edited, parentPath + "_c").Count);
+        Assert.Same(edited, CompiledAddedEffects.AddChild(edited, parentPath + "_c", Added.ToUpperInvariant()));   // once only
+    }
+
+    [Fact]
+    public async Task AnEffectAddedToAnAbilityChangesThatAbilityEffectAndLeavesTheModelAlone()
+    {
+        if (Game() is not { } game)
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME to enable this proprietary local check.");
+            return;
+        }
+
+        const string Ability = "particles/abilities/inferno/inferno_hand_ambient.vpcf";   // stands in for an ability's effect
+        const string Added = "particles/abilities/doorman/doorman_ambient_magic.vpcf";
+        var token = TestContext.Current.CancellationToken;
+        using var root = new ModTestRoot();
+        var pak = Path.Combine(root.Game, "citadel", "pak01_dir.vpk");
+        File.Delete(pak);
+        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal)
+        {
+            [Geist + "_c"] = game(Geist),
+            [Ability + "_c"] = game(Ability),
+            [Added + "_c"] = game(Added),
+        }, token);
+
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Added, null, Vector3.Zero, Parent: Ability)], null, token);
+
+        var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
+        using var package = new Package();
+        package.Read(built.Files[0]);
+        Assert.Equal([Ability + "_c"], package.Entries!.SelectMany(group => group.Value).Select(entry => entry.GetFullPath()));   // no model, no wrapper
+        package.ReadEntry(package.FindEntry(Ability + "_c")!, out var ability);
+        Assert.Equal(Added, CompiledAddedEffects.References(ability, Ability + "_c")[^1]);
+        Assert.Equal(Ability, EditRecipe.Of(built)!.Added![0].Parent);
+    }
+
+    [Fact]
+    public void RenamingAReferenceChangesTheDataAndTheReferenceListOnly()
+    {
+        if (Game() is not { } game)
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME to enable this proprietary local check.");
+            return;
+        }
+
+        const string Parent = "particles/abilities/inferno/inferno_hand_ambient.vpcf";
+        const string Ember = "particles/abilities/inferno/inferno_hand_ambient_ember.vpcf";
+        const string Moved = "particles/s2modkit/test/copied/ember.vpcf";
+        var original = game(Parent);
+
+        var renamed = CompiledAddedEffects.Rename(original, Parent + "_c", new Dictionary<string, string> { [Ember.ToUpperInvariant()] = Moved });
+
+        Assert.Equal([Moved, Flame], CompiledAddedEffects.References(renamed, Parent + "_c"));
+        using var resource = Read(renamed, Parent);
+        Assert.Equal([Flame, Moved], ((ParticleSystem)resource.DataBlock!).Data["m_Children"].Values.Select(child => child["m_ChildRef"].ToString(System.Globalization.CultureInfo.InvariantCulture)).Order(StringComparer.Ordinal));
+        Assert.Equal(CompiledAddedEffects.ResourceId(Moved), resource.ExternalReferences!.ResourceRefInfoList[0].Id);
+        Assert.Same(original, CompiledAddedEffects.Rename(original, Parent + "_c", new Dictionary<string, string> { ["particles/other.vpcf"] = Moved }));
     }
 
     [Fact]

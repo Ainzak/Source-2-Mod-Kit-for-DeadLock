@@ -136,7 +136,7 @@ public sealed class MaterialColorTests
         await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, entries, token);
         var yellow = new EffectColorChange(new RgbColor(0.95f, 0.8f, 0.2f));
 
-        await root.Catalog().BuildEditsAsync(null, CatForm, new HashSet<int>(), [], null, new Dictionary<string, EffectColorChange> { [CatForm] = yellow }, null, null, token);
+        await root.Catalog().BuildEditsAsync(null, CatForm, new HashSet<int>(), [], null, new Dictionary<string, EffectColorChange> { [CatForm] = yellow }, null, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var package = new Package();

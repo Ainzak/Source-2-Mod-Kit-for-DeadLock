@@ -70,6 +70,75 @@ public sealed class ShapeBuildTests
         }
     }
 
+    /// <summary>A turned part's normals and tangents turn with it (Celeste's clothes store them packed in one 32-bit value), read back
+    /// with VRF's own decoder; other buffers keep theirs.</summary>
+    [Fact]
+    public void ATurnedPartsNormalsTurnWithIt()
+    {
+        if (Inputs() is not { } inputs)
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME and S2MODKIT_MESHOPTIMIZER_PATH to enable this proprietary local check.");
+            return;
+        }
+
+        var matrix = Matrix4x4.CreateRotationZ(MathF.PI / 2);
+        var reshaped = CompiledPartReshape.Apply(inputs.Model, Celeste + "_c", [new PartReshape(Clothes, matrix)], Environment.GetEnvironmentVariable("S2MODKIT_MESHOPTIMIZER_PATH"));
+
+        var before = Normals(inputs.Model);
+        var after = Normals(reshaped);
+        Assert.Equal("R32_UINT", before["0/5"].Format);
+        foreach (var key in before.Keys)
+        {
+            var turned = key is "0/5" or "4/5" or "7/5" or "10/5";
+            Assert.All(Enumerable.Range(0, before[key].Normals.Length), v =>
+            {
+                var expected = turned ? Vector3.TransformNormal(before[key].Normals[v], matrix) : before[key].Normals[v];
+                Assert.True(Vector3.Dot(after[key].Normals[v], expected) > 0.999f, $"{key} vertex {v}: normal {after[key].Normals[v]}, expected {expected}");
+                var tangent = new Vector3(before[key].Tangents[v].X, before[key].Tangents[v].Y, before[key].Tangents[v].Z);
+                var expectedTangent = turned ? Vector3.TransformNormal(tangent, matrix) : tangent;
+                Assert.True(Vector3.Dot(new Vector3(after[key].Tangents[v].X, after[key].Tangents[v].Y, after[key].Tangents[v].Z), expectedTangent) > 0.995f, $"{key} vertex {v}: tangent");
+                Assert.Equal(before[key].Tangents[v].W, after[key].Tangents[v].W);
+            });
+        }
+    }
+
+    private static Dictionary<string, (string Format, Vector3[] Normals, Vector4[] Tangents)> Normals(byte[] model)
+    {
+        using var resource = new Resource { FileName = Celeste + "_c" };
+        resource.Read(new MemoryStream(model));
+        var result = new Dictionary<string, (string, Vector3[], Vector4[])>();
+        foreach (var (mesh, index, _) in ((Model)resource.DataBlock!).GetEmbeddedMeshes())
+        {
+            for (var b = 0; b < mesh.VBIB.VertexBuffers.Count; b++)
+            {
+                var buffer = mesh.VBIB.VertexBuffers[b];
+                var field = buffer.InputLayoutFields.FirstOrDefault(item => item.SemanticName == "NORMAL");
+                if (field.SemanticName is not null && field.Format.ToString() == "R32_UINT")
+                {
+                    var (normals, tangents) = ValveResourceFormat.Blocks.VBIB.GetNormalTangentArray(buffer, field);
+                    result[$"{index}/{b}"] = (field.Format.ToString(), normals, tangents);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    [Fact]
+    public void PackedNormalsSurviveARoundTrip()
+    {
+        foreach (var normal in new[] { Vector3.UnitZ, -Vector3.UnitZ, Vector3.Normalize(new Vector3(0.3f, -0.8f, 0.5f)), Vector3.Normalize(new Vector3(-0.6f, 0.2f, -0.77f)) })
+        {
+            var tangent = Vector3.Normalize(Vector3.Cross(normal, Math.Abs(normal.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY));
+            var packed = PackedNormalTangent.Encode(normal, new Vector4(tangent, -1));
+            var (n, t) = PackedNormalTangent.Decode(packed);
+            Assert.True(Vector3.Dot(n, normal) > 0.9999f);
+            Assert.True(Vector3.Dot(new Vector3(t.X, t.Y, t.Z), tangent) > 0.9999f);
+            Assert.Equal(-1, t.W);
+            Assert.Equal(packed, PackedNormalTangent.Encode(n, t));                // a decoded value encodes to the same bits
+        }
+    }
+
     [Fact]
     public void BoundsFollowTheReshapedPart()
     {
@@ -133,7 +202,7 @@ public sealed class ShapeBuildTests
         var shape = new PartShape(new Vector3(1.4f, 1.4f, 1.4f), Vector3.Zero, new Vector3(0, 0, 5));
         var edit = new PartShapeEdit(Clothes, "models/heroes_wip/unicorn/materials/unicorn_clothes.vmat", shape, new Vector3(-20, -20, 0), new Vector3(20, 20, 70), 30f, ShapeLevel.Full);
 
-        await root.Catalog().BuildEditsAsync(null, Celeste, new HashSet<int>(), [], [edit], null, null, null, token);
+        await root.Catalog().BuildEditsAsync(null, Celeste, new HashSet<int>(), [], [edit], null, null, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var package = new Package();
