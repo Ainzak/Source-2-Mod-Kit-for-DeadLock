@@ -16,6 +16,9 @@ internal sealed class NativeMeshOptimizerCodec : IMeshOptimizerCodec
     private readonly EncodeVertexBufferBoundDelegate encodeVertexBufferBound;
     private readonly EncodeVertexBufferDelegate encodeVertexBuffer;
     private readonly EncodeVertexVersionDelegate encodeVertexVersion;
+    private readonly EncodeIndexBufferBoundDelegate encodeIndexBufferBound;
+    private readonly EncodeIndexBufferDelegate encodeIndexBuffer;
+    private readonly EncodeVertexVersionDelegate encodeIndexVersion;
     private nint libraryHandle;
 
     private NativeMeshOptimizerCodec(nint handle, ContentHash binaryHash, string version)
@@ -28,6 +31,9 @@ internal sealed class NativeMeshOptimizerCodec : IMeshOptimizerCodec
             encodeVertexBufferBound = LoadExport<EncodeVertexBufferBoundDelegate>(handle, "meshopt_encodeVertexBufferBound");
             encodeVertexBuffer = LoadExport<EncodeVertexBufferDelegate>(handle, "meshopt_encodeVertexBuffer");
             encodeVertexVersion = LoadExport<EncodeVertexVersionDelegate>(handle, "meshopt_encodeVertexVersion");
+            encodeIndexBufferBound = LoadExport<EncodeIndexBufferBoundDelegate>(handle, "meshopt_encodeIndexBufferBound");
+            encodeIndexBuffer = LoadExport<EncodeIndexBufferDelegate>(handle, "meshopt_encodeIndexBuffer");
+            encodeIndexVersion = LoadExport<EncodeVertexVersionDelegate>(handle, "meshopt_encodeIndexVersion");
             Identity = new GeometryCodecIdentity(
                 "meshoptimizer",
                 "source2-vertex-v1",
@@ -167,6 +173,48 @@ internal sealed class NativeMeshOptimizerCodec : IMeshOptimizerCodec
         }
     }
 
+    /// <summary>Encodes a triangle index list (meshopt index codec, version 1, as the game's index blocks); <paramref name="vertexCount"/>
+    /// bounds the indices.</summary>
+    public byte[] EncodeIndexBuffer(uint[] indices, int vertexCount)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(indices);
+        if (indices.Length == 0 || indices.Length % 3 != 0)
+        {
+            throw new ArgumentException($"An index buffer of {indices.Length} indices is not a list of triangles.", nameof(indices));
+        }
+
+        lock (EncodeGate)
+        {
+            encodeIndexVersion(1);
+            var bound = encodeIndexBufferBound(checked((nuint)indices.Length), checked((nuint)Math.Max(vertexCount, 1)));
+            if (bound == 0 || bound > MaximumDecodedBufferBytes)
+            {
+                throw new InvalidDataException($"meshopt_encodeIndexBufferBound returned unsupported size {bound}.");
+            }
+
+            var encoded = new byte[checked((int)bound)];
+            var encodedHandle = GCHandle.Alloc(encoded, GCHandleType.Pinned);
+            var indexHandle = GCHandle.Alloc(indices, GCHandleType.Pinned);
+            try
+            {
+                var size = encodeIndexBuffer(encodedHandle.AddrOfPinnedObject(), bound, indexHandle.AddrOfPinnedObject(), checked((nuint)indices.Length));
+                if (size == 0 || size > bound)
+                {
+                    throw new InvalidDataException($"meshopt_encodeIndexBuffer returned invalid size {size} for bound {bound}.");
+                }
+
+                Array.Resize(ref encoded, checked((int)size));
+                return encoded;
+            }
+            finally
+            {
+                indexHandle.Free();
+                encodedHandle.Free();
+            }
+        }
+    }
+
     public void Dispose()
     {
         var handle = Interlocked.Exchange(ref libraryHandle, 0);
@@ -271,4 +319,10 @@ internal sealed class NativeMeshOptimizerCodec : IMeshOptimizerCodec
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void EncodeVertexVersionDelegate(int version);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate nuint EncodeIndexBufferBoundDelegate(nuint indexCount, nuint vertexCount);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate nuint EncodeIndexBufferDelegate(nint buffer, nuint bufferSize, nint indices, nuint indexCount);
 }

@@ -13,8 +13,8 @@ namespace S2ModKit.Desktop;
 /// </summary>
 internal sealed class SoundsPane : UserControl
 {
-    private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(150, 150, 150));
-    private static readonly IBrush Accent = new SolidColorBrush(Color.FromRgb(120, 190, 120));
+    private static readonly IBrush Muted = AppTheme.Muted;
+    private static readonly IBrush Accent = AppTheme.Good;
     private readonly SoundPlayer player;
     private readonly TextBox filter = new() { PlaceholderText = "Search sounds", MinWidth = 260 };
     private readonly TextBlock status = new() { Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };

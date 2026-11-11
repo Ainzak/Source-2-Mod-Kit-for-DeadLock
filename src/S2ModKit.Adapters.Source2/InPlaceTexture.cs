@@ -16,14 +16,19 @@ namespace S2ModKit.Adapters.Source2;
 public static class InPlaceTexture
 {
     /// <param name="logicalPath">The texture's path in the game (<c>..._c</c>), which tells VRF the resource type.</param>
-    public static byte[] Write(byte[] compiled, string logicalPath, int width, int height, byte[] rgba)
+    public static byte[] Write(byte[] compiled, string logicalPath, int width, int height, byte[] rgba) => Write(compiled, logicalPath, width, height, rgba, fastCopy: false);
+
+    /// <param name="fastCopy">For a BC7 texture written as a new file of the mod: encode it as BC3 (DXT5) instead, whose blocks have the same
+    /// size, and mark the format so: about twenty times faster (2 s instead of 50 s for 4096 x 4096) at a slightly lower colour quality.</param>
+    public static byte[] Write(byte[] compiled, string logicalPath, int width, int height, byte[] rgba, bool fastCopy)
     {
         ArgumentNullException.ThrowIfNull(compiled);
         ArgumentNullException.ThrowIfNull(rgba);
         using var resource = new Resource { FileName = logicalPath };
         resource.Read(new MemoryStream(compiled));
         var texture = resource.DataBlock as Texture ?? throw Errors.Verification("RECOLOR_OUTPUT_NOT_TEXTURE", "The file is not a texture.", "Report the texture.");
-        var format = Format(texture.Format);
+        var asBc3 = fastCopy && texture.Format == VTexFormat.BC7;
+        var format = asBc3 ? CompressionFormat.Bc3 : Format(texture.Format);
         if (texture.Width != width || texture.Height != height || rgba.Length != width * height * 4)
         {
             throw Errors.Verification("RECOLOR_PIXELS_SIZE", $"The pixels are {width}x{height}; the texture is {texture.Width}x{texture.Height}.", "Report the texture.");
@@ -60,6 +65,18 @@ public static class InPlaceTexture
         }
 
         var output = (byte[])compiled.Clone();
+        if (asBc3)
+        {
+            // the texture header's format byte (version, flags, reflectivity, width, height, depth come first: 26 bytes)
+            var formatAt = (int)texture.Offset + 26;
+            if (output[formatAt] != (byte)VTexFormat.BC7)
+            {
+                throw Errors.Verification("RECOLOR_TEXTURE_LAYOUT", "The texture header has an unknown layout.", "Report the texture.");
+            }
+
+            output[formatAt] = (byte)VTexFormat.DXT5;
+        }
+
         var at = start;
         for (var level = levels - 1; level >= 0; level--)                   // smallest level first
         {

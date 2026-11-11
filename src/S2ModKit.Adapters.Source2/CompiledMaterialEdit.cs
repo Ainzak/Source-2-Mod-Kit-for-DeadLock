@@ -142,6 +142,35 @@ public static class CompiledMaterialEdit
         };
     }
 
+    /// <summary>
+    /// A copy of a compiled material under another name that draws texture setting <paramref name="parameter"/> from
+    /// <paramref name="texturePath"/> (<c>.vtex</c>, without <c>_c</c>) instead: the setting and the material's name change, and the new
+    /// texture joins the material's list of the files it uses. Everything else stays.
+    /// </summary>
+    public static byte[] WithTexture(byte[] compiled, string logicalPath, string newMaterialName, string parameter, string texturePath)
+    {
+        ArgumentNullException.ThrowIfNull(compiled);
+        using var resource = new Resource { FileName = logicalPath };
+        resource.Read(new MemoryStream(compiled));
+        var material = resource.DataBlock as Material ?? throw Errors.Input("MATERIAL_EDIT_NOT_A_MATERIAL", $"'{logicalPath}' is not a material.", "Pass a compiled .vmat_c.");
+        var textures = material.Data.TryGetValue("m_textureParams", out var list) && list.IsArray ? list : null;
+        var entry = textures?.Values.FirstOrDefault(item => item["m_name"].ToString(CultureInfo.InvariantCulture) == parameter)
+            ?? throw Errors.Unsupported("MATERIAL_TEXTURE_MISSING", $"'{Path.GetFileName(logicalPath)}' has no '{parameter}' texture.", "Report the file.");
+        entry["m_pValue"] = new KVObject(texturePath) { Flag = entry["m_pValue"].Flag };
+        if (material.Data.ContainsKey("m_materialName"))
+        {
+            material.Data["m_materialName"] = new KVObject(newMaterialName) { Flag = material.Data["m_materialName"].Flag };
+        }
+
+        using var stream = new MemoryStream();
+        material.Serialize(stream);
+        var payloads = new Dictionary<int, byte[]> { [resource.Blocks.IndexOf(material)] = stream.ToArray() };
+        var references = resource.Blocks.FirstOrDefault(block => block.Type == BlockType.RERL)
+            ?? throw Errors.Unsupported("MATERIAL_TEXTURE_MISSING", $"'{Path.GetFileName(logicalPath)}' has no list of the files it uses.", "Report the file.");
+        payloads[resource.Blocks.IndexOf(references)] = CompiledAddedEffects.WithReferences(compiled.AsSpan((int)references.Offset, (int)references.Size), [texturePath], replace: false);
+        return CompiledModelEdit.ReplaceBlocks(compiled, resource, payloads);
+    }
+
     /// <summary>The opacity a compiled material is drawn with: null when it is not see-through.</summary>
     public static float? Opacity(byte[] compiled, string logicalPath)
     {

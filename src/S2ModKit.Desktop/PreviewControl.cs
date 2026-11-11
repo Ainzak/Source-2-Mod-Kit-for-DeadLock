@@ -81,6 +81,16 @@ internal sealed class PreviewControl : OpenGlControlBase
     /// <summary>Shine per part (0-1) since the model opened, for the build.</summary>
     public Dictionary<int, float> PartShines { get; } = [];
 
+    private readonly Dictionary<int, (float Amount, byte[]? Material, Action<string?>? Done)> seeThroughRequests = [];
+
+    /// <summary>Shows a part see-through by <paramref name="amount"/> (0: solid) with the edited material the build writes; applied once its
+    /// colour texture is unpacked. <paramref name="done"/> gets why the preview cannot, or null.</summary>
+    public void RequestPartSeeThrough(int part, float amount, byte[]? material, Action<string?>? done = null)
+    {
+        seeThroughRequests[part] = (amount, material, done);
+        RequestNextFrameRendering();
+    }
+
     /// <summary>Sets a part's shine (null or 0: as the game has it); applied once its normal-roughness texture is unpacked.</summary>
     public void RequestPartShine(int part, float? shine)
     {
@@ -179,6 +189,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         PartShines.Clear();
         shineRequests.Clear();
         PartSeeThrough.Clear();
+        seeThroughRequests.Clear();
         colorRequests.Clear();
         rangeRequests.Clear();
         shapeRequests.Clear();
@@ -445,6 +456,20 @@ internal sealed class PreviewControl : OpenGlControlBase
             }
 
             rangeRequests.Remove(part);
+        }
+
+        foreach (var (part, seeing) in seeThroughRequests.ToArray())
+        {
+            if (part >= 0 && part < session.Parts.Count + session.Pieces.Count && !session.ColorReady(part))
+            {
+                session.PrepareColor(part);
+                waiting = true;
+                continue;
+            }
+
+            var refusal = part >= 0 && part < session.Parts.Count + session.Pieces.Count ? session.SetPartSeeThrough(part, seeing.Amount, seeing.Material) : "No such part.";
+            seeThroughRequests.Remove(part);
+            Post(() => seeing.Done?.Invoke(refusal));
         }
 
         foreach (var (part, shine) in shineRequests.ToArray())

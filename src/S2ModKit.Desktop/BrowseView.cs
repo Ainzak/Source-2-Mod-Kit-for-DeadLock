@@ -16,10 +16,10 @@ namespace S2ModKit.Desktop;
 /// </summary>
 internal sealed class BrowseView : UserControl
 {
-    private static readonly IBrush Sidebar = new SolidColorBrush(Color.FromRgb(43, 45, 49));
-    private static readonly IBrush Panel = new SolidColorBrush(Color.FromRgb(49, 51, 56));
-    private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(148, 155, 164));
-    private static readonly IBrush Warning = new SolidColorBrush(Color.FromRgb(240, 170, 70));
+    private static readonly IBrush Sidebar = AppTheme.Side;
+    private static readonly IBrush Panel = AppTheme.Main;
+    private static readonly IBrush Muted = AppTheme.Muted;
+    private static readonly IBrush Warning = AppTheme.Warning;
     private readonly GameBananaClient client;
     private readonly TextBox search = new() { PlaceholderText = "Search GameBanana (Enter)" };
     private readonly ComboBox sort = new() { ItemsSource = GameBananaClient.Sorts.Select(item => item.Label).ToArray(), SelectedIndex = 0, MinWidth = 150 };

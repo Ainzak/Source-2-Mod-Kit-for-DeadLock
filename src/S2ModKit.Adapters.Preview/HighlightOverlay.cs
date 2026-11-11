@@ -86,6 +86,7 @@ internal sealed class HighlightOverlay : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, part.Length);
 
         GL.ColorMask(true, true, true, true);
+        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);   // the renderer's own; it does not set it again for translucent parts
         GL.Disable(EnableCap.Blend);
         GL.DepthFunc((DepthFunction)sceneTest);
         GL.ClearDepth(sceneClear);

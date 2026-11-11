@@ -811,9 +811,10 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         }
 
         var day = clock.UtcNow.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var word = drop.Count == 0 && replace is { Count: > 0 } ? "updated" : "repaired";   // only older models completed: an update, not a repair
         var repairs = Path.Combine(settings.Data, "repairs");
         Directory.CreateDirectory(repairs);
-        var package = Path.Combine(repairs, $"{Sanitize(mod.Name)}-repaired-{clock.UtcNow:yyyyMMdd-HHmmss}_dir.vpk");
+        var package = Path.Combine(repairs, $"{Sanitize(mod.Name)}-{word}-{clock.UtcNow:yyyyMMdd-HHmmss}_dir.vpk");
         await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(package, entries, cancellationToken).ConfigureAwait(false);
         if (evidence is not null)
         {
@@ -824,7 +825,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         AddonFileResult installed;
         try
         {
-            installed = await InstallAsync(package, $"{mod.Name} (repaired {day})", cancellationToken).ConfigureAwait(false);
+            installed = await InstallAsync(package, $"{mod.Name} ({word} {day})", cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -850,14 +851,14 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             versions.Add(new ModLibraryVersion { Key = disabled.SelectKey, Label = "old version" });
         }
 
-        versions.Add(new ModLibraryVersion { Key = repairedKey, Label = $"repaired {day}" });
+        versions.Add(new ModLibraryVersion { Key = repairedKey, Label = $"{word} {day}" });
         await libraryStore.SaveAsync(settings.LibraryPath, library.WithVersions(known?.Name ?? mod.Name, versions, clock.UtcNow), cancellationToken).ConfigureAwait(false);
         var what = new[]
         {
             replace is { Count: > 0 } ? $"{replace.Count} model(s) got the game's current settings and attachment points" : null,
             drop.Count > 0 ? $"{drop.Count} outdated game file(s) left out" : null,
         };
-        return new CatalogChange(repairedKey, $"Repaired '{mod.Name}': {string.Join("; ", what.OfType<string>())}. The original is kept disabled as the old version.");
+        return new CatalogChange(repairedKey, $"{(word == "updated" ? "Updated" : "Repaired")} '{mod.Name}': {string.Join("; ", what.OfType<string>())}. The original is kept disabled as the old version.");
     }
 
     /// <summary>Builds an edited copy with parts hidden (see <see cref="BuildEditsAsync"/>).</summary>
@@ -966,6 +967,19 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             }
         }
 
+        // a piece (a separate mesh inside a part, preview index from the part count up) shares its part's material and texture with the
+        // part's other pieces, often the same texture area (both boots): its colour, shine and see-through go to its own copies (below)
+        var drawCount = int.MaxValue;
+        if (recolors.Count > 0 || shines.Count > 0)
+        {
+            var baseModel = entries.TryGetValue(logical, out var ownModel) ? ownModel.ToArray() : ReadFirst([Path.Combine(settings.Game, "citadel", "pak01_dir.vpk")], logical);
+            drawCount = baseModel is null ? int.MaxValue : S2ModKit.Adapters.Preview.PartMasks.PieceOrPart(baseModel, logical, 0).Parts;
+        }
+        var sharedRecolors = recolors.Where(part => part.Part < drawCount).ToArray();
+        var sharedShines = shines.Where(part => part.Part < drawCount).ToArray();
+        var ownRecolors = recolors.Where(part => part.Part >= drawCount).ToDictionary(part => part.Part);
+        var ownShines = shines.Where(part => part.Part >= drawCount).ToDictionary(part => part.Part);
+
         (string Input, string Output)? shapeHashes = null;
         if (shapes.Count > 0)
         {
@@ -1054,7 +1068,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         }
 
         var evidence = new List<object>();
-        if (recolors.Count > 0)
+        if (sharedRecolors.Length > 0)
         {
             var archives = new List<string>();
             if (mod is not null)
@@ -1065,7 +1079,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             archives.Add(Path.Combine(settings.Game, "citadel", "pak01_dir.vpk"));
             archives.Add(Path.Combine(settings.Game, "core", "pak01_dir.vpk"));
             var workshop = new S2ModKit.Adapters.Source2.VrfTextureWorkshop();
-            foreach (var group in recolors.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
+            foreach (var group in sharedRecolors.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
             {
                 var texture = await workshop.DecodeAsync(archives, group.Key, cancellationToken).ConfigureAwait(false);
                 var rgba = (byte[])texture.Rgba.Clone();
@@ -1085,7 +1099,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             }
 
             // the materials' colour settings (tints, glow, outline) and glow colour texture follow (MaterialColors)
-            foreach (var group in recolors.Where(part => part.Material is not null).GroupBy(part => part.Material!, StringComparer.OrdinalIgnoreCase))
+            foreach (var group in sharedRecolors.Where(part => part.Material is not null).GroupBy(part => part.Material!, StringComparer.OrdinalIgnoreCase))
             {
                 var path = (group.Key.EndsWith("_c", StringComparison.Ordinal) ? group.Key[..^2] : group.Key).Replace('\\', '/');
                 var change = group.First().Change;                              // parts sharing a material share its colours
@@ -1102,7 +1116,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
                 }
 
                 var glowRecolored = false;
-                if (glow is not null && !recolors.Any(part => string.Equals(part.Texture, glow, StringComparison.OrdinalIgnoreCase)))
+                if (glow is not null && !sharedRecolors.Any(part => string.Equals(part.Texture, glow, StringComparison.OrdinalIgnoreCase)))
                 {
                     try
                     {
@@ -1123,7 +1137,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         }
 
         var shineEvidence = new List<object>();
-        if (shines.Count > 0)
+        if (sharedShines.Length > 0)
         {
             // shine lowers the roughness (alpha of the normal-roughness texture) inside the part's UV mask, as the preview showed it
             var archives = new List<string>();
@@ -1136,7 +1150,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             archives.Add(Path.Combine(settings.Game, "core", "pak01_dir.vpk"));
             var model = entries.TryGetValue(logical, out var built) ? built.ToArray() : ReadFirst(archives, logical)
                 ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
-            foreach (var group in shines.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
+            foreach (var group in sharedShines.GroupBy(part => part.Texture, StringComparer.OrdinalIgnoreCase))
             {
                 var compiled = ReadFirst(archives, group.Key + "_c")
                     ?? throw Errors.Input("SHINE_TEXTURE_MISSING", $"'{group.Key}' is not in the game or the mod.", "Open the preview again.");
@@ -1251,11 +1265,13 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         }
 
         var opacityEvidence = new List<object>();
-        if (opacities.Count > 0)
+        var own = opacities.Select(part => part.Part).Concat(ownRecolors.Keys).Concat(ownShines.Keys).Distinct().Order().ToArray();
+        if (own.Length > 0)
         {
-            // see-through (set_material_opacity@1): the hero shader's translucency is the colour texture's alpha times the material's
-            // opacity. The material turns translucent and its colour texture gets a solid alpha with the chosen parts lowered, so only
-            // they show through (an opaque material's colour alpha is unused, often 0, which would hide the whole material).
+            // own copies (set_material_opacity@2, split_draw_material@1): every see-through part and every edited piece gets its own material
+            // copy drawing its own copies of the textures it changes (colour: recolored, see-through alpha; normal-roughness: shine), and a
+            // piece gets its own draw call. The shared material and textures stay, so the rest keeps its look and outline. Copies of colour
+            // textures are written as BC3 (seconds, not a minute); a normal-roughness copy keeps its format.
             var archives = new List<string>();
             if (mod is not null)
             {
@@ -1266,56 +1282,102 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             archives.AddRange(gameArchives);
             var model = entries.TryGetValue(logical, out var built) ? built.ToArray() : ReadFirst(archives, logical)
                 ?? throw Errors.Input("MODEL_EDIT_MODEL_MISSING", $"'{logical}' is not in {(mod is null ? "the game" : $"'{mod.Name}'")}.", "Choose the model the mod ships.");
-            foreach (var group in opacities.GroupBy(part => part.Material, StringComparer.OrdinalIgnoreCase))
+            var splits = new List<S2ModKit.Adapters.Source2.SeeThroughSplit>();
+            var number = 0;
+            foreach (var index in own)
             {
-                var material = group.Key + "_c";
-                var bytes = entries.TryGetValue(material, out var shipped) ? shipped.ToArray()
-                    : ReadFirst(archives, material)
-                    ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The material '{group.Key}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again and set the part see-through again.");
-                var gameMaterial = ReadFirst(gameArchives, material);
-                var gameOpacity = gameMaterial is null ? null : S2ModKit.Adapters.Source2.CompiledMaterialEdit.Opacity(gameMaterial, material);
-                var colour = S2ModKit.Adapters.Source2.CompiledMaterialEdit.Textures(bytes, material).GetValueOrDefault("g_tColor");
-                if (colour is null || colour.StartsWith("materials/default/", StringComparison.OrdinalIgnoreCase))
-                {
-                    throw Errors.Unsupported("MATERIAL_OPACITY_NO_TEXTURE", $"'{group.Key}' has no colour texture of its own, so its parts cannot be made see-through one by one.", "Leave See-through off for this part.");
-                }
-
-                var texture = colour + "_c";
-                var compiled = (entries.TryGetValue(texture, out var recolored) ? recolored.ToArray() : ReadFirst(archives, texture))
-                    ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The texture '{colour}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again.");
+                number++;
+                var opacity = opacities.FirstOrDefault(part => part.Part == index);
+                var recolor = ownRecolors.GetValueOrDefault(index);
+                var shine = ownShines.GetValueOrDefault(index);
+                var (_, drawPart, triangles) = S2ModKit.Adapters.Preview.PartMasks.PieceOrPart(model, logical, index);
+                var material = (opacity?.Material ?? recolor?.Material ?? S2ModKit.Adapters.Source2.CompiledSeeThroughSplit.DrawMaterial(model, logical, drawPart)).Replace('\\', '/');
+                material = material.EndsWith("_c", StringComparison.Ordinal) ? material[..^2] : material;
+                var bytes = ReadFirst(archives, material + "_c")
+                    ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The material '{material}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again and set the part again.");
+                var gameMaterial = ReadFirst(gameArchives, material + "_c");
+                var gameOpacity = gameMaterial is null ? null : S2ModKit.Adapters.Source2.CompiledMaterialEdit.Opacity(gameMaterial, material + "_c");
+                var textures = S2ModKit.Adapters.Source2.CompiledMaterialEdit.Textures(bytes, material + "_c");
+                var stem = $"_s2mk_own{number}";
+                var newMaterial = material[..^".vmat".Length] + stem + ".vmat";
+                var copy = bytes;
+                string? newColour = null;
+                string? newNormal = null;
                 try
                 {
-                    var (rgba, width, height, _) = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(compiled, texture);
-                    // the alpha starts from the game's own texture, so building again does not stack: solid, or the game's when it was translucent
-                    if (gameOpacity is null)
+                    if (opacity is not null || recolor is not null)
                     {
-                        S2ModKit.Adapters.Preview.SeeThroughMath.Solid(rgba);
-                    }
-                    else if (ReadFirst(gameArchives, texture) is { } gameTexture)
-                    {
-                        var original = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(gameTexture, texture);
-                        if (original.Width == width && original.Height == height)
+                        var colour = textures.GetValueOrDefault("g_tColor")
+                            ?? throw Errors.Unsupported("MATERIAL_OPACITY_NO_TEXTURE", $"'{material}' has no colour texture, so this part cannot get its own colours.", "Change the whole part instead.");
+                        var compiled = (entries.TryGetValue(colour + "_c", out var sharedColour) ? sharedColour.ToArray() : ReadFirst(archives, colour + "_c"))   // whole parts' recolors included
+                            ?? throw Errors.Input("MATERIAL_OPACITY_MISSING", $"The texture '{colour}' is not in the game{(mod is null ? string.Empty : " or the mod")}.", "Open the preview again.");
+                        var (rgba, width, height, _) = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(compiled, colour + "_c");
+                        if (recolor is not null)
                         {
-                            S2ModKit.Adapters.Preview.SeeThroughMath.CopyAlpha(rgba, original.Rgba);
+                            if (recolor.Width != width || recolor.Height != height)
+                            {
+                                throw Errors.Verification("RECOLOR_MASK_SIZE", $"The mask of part {index + 1} is {recolor.Width}x{recolor.Height}; '{colour}' is {width}x{height}.", "Open the preview again.");
+                            }
+
+                            RecolorMath.Apply(rgba, recolor.Mask, recolor.Change);
                         }
+
+                        if (opacity is not null)
+                        {
+                            var keep = Math.Clamp(opacity.Opacity, 0f, 1f);
+                            for (var i = 3; i < rgba.Length; i += 4)
+                            {
+                                rgba[i] = gameOpacity is null ? (byte)Math.Round(keep * 255) : (byte)Math.Round(rgba[i] * keep);   // a translucent original keeps its own pattern
+                            }
+                        }
+
+                        newColour = (colour.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase) ? colour[..^".vtex".Length] : colour) + stem + ".vtex";
+                        entries[newColour + "_c"] = await Task.Run(() => S2ModKit.Adapters.Source2.InPlaceTexture.Write(compiled, colour + "_c", width, height, rgba, fastCopy: true), cancellationToken).ConfigureAwait(false);
+                        copy = S2ModKit.Adapters.Source2.CompiledMaterialEdit.WithTexture(copy, material + "_c", newMaterial, "g_tColor", newColour);
                     }
 
-                    foreach (var part in group)
+                    if (shine is not null)
                     {
-                        var mask = S2ModKit.Adapters.Preview.PartMasks.Mask(model, logical, part.Part, width, height);
-                        S2ModKit.Adapters.Preview.SeeThroughMath.Apply(rgba, mask, part.Opacity);
-                        opacityEvidence.Add(new { part = part.Part, material = group.Key, texture = colour, opacity = part.Opacity, texels = mask.Count(value => value > 0) });
+                        var normal = textures.GetValueOrDefault(S2ModKit.Adapters.Preview.PreviewSession.NormalRoughnessTexture)
+                            ?? throw Errors.Input("SHINE_TEXTURE_MISSING", $"'{material}' has no roughness texture.", "Leave shine off for this part.");
+                        var compiled = (entries.TryGetValue(normal + "_c", out var sharedNormal) ? sharedNormal.ToArray() : ReadFirst(archives, normal + "_c"))
+                            ?? throw Errors.Input("SHINE_TEXTURE_MISSING", $"'{normal}' is not in the game or the mod.", "Open the preview again.");
+                        var (rgba, width, height, codec) = S2ModKit.Adapters.Source2.InPlaceTexture.ReadStored(compiled, normal + "_c");
+                        S2ModKit.Adapters.Preview.ShineMath.Apply(rgba, null, shine.Shine, S2ModKit.Adapters.Preview.ShineMath.RoughnessChannel(codec));
+                        newNormal = (normal.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase) ? normal[..^".vtex".Length] : normal) + stem + ".vtex";
+                        entries[newNormal + "_c"] = await Task.Run(() => S2ModKit.Adapters.Source2.InPlaceTexture.Write(compiled, normal + "_c", width, height, rgba), cancellationToken).ConfigureAwait(false);
+                        copy = S2ModKit.Adapters.Source2.CompiledMaterialEdit.WithTexture(copy, material + "_c", newMaterial, S2ModKit.Adapters.Preview.PreviewSession.NormalRoughnessTexture, newNormal);
                     }
-
-                    entries[texture] = S2ModKit.Adapters.Source2.InPlaceTexture.Write(compiled, texture, width, height, rgba);
                 }
                 catch (S2ModKitException exception) when (exception.Error.Code.StartsWith("RECOLOR_", StringComparison.Ordinal))
                 {
-                    throw Errors.Input("MATERIAL_OPACITY_TEXTURE", $"The colour texture of '{group.Key}' cannot be written: {exception.Error.Summary}", "Leave See-through off for this part.");
+                    throw Errors.Input("MATERIAL_OPACITY_TEXTURE", $"A texture of '{material}' cannot be copied for part {index + 1}: {exception.Error.Summary}", "Change the whole part instead.");
                 }
 
-                entries[material] = S2ModKit.Adapters.Source2.CompiledMaterialEdit.SetOpacity(bytes, material, gameOpacity ?? 1f);
+                if (recolor is not null)
+                {
+                    copy = S2ModKit.Adapters.Source2.CompiledMaterialEdit.Recolor(copy, material + "_c", recolor.Change).Bytes;   // the copy's tints and outline follow
+                }
+
+                entries[newMaterial + "_c"] = opacity is not null ? S2ModKit.Adapters.Source2.CompiledMaterialEdit.SetOpacity(copy, newMaterial + "_c", gameOpacity ?? 1f) : copy;
+                splits.Add(new S2ModKit.Adapters.Source2.SeeThroughSplit(drawPart, triangles, newMaterial));
+                opacityEvidence.Add(new
+                {
+                    part = index,
+                    drawCall = drawPart,
+                    piece = triangles is not null,
+                    triangles = triangles?.Length,
+                    material,
+                    newMaterial,
+                    newColour,
+                    newNormal,
+                    opacity = opacity?.Opacity,
+                    recolor = recolor?.Change,
+                    shine = shine?.Shine,
+                });
             }
+
+            entries[logical] = await Task.Run(() => S2ModKit.Adapters.Source2.CompiledSeeThroughSplit.Apply(model, logical, splits, ShapeCapabilities.CodecPath()), cancellationToken).ConfigureAwait(false);
         }
 
         foreach (var effect in withAbilities)
@@ -1384,7 +1446,7 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
                 shapeOutputHash = shapeHashes?.Output,
                 effects = effectEvidence,
                 shines = shineEvidence,
-                opacityOperation = opacities.Count > 0 ? "set_material_opacity@1" : null,
+                opacityOperation = opacities.Count > 0 ? "set_material_opacity@2" : null,
                 opacities = opacityEvidence,
                 addedOperation = added.Count > 0 ? "add_model_effects@1" : null,
                 added = added.Select(effect => new { effect = effect.Effect, source = effect.Source, withAbilityEffect = effect.Parent, bone = effect.Bone, offset = new[] { effect.Offset.X, effect.Offset.Y, effect.Offset.Z } }),

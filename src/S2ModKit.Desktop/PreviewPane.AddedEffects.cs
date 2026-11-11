@@ -54,10 +54,11 @@ internal sealed partial class PreviewPane
 
     private readonly List<AddedRow> addedEffects = [];
     private readonly TextBox addedSearch = new() { PlaceholderText = "Search effects: hero, ability or file name" };
-    private readonly ListBox addedChoices = new() { Height = 150 };
-    private readonly ListBox addedList = new() { MaxHeight = 120 };
+    private readonly ListBox addedChoices = new() { Height = 150, BorderThickness = new Thickness(1), BorderBrush = Outline, CornerRadius = new CornerRadius(6) };
+    private readonly ListBox addedList = new() { MaxHeight = 200, BorderThickness = new Thickness(1), BorderBrush = Outline, CornerRadius = new CornerRadius(6) };
+    private readonly TextBlock addedSelectedTitle = new() { Foreground = Muted, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ComboBox abilityParent = new() { HorizontalAlignment = HorizontalAlignment.Stretch, MaxDropDownHeight = 420 };
-    private readonly TextBlock addedStatus = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock addedStatus = new() { Foreground = Muted, FontSize = 13, TextWrapping = TextWrapping.Wrap };
     private readonly Slider[] addedNudge = [Shape(-40, 40, 0), Shape(-40, 40, 0), Shape(-40, 40, 0)];
     private readonly StackPanel addedSelected = new() { Spacing = 2, IsVisible = false };
     private List<EffectOffer> effectOffers = [];                        // the game's
@@ -91,6 +92,169 @@ internal sealed partial class PreviewPane
     }
 
     /// <summary>The "Added effects" part of the Effects tab (the same controls for every model).</summary>
+    /// <summary>The Effects tab's folding Added effects section (its heading with the hint is the fold's header).</summary>
+    private Expander AddedEffectsHost()
+    {
+        var section = AddedEffectsSection();
+        var header = section.Children[0];
+        section.Children.RemoveAt(0);
+        return Fold("effects.added", header, section);
+    }
+
+    private Window? effectsWindow;
+    private PreviewControl? effectsView3d;
+    private readonly TextBlock effectsWindowStatus = new() { Foreground = Muted, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+
+    /// <summary>
+    /// The effects window: every effect on offer (search, Browse...), a large view of its own that plays the chosen effect alone, and the
+    /// ways to add it: at the feet, during an ability, or on the hero (the window hides and the spot is clicked in the main view).
+    /// </summary>
+    private void OpenEffectsWindow()
+    {
+        if (effectsWindow is { } open)
+        {
+            open.Show();
+            open.Activate();
+            return;
+        }
+
+        if (model.SelectedItem is not string modelPath || shownArchives.Count == 0 || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            addedStatus.Text = "Open the 3D preview first.";
+            return;
+        }
+
+        foreach (var control in new Control[] { addedSearch, addedChoices, abilityParent, effectsWindowStatus })
+        {
+            Detach(control);
+        }
+
+        abilityParent.ItemsSource = effectGroups.SelectMany(group => group.EffectList.Select(path => new EffectChoice(group, path))).ToArray();
+        abilityParent.SelectedIndex = abilityParent.ItemCount > 0 ? 0 : -1;
+        addedChoices.Height = double.NaN;
+        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto,Auto"), Margin = new Thickness(16, 14, 8, 14), RowSpacing = 8 };
+        void Row(Control control, int row)
+        {
+            Grid.SetRow(control, row);
+            left.Children.Add(control);
+        }
+
+        Row(new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8, Children = { addedSearch, WithColumn(Button("Browse...", () => _ = BrowseEffectAsync()), 1) } }, 0);
+        Row(addedChoices, 1);
+        Row(Hint.Beside(new TextBlock { Text = "During an ability", Foreground = Muted, FontSize = 13 }, new Hint("During an ability",
+            "Instead of always on, the chosen effect can play during an ability: pick one of this hero's ability effects; the chosen effect starts with it, at the same place.")), 2);
+        Row(abilityParent, 3);
+        Row(Wrap(Button("Add to this ability effect", AddToAbility), Button("Play the ability effect", () =>
+        {
+            if (abilityParent.SelectedItem is EffectChoice choice)
+            {
+                _ = PlayInWindowAsync(choice.Path, null);
+            }
+        })), 4);
+
+        var view = new PreviewControl { MaxFps = settings.PreviewFps };
+        effectsView3d = view;
+        var host = new Grid { Background = AppTheme.Background, ClipToBounds = true, Children = { view } };
+        host.AddHandler(PointerPressedEvent, (_, e) => view.BeginDrag(e.GetPosition(host), !e.GetCurrentPoint(host).Properties.IsLeftButtonPressed),
+            Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        host.AddHandler(PointerMovedEvent, (_, e) => view.DragTo(e.GetPosition(host), host.Bounds.Height),
+            Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        host.AddHandler(PointerReleasedEvent, (_, _) => view.EndDrag(), Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        host.AddHandler(PointerWheelChangedEvent, (_, e) => view.Zoom(e.Delta.Y), Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        var pick = Button("Pick a spot on the hero", PickSpotFromWindow);
+        pick.Classes.Add("accent");                                        // the theme's accent button
+        var right = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto"), Margin = new Thickness(8, 14, 16, 14), RowSpacing = 8 };
+        right.Children.Add(new Border { CornerRadius = new CornerRadius(10), ClipToBounds = true, BorderThickness = new Thickness(1), BorderBrush = Outline, Child = host });
+        var buttons = Wrap(Button("Play", () =>
+        {
+            if (addedChoices.SelectedItem is EffectOffer offer)
+            {
+                _ = PlayInWindowAsync(offer.Path, offer.Source);
+            }
+        }), Button("Stop", () => view.RequestEffect(null, null)), Button("Add at the feet", () => AddEffect(null, Vector3.Zero)), pick);
+        Grid.SetRow(buttons, 1);
+        right.Children.Add(buttons);
+        Grid.SetRow(effectsWindowStatus, 2);
+        right.Children.Add(effectsWindowStatus);
+        var layoutGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("380,*"), Children = { left, WithColumn(right, 1) } };
+        var window = new Window
+        {
+            Title = $"Add an effect - {System.IO.Path.GetFileNameWithoutExtension(modelPath)}",
+            Width = 1160,
+            Height = 760,
+            MinWidth = 820,
+            MinHeight = 520,
+            Background = AppTheme.Side,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = layoutGrid,
+        };
+        window.Closed += (_, _) =>
+        {
+            _ = view.CloseAsync();
+            foreach (var control in new Control[] { addedSearch, addedChoices, abilityParent, effectsWindowStatus })
+            {
+                Detach(control);
+            }
+
+            effectsWindow = null;
+            effectsView3d = null;
+        };
+        effectsWindow = window;
+        effectsWindowStatus.Text = "Pick an effect and press Play to see it here (drag to turn, wheel to zoom).";
+        window.Show(owner);
+        view.Open(new S2ModKit.Adapters.Preview.PreviewSessionOptions([.. shownArchives], modelPath, SceneMap: "maps/ui/hero_select.vmap"));
+        ShowOffers();
+    }
+
+    private static Control WithColumn(Control control, int column)
+    {
+        Grid.SetColumn(control, column);
+        return control;
+    }
+
+    /// <summary>Plays an effect alone in the effects window's own view (its files prepared as for the main preview).</summary>
+    private async Task PlayInWindowAsync(string effect, string? source)
+    {
+        if (effectsView3d is not { } view)
+        {
+            return;
+        }
+
+        effectsWindowStatus.Text = "Preparing the effect...";
+        byte[]? overlay = null;
+        var archives = shownArchives;
+        var changes = EffectChanges;
+        try
+        {
+            overlay = await Task.Run(() => EffectOverlay(archives, source is null ? [effect] : [], changes, settings.StagingRoot, source is null ? [] : [(effect, source)],
+                Enumerable.Empty<(string, string)>().ToLookup(item => item.Item1, item => item.Item2))).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or S2ModKit.Domain.S2ModKitException)
+        {
+            AppLog.Error("Effect window overlay", exception);
+        }
+
+        view.RequestEffect(effect, overlay, refusal => effectsWindowStatus.Text = refusal
+            ?? $"Playing {System.IO.Path.GetFileNameWithoutExtension(effect)}; it repeats every few seconds. Pick a spot on the hero to place it, or add it at the feet.");
+    }
+
+    /// <summary>Hides the effects window and waits for a click on the hero in the main view.</summary>
+    private void PickSpotFromWindow()
+    {
+        if (addedChoices.SelectedItem is not EffectOffer)
+        {
+            effectsWindowStatus.Text = "Choose an effect in the list first.";
+            return;
+        }
+
+        effectsView3d?.RequestEffect(null, null);
+        effectsWindow?.Hide();
+        ShowTab(effectsTab);                                                 // a click on the view places it while the Effects tab is open
+        StartPlacing();
+    }
+
+    private void CloseEffectsWindow() => effectsWindow?.Close();
+
     private StackPanel AddedEffectsSection()
     {
         if (!addedWired)
@@ -98,6 +262,7 @@ internal sealed partial class PreviewPane
             addedWired = true;
             addedSearch.TextChanged += (_, _) => ShowOffers();
             addedList.SelectionChanged += (_, _) => ShowAddedSelection();
+            addedList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<AddedRow>((row, _) => row is null ? new Grid() : AddedItem(row));
             for (var axis = 0; axis < 3; axis++)
             {
                 addedNudge[axis].ValueChanged += (_, _) => NudgeSelected();
@@ -108,13 +273,15 @@ internal sealed partial class PreviewPane
                 addedStatus.Text = "The preview stopped an added effect it cannot draw (" + reason + "). The build still adds it.";
                 AppLog.Shown(addedStatus.Text);
             };
-            addedSelected.Children.Add(new TextBlock { Text = "Move the selected effect along its bone's axes", Foreground = Muted, FontSize = 11 });
+            addedSelected.Children.Add(Hint.Beside(addedSelectedTitle,
+                new Hint("Fine placement", "The sliders move the selected effect along the axes of the bone it sits on, so it keeps following that body part. "
+                    + "An effect made for another body can sit off the marker: move it until the effect itself is where you want it. Build edited mod puts it into the game.")));
             foreach (var slider in addedNudge)
             {
                 addedSelected.Children.Add(slider);
             }
 
-            addedSelected.Children.Add(Wrap(Button("Back to the clicked point", () => SetNudge(Vector3.Zero)), Button("Remove", RemoveSelectedAdded)));
+            addedSelected.Children.Add(Wrap(Button("Reset position", () => SetNudge(Vector3.Zero))));
         }
 
         foreach (var control in new Control[] { addedSearch, addedChoices, addedList, addedStatus, addedSelected })
@@ -123,47 +290,15 @@ internal sealed partial class PreviewPane
         }
 
         var panel = new StackPanel { Spacing = 4 };
-        panel.Children.Add(new TextBlock { Text = "Added effects", FontWeight = FontWeight.SemiBold });
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Pick any effect of the game or of an installed mod (or Browse... for an effect file), play it, then place it: click the hero where it should sit (it follows that body part), "
-                + "or add it at the feet for effects around the whole hero, like snow. Effects that loop suit best: one that plays once shows only when the hero appears.",
-            Foreground = Muted,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-        });
-        panel.Children.Add(addedSearch);
-        panel.Children.Add(addedChoices);
-        panel.Children.Add(Wrap(
-            Button("Play", () =>
-            {
-                if (addedChoices.SelectedItem is EffectOffer offer)
-                {
-                    _ = PlayEffectAsync(offer.Path, offer.Source);
-                }
-            }),
-            Button("Stop", StopEffectPreview),
-            Button("Place on the hero", StartPlacing),
-            Button("Add at the feet", () => AddEffect(null, Vector3.Zero)),
-            Button("Browse...", () => _ = BrowseEffectAsync())));
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Or let it play during an ability: pick one of this hero's ability effects; the chosen effect starts with it, at the same place.",
-            Foreground = Muted,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-        });
-        Detach(abilityParent);
-        abilityParent.ItemsSource = effectGroups.SelectMany(group => group.EffectList.Select(path => new EffectChoice(group, path))).ToArray();
-        abilityParent.SelectedIndex = abilityParent.ItemCount > 0 ? 0 : -1;
-        panel.Children.Add(abilityParent);
-        panel.Children.Add(Wrap(Button("Add to this ability effect", AddToAbility), Button("Play the ability effect", () =>
-        {
-            if (abilityParent.SelectedItem is EffectChoice choice)
-            {
-                _ = PlayEffectAsync(choice.Path);
-            }
-        }), Button("Stop", StopEffectPreview)));
+        panel.Children.Add(Hint.Beside(new TextBlock { Text = "Added effects", FontWeight = FontWeight.SemiBold, FontSize = 14 }, new Hint("Added effects",
+            "Pick any effect of the game or of an installed mod (or Browse... for an effect file), play it, then place it: click the hero where it should sit (it follows that body part), "
+                + "or add it at the feet for effects around the whole hero, like snow. Effects that loop suit best: one that plays once shows only when the hero appears.")));
+        var add = Button("Add an effect...", OpenEffectsWindow);
+        add.HorizontalAlignment = HorizontalAlignment.Stretch;
+        add.HorizontalContentAlignment = HorizontalAlignment.Center;
+        add.Padding = new Thickness(10, 8);
+        ToolTip.SetTip(add, "Opens a window with every effect and a large view to play them; pick one, then click the spot on the hero.");
+        panel.Children.Add(add);
         panel.Children.Add(addedStatus);
         panel.Children.Add(addedList);
         panel.Children.Add(addedSelected);
@@ -268,6 +403,7 @@ internal sealed partial class PreviewPane
         StopEffectPreview();                                                 // the model comes back to be clicked
         placing = offer;
         addedStatus.Text = $"Click the hero where '{System.IO.Path.GetFileNameWithoutExtension(offer.Path)}' should sit. Turn the view first if you need to (drag).";
+
     }
 
     /// <summary>A click on the view while an effect waits to be placed. Returns false when no effect waits.</summary>
@@ -306,7 +442,7 @@ internal sealed partial class PreviewPane
         addedEffects.Add(row);
         addedStatus.Text = bone is null
             ? $"Added at the hero's feet. Build edited mod puts it into the game."
-            : $"Placed on '{bone}' (the marker). An effect made for another body can sit off the marker: move it with the sliders below until the effect itself is where you want it. Build edited mod puts it into the game.";
+            : $"Placed on '{bone}' (the marker). If the effect sits off the marker, move it with Fine placement below.";
         RefreshAddedList(row);
         _ = ApplyPlacedAsync(files: true);
         UpdateSummary();
@@ -328,9 +464,43 @@ internal sealed partial class PreviewPane
         UpdateSummary();
     }
 
-    private void RemoveSelectedAdded()
+    /// <summary>One added effect in the list: its number, name and place, and its own Remove.</summary>
+    private Grid AddedItem(AddedRow row)
     {
-        if (addedList.SelectedItem is AddedRow { Existing: false } row)
+        var number = addedEffects.IndexOf(row) + 1;
+        var item = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 1) };
+        item.Children.Add(new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(11),
+            Background = AppTheme.Outline,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture), FontSize = 12, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+        });
+        var text = new TextBlock { Text = row.ToString(), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0) };
+        ToolTip.SetTip(text, row.ToString());
+        Grid.SetColumn(text, 1);
+        item.Children.Add(text);
+        if (!row.Existing)
+        {
+            var remove = new Button { Content = "Remove", Padding = new Thickness(8, 2), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(remove, $"Remove effect {number} from the build");
+            remove.Click += (_, e) =>
+            {
+                RemoveAdded(row);
+                e.Handled = true;
+            };
+            Grid.SetColumn(remove, 2);
+            item.Children.Add(remove);
+        }
+
+        return item;
+    }
+
+    private void RemoveAdded(AddedRow row)
+    {
+        if (!row.Existing && addedEffects.Contains(row))
         {
             addedEffects.Remove(row);
             RefreshAddedList(null);
@@ -351,6 +521,7 @@ internal sealed partial class PreviewPane
     {
         var row = addedList.SelectedItem as AddedRow;
         addedSelected.IsVisible = row is { Existing: false };
+        addedSelectedTitle.Text = row is null ? "Fine placement" : $"Fine placement of {addedEffects.IndexOf(row) + 1}. {System.IO.Path.GetFileNameWithoutExtension(row.Effect)}";
         foreach (var slider in addedNudge)
         {
             slider.IsVisible = row is { Parent: null };                      // an ability's effect decides the place

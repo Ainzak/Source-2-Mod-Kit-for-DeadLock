@@ -274,6 +274,11 @@ public sealed partial class PreviewSession : IDisposable
             draw.IndexCount = count;
             ink.Hidden.Remove(index);
         }
+
+        foreach (var own in owns.Values.Where(item => ReferenceEquals(item.PieceOf, draw)))
+        {
+            own.Target.IndexCount = hiddenIndexCounts.ContainsKey(index) ? 0 : own.PieceCount;   // the part's pieces with their own copies hide with it
+        }
     }
 
     /// <summary>The visible part under pixel (<paramref name="x"/>, <paramref name="y"/>) of the last frame drawn at
@@ -453,6 +458,7 @@ public sealed partial class PreviewSession : IDisposable
     {
         StopEffect();
         ClearPlaced();
+        DisposeOpacity();
         SetOverlay(null);
         ink.Dispose();
         highlight.Dispose();

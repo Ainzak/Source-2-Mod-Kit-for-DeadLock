@@ -26,7 +26,7 @@ internal sealed record SettingsActions(
 /// </summary>
 internal sealed class SettingsWindow : Window
 {
-    private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(148, 155, 164));
+    private static readonly IBrush Muted = AppTheme.Muted;
     private readonly SettingsActions actions;
     private readonly SelectableTextBlock gamePath = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap };
     private readonly SelectableTextBlock dataPath = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap };
@@ -58,6 +58,8 @@ internal sealed class SettingsWindow : Window
             }
         };
 
+        var themeButton = new Button { Content = "Theme..." };
+        themeButton.Click += (_, _) => _ = new ThemeWindow().ShowDialog(this);
         var close = new Button { Content = "Close", IsDefault = true, IsCancel = true, HorizontalAlignment = HorizontalAlignment.Right };
         close.Click += (_, _) => Close();
         Content = new ScrollViewer
@@ -81,6 +83,9 @@ internal sealed class SettingsWindow : Window
                         autoPreview,
                         Row("Frame rate", speed),
                         Note("30 fps uses less GPU while the preview runs.")),
+                    Group("Look",
+                        Buttons(themeButton),
+                        Note("Pick a ready-made theme or change any colour of the app; changes show at once.")),
                     Group("Updates",
                         checkOnStart,
                         Buttons(Action("Look for app updates now", actions.CheckAppUpdate)),
@@ -162,5 +167,5 @@ internal sealed class SettingsWindow : Window
         return row;
     }
 
-    private static TextBlock Note(string text) => new() { Text = text, Foreground = Muted, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private static TextBlock Note(string text) => new() { Text = text, Foreground = Muted, FontSize = 13, TextWrapping = TextWrapping.Wrap };
 }

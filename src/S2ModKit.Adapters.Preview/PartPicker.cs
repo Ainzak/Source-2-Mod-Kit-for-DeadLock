@@ -59,6 +59,14 @@ internal sealed class PartPicker
     /// <summary>How many triangles part or piece <paramref name="index"/> has.</summary>
     public int TriangleCount(int index) => Get(index).TriangleCount;
 
+    /// <summary>Piece <paramref name="index"/> (from <see cref="Count"/> up): its part (draw call) and its triangles' numbers in that draw call.</summary>
+    public (int Part, int[] Triangles) PieceTriangles(int index) => index >= parts.Count && index < Total
+        ? (pieces[index - parts.Count].Parent, pieces[index - parts.Count].Piece.TriangleIds)
+        : throw new ArgumentOutOfRangeException(nameof(index), index, "Not a piece.");
+
+    /// <summary>The model's vertex numbers piece or part <paramref name="index"/> uses.</summary>
+    public IReadOnlySet<int> Vertices(int index) => Get(index).VertexSet;
+
     private Triangles Get(int index) => index < parts.Count ? parts[index] : pieces[index - parts.Count].Piece;
 
     /// <summary>
@@ -153,6 +161,13 @@ internal sealed class PartPicker
         private float[] weights = [];                                     // perVertex per vertex (SkinWeights)
         private int perVertex;
         private int[] indices = [];
+
+        public IReadOnlySet<int> VertexSet => vertexSet ??= [.. indices];
+
+        private HashSet<int>? vertexSet;
+
+        /// <summary>For a piece: the numbers of its triangles in its part's draw call (in draw order); empty for a whole part.</summary>
+        public int[] TriangleIds { get; private init; } = [];
 
         public static Triangles Read(VBIB vbib, KVObject draw, int[] remap)
         {
@@ -256,6 +271,7 @@ internal sealed class PartPicker
                 weights = weights,
                 perVertex = perVertex,
                 indices = [.. group.SelectMany(t => new[] { indices[t * 3], indices[(t * 3) + 1], indices[(t * 3) + 2] })],
+                TriangleIds = group,
             })];
         }
 

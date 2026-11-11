@@ -132,6 +132,12 @@ public sealed partial class PreviewSession
             partColors[index] = change;
         }
 
+        if (IsPiece(index))
+        {
+            SetOwnColour(index, change);                                    // a piece: its own copies, the part's other pieces keep their colours
+            return;
+        }
+
         Refresh(path);
         ApplyMaterialColours(index, change);
     }
@@ -195,7 +201,7 @@ public sealed partial class PreviewSession
     private void Refresh(string path)
     {
         var users = Enumerable.Range(0, Parts.Count + Pieces.Count).Where(part => string.Equals(PartColorTexture(part), path, StringComparison.OrdinalIgnoreCase)).ToArray();
-        var changed = users.Where(partColors.ContainsKey).ToArray();                // parts first, then their pieces
+        var changed = users.Where(part => partColors.ContainsKey(part) && !IsPiece(part)).ToArray();   // pieces have their own copies
         if (Decode(path) is not { } source)
         {
             return;
@@ -210,7 +216,8 @@ public sealed partial class PreviewSession
 
             source.Replacement?.Delete();
             recolored[path] = source with { Replacement = null };
-
+            lastRgba.Remove(path);
+            RefreshOwn(path);
             return;
         }
 
@@ -220,6 +227,7 @@ public sealed partial class PreviewSession
             RecolorMath.Apply(rgba, ColourMask(part, source.PreviewWidth, source.PreviewHeight), partColors[part]);
         }
 
+        lastRgba[path] = rgba;
         source.Replacement?.Delete();
         using var resource = new ValveResourceFormat.Resource { FileName = path + "_c" };
         resource.Read(new MemoryStream(RgbaTexture(rgba, source.PreviewWidth, source.PreviewHeight)));
@@ -227,9 +235,22 @@ public sealed partial class PreviewSession
         recolored[path] = source with { Replacement = replacement };
         foreach (var part in users)
         {
-            Draw(part).Material.Textures[ColorTexture] = replacement;
+            OriginalMaterial(Draw(part)).Textures[ColorTexture] = replacement;
+        }
+
+        RefreshOwn(path);
+    }
+
+    /// <summary>Own copies drawn from texture <paramref name="path"/> follow the shared recolors (a part's colour reaches its see-through piece).</summary>
+    private void RefreshOwn(string path)
+    {
+        foreach (var own in owns.Values.Where(item => string.Equals(item.ColourPath, path, StringComparison.OrdinalIgnoreCase)).ToArray())
+        {
+            Show(own);
         }
     }
+
+    private readonly Dictionary<string, byte[]> lastRgba = new(StringComparer.OrdinalIgnoreCase);   // the recolored colours last uploaded, by texture
 
     /// <summary>The mask a recolor of part or piece <paramref name="index"/> uses: a part's leaves out its pieces that have their own colour.</summary>
     private float[] ColourMask(int index, int width, int height)

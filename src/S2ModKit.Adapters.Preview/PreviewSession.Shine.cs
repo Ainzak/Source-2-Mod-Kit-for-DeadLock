@@ -55,6 +55,12 @@ public sealed partial class PreviewSession
             partShine.Remove(index);
         }
 
+        if (IsPiece(index))
+        {
+            SetOwnShine(index, partShine.GetValueOrDefault(index));         // a piece: its own copy, the part's other pieces stay as they are
+            return;
+        }
+
         var users = Enumerable.Range(0, Parts.Count + Pieces.Count).Where(part => string.Equals(PartNormalTexture(part), path, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (!shineTextures.TryGetValue(path, out var state))
         {
@@ -68,7 +74,7 @@ public sealed partial class PreviewSession
 
         state.Replacement?.Delete();
         state.Replacement = null;
-        var changed = users.Where(partShine.ContainsKey).ToArray();
+        var changed = users.Where(part => partShine.ContainsKey(part) && !IsPiece(part)).ToArray();
         if (changed.Length > 0 && shineUnpacking.TryGetValue(path, out var task) && task.GetAwaiter().GetResult() is { } pixels)
         {
             var rgba = (byte[])pixels.Rgba.Clone();

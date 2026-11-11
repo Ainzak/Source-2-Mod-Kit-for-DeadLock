@@ -168,7 +168,7 @@ internal sealed class MergeDialog : Window
         }, 0);
         Row(search, 1);
         Row(new ScrollViewer { Content = list }, 2);
-        Row(new TextBlock { Text = "Name of the merged mod", Foreground = Brushes.Gray, FontSize = 11 }, 3);
+        Row(new TextBlock { Text = "Name of the merged mod", Foreground = AppTheme.Muted, FontSize = 11 }, 3);
         Row(name, 4);
         Row(new ScrollViewer { Content = conflicts, MaxHeight = 160 }, 5);
         Row(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { merge, cancel } }, 6);

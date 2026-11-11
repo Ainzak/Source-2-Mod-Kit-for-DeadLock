@@ -23,12 +23,12 @@ internal sealed partial class PreviewPane
     private readonly Dictionary<int, IReadOnlyList<(int R, int G, int B)>> effectSwatches = [];
     private readonly Dictionary<int, (CheckBox Check, WrapPanel Before, WrapPanel After)> effectRows = [];
     private IReadOnlyList<HeroAbility> effectGroups = [];
-    private IReadOnlyList<string> shownArchives = [];
+    private List<string> shownArchives = [];
     private string? effectsModel;
     private ScrollViewer? effectsView;
     private bool effectsWired;
     private readonly ComboBox effectPicker = new() { HorizontalAlignment = HorizontalAlignment.Stretch, MaxDropDownHeight = 420 };
-    private readonly TextBlock effectStatus = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock effectStatus = new() { Foreground = Muted, FontSize = 13, TextWrapping = TextWrapping.Wrap };
     private bool effectPlaying;
 
     /// <summary>An effect in the picker: its group and file.</summary>
@@ -106,7 +106,7 @@ internal sealed partial class PreviewPane
         var panel = new StackPanel { Margin = new Thickness(10, 4), Spacing = 4 };
         if (previewWanted)
         {
-            panel.Children.Add(AddedEffectsSection());
+            panel.Children.Add(AddedEffectsHost());
         }
 
         if (effectGroups.Count == 0)
@@ -120,30 +120,27 @@ internal sealed partial class PreviewPane
         }
         else
         {
-            panel.Children.Add(new TextBlock { Text = "Effect colours", FontWeight = FontWeight.SemiBold });
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Tick the abilities whose effects you want in a new colour, then pick the colour. The squares are each ability's main "
-                    + "effect colours now, and after the arrow, how they will look. Colours keep their brightness, so glows stay glows.",
-                Foreground = Muted,
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-            });
+            var colours = new StackPanel { Spacing = 4 };
+            var coloursHeader = (Hint.Beside(new TextBlock { Text = "Effect colours", FontWeight = FontWeight.SemiBold, FontSize = 14 }, new Hint("Effect colours",
+                "Tick the abilities whose effects you want in a new colour, then pick the colour. The squares are each ability's main "
+                    + "effect colours now, and after the arrow, how they will look. Colours keep their brightness, so glows stay glows. "
+                    + "Play shows one effect alone, in your colours when its ability is ticked. Build edited mod makes the version with the new colours.")));
+            panel.Children.Add(Fold("effects.colours", coloursHeader, colours));
             effectPicker.ItemsSource = effectGroups.SelectMany(group => group.EffectList.Select(path => new EffectChoice(group, path))).ToArray();
             effectPicker.SelectedIndex = 0;
-            panel.Children.Add(new TextBlock { Text = "Preview an effect", Foreground = Muted });
+            colours.Children.Add(new TextBlock { Text = "Preview an effect", Foreground = Muted });
             Detach(effectPicker);
             Detach(effectStatus);
-            panel.Children.Add(effectPicker);
-            panel.Children.Add(Wrap(Button("Play", () =>
+            colours.Children.Add(effectPicker);
+            colours.Children.Add(Wrap(Button("Play", () =>
             {
                 if (effectPicker.SelectedItem is EffectChoice choice)
                 {
                     _ = PlayEffectAsync(choice.Path);
                 }
             }), Button("Stop", StopEffectPreview)));
-            panel.Children.Add(effectStatus);
-            panel.Children.Add(Wrap(Button("Tick all", () => SetAllEffectChecks(true)), Button("Untick all", () => SetAllEffectChecks(false))));
+            colours.Children.Add(effectStatus);
+            colours.Children.Add(Wrap(Button("Tick all", () => SetAllEffectChecks(true)), Button("Untick all", () => SetAllEffectChecks(false))));
             foreach (var group in effectGroups)
             {
                 var check = new CheckBox { IsChecked = effectChanges.ContainsKey(group.Slot), Content = group.Slot is >= 1 and <= 4 ? $"{group.Slot}  {group.Name}" : group.Name };
@@ -164,22 +161,15 @@ internal sealed partial class PreviewPane
                 };
                 var before = new WrapPanel();
                 var after = new WrapPanel();
-                panel.Children.Add(check);
-                panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(26, 0, 0, 6), Children = { before, after } });
+                colours.Children.Add(check);
+                colours.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(26, 0, 0, 6), Children = { before, after } });
                 effectRows[group.Slot] = (check, before, after);
                 UpdateEffectRow(group.Slot);
             }
 
-            panel.Children.Add(new TextBlock { Text = "Colour", Foreground = Muted, Margin = new Thickness(0, 6, 0, 0) });
-            panel.Children.Add(effectColor);
-            panel.Children.Add(effectExact);
-            panel.Children.Add(new TextBlock
-            {
-                Text = "Play shows one effect alone, in your colours when its ability is ticked. Build edited mod makes the version with the new colours.",
-                Foreground = Muted,
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-            });
+            colours.Children.Add(new TextBlock { Text = "Colour", Foreground = Muted, Margin = new Thickness(0, 6, 0, 0) });
+            colours.Children.Add(effectColor);
+            colours.Children.Add(effectExact);
         }
 
         effectsView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = panel };
@@ -204,7 +194,7 @@ internal sealed partial class PreviewPane
         var colours = effectSwatches.GetValueOrDefault(slot);
         if (colours is null || colours.Count == 0)
         {
-            row.Before.Children.Add(new TextBlock { Text = colours is null ? "reading colours..." : "no strong colours", Foreground = Muted, FontSize = 11 });
+            row.Before.Children.Add(new TextBlock { Text = colours is null ? "reading colours..." : "no strong colours", Foreground = Muted, FontSize = 13 });
             return;
         }
 

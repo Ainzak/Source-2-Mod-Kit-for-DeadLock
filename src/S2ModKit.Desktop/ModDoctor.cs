@@ -35,6 +35,10 @@ internal enum DoctorVerdict
     Look,
     Repairable,
     Broken,
+
+    /// <summary>Works, but a hero model it replaces is older than the game's (settings and attachment points later updates added
+    /// are missing): Update brings them in. Not a problem, so not among the mods Check mods flags.</summary>
+    Updatable,
 }
 
 /// <summary>
@@ -48,9 +52,9 @@ internal enum DoctorVerdict
 /// particles) or the game's hero model gained bones the mod's model lacks (that part may not move; often harmless);</item>
 /// <item>Works otherwise.</item>
 /// </list>
-/// Settings and attachment points a replaced hero model lacks (<see cref="S2ModKit.Adapters.Source2.CompiledModelRestore"/>) are
-/// added by a repair that happens for another reason, but never flag a mod on their own: the owner's in-game check (2026-11-11)
-/// found no visible defect from them, and a repaired broken mod stayed broken.
+/// Settings and attachment points a replaced hero model lacks (<see cref="S2ModKit.Adapters.Source2.CompiledModelRestore"/>) make an
+/// otherwise unaffected mod Updatable (on any run), a mild state outside the flagged ones: the owner's in-game check (2026-11-11)
+/// found no visible defect from them, though other mod managers offer the same completion. A repair adds them too.
 /// </summary>
 internal static class DoctorRules
 {
@@ -72,7 +76,9 @@ internal static class DoctorRules
             IReadOnlyList<string> restore = [.. gaps.Select(pair => pair.Key)];
             if (baseline is null || !before.TryGetValue(mod.Key, out var old))
             {
-                findings.Add(new DoctorFinding(mod.Key, mod.Name, DoctorVerdict.Works, [], []));    // nothing to compare with yet
+                findings.Add(restore.Count > 0
+                    ? new DoctorFinding(mod.Key, mod.Name, DoctorVerdict.Updatable, [.. UpdateNotes(gaps)], [], restore)
+                    : new DoctorFinding(mod.Key, mod.Name, DoctorVerdict.Works, [], []));                    // nothing else to compare with yet
                 continue;
             }
 
@@ -102,7 +108,14 @@ internal static class DoctorRules
                 reasons.Add($"The game's {model} gained {bones.Length} bone(s) this mod's model lacks ({string.Join(", ", bones.Take(5))}): those parts may not move. Often harmless.");
             }
 
-            var verdict = newMissing.Length > 0 ? DoctorVerdict.Broken : stale.Length > 0 ? DoctorVerdict.Repairable : reasons.Count > 0 ? DoctorVerdict.Look : DoctorVerdict.Works;
+            var verdict = newMissing.Length > 0 ? DoctorVerdict.Broken : stale.Length > 0 ? DoctorVerdict.Repairable : reasons.Count > 0 ? DoctorVerdict.Look
+                : restore.Count > 0 ? DoctorVerdict.Updatable : DoctorVerdict.Works;
+            if (verdict == DoctorVerdict.Updatable)
+            {
+                findings.Add(new DoctorFinding(mod.Key, mod.Name, verdict, [.. UpdateNotes(gaps)], [], restore));
+                continue;
+            }
+
             if (verdict == DoctorVerdict.Repairable)
             {
                 foreach (var (model, gap) in gaps)                         // added by a repair that happens anyway; never a reason on its own
@@ -117,6 +130,12 @@ internal static class DoctorRules
 
         return findings;
     }
+
+    /// <summary>Why a mod can be updated: what its older hero models lack.</summary>
+    private static IEnumerable<string> UpdateNotes(IEnumerable<KeyValuePair<string, ModelSettingsGap>> gaps) => gaps.Select(pair =>
+        $"Its {Path.GetFileNameWithoutExtension(pair.Key.Replace("_c", string.Empty, StringComparison.Ordinal))} model is older than the game's: it lacks "
+        + string.Join(", ", pair.Value.Settings.Select(Describe).Concat(pair.Value.Attachments.Count > 0 ? [$"{pair.Value.Attachments.Count} attachment point(s)"] : []))
+        + ". It works without them; Update adds them from the game's model and keeps the original as the old version.");
 
     /// <summary>A plain name for a settings block of a hero model.</summary>
     public static string Describe(string block) => block switch

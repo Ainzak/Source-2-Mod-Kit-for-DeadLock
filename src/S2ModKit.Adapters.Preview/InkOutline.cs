@@ -19,7 +19,10 @@ namespace S2ModKit.Adapters.Preview;
 /// through them as dark glasses (2026-11-04). Alpha-tested materials (F_ALPHA_TEST) lose the triangles whose colour texture is transparent at all three
 /// corners: mods hide clothes with a transparent material, and the game shows no outline there (a shell drawn from them
 /// put black clothes with holes on Bottom Heavy Vindicta, 2026-11-03). Where the shell pokes through the surface
-/// (creases, tight folds) it shows as dark lines, as in game.
+/// (creases, tight folds) it shows as dark lines, as in game. Translucent parts (not additive ones) write no depth in the
+/// renderer, so before the shells they are drawn into the depth buffer only: a shell behind them stays hidden, as in game.
+/// The blend mode is set back to the renderer's own afterwards: it does not set it again for its translucent parts, which then
+/// multiplied the colour behind them and drew dark (Joseph Joestar's face and hands, Celeste's see-through parts, 2026-11-11).
 /// </summary>
 internal sealed class InkOutline : IDisposable
 {
@@ -49,6 +52,7 @@ internal sealed class InkOutline : IDisposable
     private readonly int ebo;
     private readonly int viewProjection;
     private readonly int indexCount;
+    private readonly int occluderCount;
     private readonly int vertexCount;
 
     public InkOutline(GameFileLoader loader, Model model, ModelSceneNode node)
@@ -56,6 +60,7 @@ internal sealed class InkOutline : IDisposable
         this.node = node;
         var active = node.RenderableMeshes.Select(mesh => mesh.MeshIndex).ToHashSet();
         var indices = new List<uint>();
+        var occluderIndices = new List<uint>();
         var drawIndex = 0;                                                  // every draw call counts, as in PreviewSession.Parts
         foreach (var (mesh, meshIndex, _, _) in model.GetEmbeddedMeshesForLod(0))
         {
@@ -69,14 +74,17 @@ internal sealed class InkOutline : IDisposable
             {
                 foreach (var draw in Items(sceneObject, "m_drawCalls"))
                 {
-                    var style = OutlineStyle.Read(loader, draw["m_material"].ToString(CultureInfo.InvariantCulture));
-                    if (style is null)
+                    var material = draw["m_material"].ToString(CultureInfo.InvariantCulture);
+                    var style = OutlineStyle.Read(loader, material);
+                    var occluder = style is null && OutlineStyle.Occludes(loader, material);
+                    if (style is null && !occluder)
                     {
                         drawIndex++;
                         continue;
                     }
 
-                    var part = Part.Read(mesh.VBIB, draw, remap, style, vertexCount, indices);
+                    var part = Part.Read(mesh.VBIB, draw, remap, style ?? OutlineStyle.DepthOnly, vertexCount, occluder ? occluderIndices : indices);
+                    part.Occluder = occluder;
                     part.DrawIndex = drawIndex++;
                     parts.Add(part);
                     vertexCount += part.Positions.Length;
@@ -85,6 +93,8 @@ internal sealed class InkOutline : IDisposable
         }
 
         indexCount = indices.Count;
+        occluderCount = occluderIndices.Count;
+        indices.AddRange(occluderIndices);                                 // shells first, then the translucent parts' depth
         program = Program();
         viewProjection = GL.GetUniformLocation(program, "uViewProjection");
         vao = GL.GenVertexArray();
@@ -107,6 +117,45 @@ internal sealed class InkOutline : IDisposable
 
     /// <summary>Draw calls (in <see cref="PreviewSession.Parts"/> order) whose shell is not drawn: hidden parts.</summary>
     public HashSet<int> Hidden { get; } = [];
+
+    /// <summary>Draw calls (in <see cref="PreviewSession.Parts"/> order) drawn see-through: no shell, as their built material has no outline.</summary>
+    private readonly HashSet<int> noShell = [];
+
+    /// <summary>Turns draw call <paramref name="drawIndex"/>'s shell off (a see-through part) or on again.</summary>
+    public void SetNoShell(int drawIndex, bool off)
+    {
+        if (off)
+        {
+            noShell.Add(drawIndex);
+        }
+        else
+        {
+            noShell.Remove(drawIndex);
+        }
+    }
+
+    /// <summary>Leaves the shell out for the vertices <paramref name="vertices"/> (the model's vertex numbers) of draw call <paramref name="drawIndex"/>
+    /// (a see-through piece), or puts it back (null).</summary>
+    public void SetPieceNoShell(int drawIndex, IReadOnlyCollection<int> vertices, bool off)
+    {
+        foreach (var part in parts.Where(part => part.DrawIndex == drawIndex && !part.Occluder))
+        {
+            for (var i = 0; i < part.Used.Length; i++)
+            {
+                if (vertices.Contains(part.Used[i]))
+                {
+                    if (off)
+                    {
+                        part.Collapsed.Add(i);
+                    }
+                    else
+                    {
+                        part.Collapsed.Remove(i);
+                    }
+                }
+            }
+        }
+    }
 
     /// <summary>Gives draw call <paramref name="drawIndex"/>'s shell the part's shape change (bind pose), so the outline follows a reshaped part.</summary>
     public void SetShape(int drawIndex, Matrix4x4 shape)
@@ -136,7 +185,7 @@ internal sealed class InkOutline : IDisposable
     /// <summary>Skins the current pose, then draws the shell into <paramref name="framebuffer"/> (its depth is the scene's).</summary>
     public void Draw(int framebuffer, int width, int height, Matrix4x4 viewProjectionMatrix, float thickness)
     {
-        if (indexCount == 0 || thickness <= 0)
+        if ((indexCount == 0 && occluderCount == 0) || thickness <= 0)
         {
             return;
         }
@@ -149,9 +198,13 @@ internal sealed class InkOutline : IDisposable
         var offset = 0;
         foreach (var part in parts)
         {
-            if (!Hidden.Contains(part.DrawIndex))
+            if (!Hidden.Contains(part.DrawIndex) && (part.Occluder || !noShell.Contains(part.DrawIndex)))
             {
-                part.Write(bones, transform, thickness, data, offset);      // a hidden part's vertices stay at zero: no area, nothing drawn
+                part.Write(bones, transform, part.Occluder ? 0f : thickness, data, offset);   // a hidden part's vertices stay at zero: no area, nothing drawn
+                foreach (var v in part.Collapsed)
+                {
+                    Array.Clear(data, offset + (v * 6), 6);                 // a see-through piece: its shell triangles collapse to a point
+                }
             }
 
             offset += part.Positions.Length * 6;
@@ -165,6 +218,14 @@ internal sealed class InkOutline : IDisposable
         GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
         GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, data.Length * sizeof(float), data);
         GL.Enable(EnableCap.DepthTest);
+        if (occluderCount > 0)
+        {
+            GL.DepthMask(true);                                            // translucent parts: depth only, so shells behind them stay hidden
+            GL.ColorMask(false, false, false, false);
+            GL.DrawElements(PrimitiveType.Triangles, occluderCount, DrawElementsType.UnsignedInt, indexCount * sizeof(uint));
+            GL.ColorMask(true, true, true, true);
+        }
+
         GL.DepthMask(false);
         GL.Enable(EnableCap.CullFace);
         GL.CullFace(TriangleFace.Front);
@@ -174,6 +235,7 @@ internal sealed class InkOutline : IDisposable
         GL.ColorMask(true, true, true, false);
         GL.DrawElements(PrimitiveType.Triangles, indexCount, DrawElementsType.UnsignedInt, 0);
         GL.ColorMask(true, true, true, true);
+        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);   // the renderer's own; it does not set it again for translucent parts
         GL.Disable(EnableCap.Blend);
         GL.CullFace(TriangleFace.Back);
         GL.Disable(EnableCap.CullFace);
@@ -232,6 +294,17 @@ internal sealed class InkOutline : IDisposable
 
     private sealed record OutlineStyle(Vector3 Color, Func<Vector2, float> Mask, Func<Vector2, float>? Alpha, float AlphaReference)
     {
+        /// <summary>For parts drawn into the depth buffer only (no shell, so no push along the normal).</summary>
+        public static OutlineStyle DepthOnly { get; } = new(Vector3.One, _ => 0f, null, 0f);
+
+        /// <summary>A translucent material that is not additive: the renderer writes no depth for it, but it hides what is behind it.</summary>
+        public static bool Occludes(GameFileLoader loader, string materialPath)
+        {
+            using var resource = loader.LoadFileCompiled(materialPath.EndsWith("_c", StringComparison.Ordinal) ? materialPath[..^2] : materialPath);
+            return resource?.DataBlock is Material material && material.IntParams.GetValueOrDefault("F_TRANSLUCENT") != 0
+                && material.IntParams.GetValueOrDefault("F_ADDITIVE_BLEND") == 0;
+        }
+
         public static OutlineStyle? Read(GameFileLoader loader, string materialPath)
         {
             using var resource = loader.LoadFileCompiled(materialPath.EndsWith("_c", StringComparison.Ordinal) ? materialPath[..^2] : materialPath);
@@ -309,6 +382,9 @@ internal sealed class InkOutline : IDisposable
 
         public int DrawIndex { get; set; }
 
+        /// <summary>Drawn into the depth buffer only (a translucent part), not as a shell.</summary>
+        public bool Occluder { get; set; }
+
         public Matrix4x4 Shape { get; set; } = Matrix4x4.Identity;
 
         public Matrix4x4 NormalShape { get; set; } = Matrix4x4.Identity;
@@ -377,6 +453,7 @@ internal sealed class InkOutline : IDisposable
             indices.AddRange(raw.Select(i => (uint)(vertexBase + local[i])));
             return new Part
             {
+                Used = used,
                 Positions = used.Select(i => allPositions[i]).ToArray(),
                 Normals = used.Select(i => allNormals[i]).ToArray(),
                 Masks = used.Select(i => uvs is null ? 1f : style.Mask(uvs[i])).ToArray(),
@@ -386,6 +463,12 @@ internal sealed class InkOutline : IDisposable
                 Color = style.Color,
             };
         }
+
+        /// <summary>The model's vertex numbers of this part's shell vertices, in order.</summary>
+        public int[] Used { get; init; } = [];
+
+        /// <summary>Shell vertices (positions in <see cref="Used"/>) left out: a see-through piece's, collapsed so its triangles draw nothing.</summary>
+        public HashSet<int> Collapsed { get; } = [];
 
         public void Write(Matrix4x4[] skin, Matrix4x4 transform, float thickness, float[] data, int offset)
         {

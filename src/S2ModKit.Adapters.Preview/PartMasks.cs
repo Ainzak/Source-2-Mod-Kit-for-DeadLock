@@ -37,6 +37,24 @@ public static class PartMasks
         return mask;
     }
 
+    /// <summary>The level-0 draw calls (parts) of the model, and for a piece (index from that count up) its part and triangle numbers.</summary>
+    public static (int Parts, int Part, int[]? Triangles) PieceOrPart(byte[] compiledModel, string modelPath, int index)
+    {
+        var picker = Picker(compiledModel, modelPath);
+        if (index < 0 || index >= picker.Total)
+        {
+            throw Domain.Errors.Input("MASK_PART_RANGE", $"The model has {picker.Total} parts and pieces; part {index + 1} is not one of them.", "The model changed; set the part again.");
+        }
+
+        if (index < picker.Count)
+        {
+            return (picker.Count, index, null);
+        }
+
+        var (part, triangles) = picker.PieceTriangles(index);
+        return (picker.Count, part, triangles);
+    }
+
     /// <summary>The separate meshes of the model's parts (see <see cref="PreviewSession.Pieces"/>), without a window.</summary>
     public static IReadOnlyList<PartPiece> Pieces(byte[] compiledModel, string modelPath)
     {

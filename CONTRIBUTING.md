@@ -1,6 +1,6 @@
 # Contributing to S2ModKit
 
-S2ModKit is a pre-alpha Deadlock mod manager with a desktop app and a CLI toolkit. Before making a substantial change,
+S2ModKit is a Deadlock mod manager with a desktop app and a CLI toolkit. Before making a substantial change,
 open an issue describing the user problem, the affected contract, and how the change can be
 verified. Small documentation and test fixes can use a pull request directly.
 

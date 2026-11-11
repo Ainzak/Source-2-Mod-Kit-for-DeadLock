@@ -17,9 +17,16 @@ namespace S2ModKit.Desktop;
 internal sealed partial class PreviewPane : UserControl
 {
     private const string Vanilla = "Vanilla";
-    private static readonly IBrush Muted = Brushes.Gray;
-    private static readonly IBrush Good = new SolidColorBrush(Color.FromRgb(90, 190, 100));
-    private static readonly IBrush Warn = new SolidColorBrush(Color.FromRgb(240, 170, 70));
+    private static readonly IBrush Muted = AppTheme.Muted;
+    private readonly UiLayout layout = UiLayout.Load();
+
+    /// <summary>The outline of lists and pickers, so they read as controls on the panel.</summary>
+    private static readonly IBrush Outline = AppTheme.Outline;
+    private static readonly IBrush FoldHeader = AppTheme.Header;
+    private static readonly IBrush FoldHeaderHover = AppTheme.HeaderHover;
+    private static readonly IBrush FoldBody = AppTheme.Section;
+    private static readonly IBrush Good = AppTheme.Good;
+    private static readonly IBrush Warn = AppTheme.Warning;
     private readonly AppSettings settings;
     private readonly PreviewControl preview = new();
     private readonly TextBlock overlay = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, FontSize = 16 };
@@ -40,7 +47,7 @@ internal sealed partial class PreviewPane : UserControl
     private readonly TextBlock stats = new() { Foreground = Muted, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(8) };
 
     // part tools
-    private readonly ComboBox partPicker = new() { MinWidth = 250 };
+    private readonly ComboBox partPicker = new() { MinWidth = 250, BorderThickness = new Thickness(1), BorderBrush = Outline };
     private readonly ListBox partList = new() { SelectionMode = SelectionMode.Single };
     private readonly ToggleButton partsTab = new() { Content = "Parts" };
     private readonly ToggleButton colourTab = new() { Content = "Colour" };
@@ -53,7 +60,7 @@ internal sealed partial class PreviewPane : UserControl
         FontWeight = FontWeight.SemiBold,
         TextWrapping = TextWrapping.Wrap,
         Margin = new Thickness(0, 0, 0, 6),
-        Foreground = new SolidColorBrush(Color.FromRgb(250, 200, 90)),
+        Foreground = AppTheme.Warning,
     };
 
     private readonly TextBlock changeSummary = new() { Foreground = Muted, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) };
@@ -72,8 +79,9 @@ internal sealed partial class PreviewPane : UserControl
     private readonly Slider brightness = new() { Minimum = 0, Maximum = 3, Value = 1 };
     private readonly Slider shine = new() { Minimum = 0, Maximum = 1, Value = 0 };
     private readonly Slider seeThrough = new() { Minimum = 0, Maximum = 0.95, Value = 0 };
-    private readonly TextBlock seeThroughNote = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock shineNote = new() { Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock seeThroughNote = new() { Foreground = Muted, FontSize = 13, TextWrapping = TextWrapping.Wrap, IsVisible = false };   // only when the preview cannot show it
+    private readonly Hint seeThroughHint = new("See-through (work in progress)", string.Empty);
+    private readonly Hint shineHint = new("Shine", string.Empty);
     private readonly CheckBox paint = new() { Content = "Paint a colour" };
     private readonly ColorPicker paintColor = new();
     private readonly Slider paintStrength = new() { Minimum = 0, Maximum = 1, Value = 1 };
@@ -126,7 +134,7 @@ internal sealed partial class PreviewPane : UserControl
             cameras.Children.Add(Button(preset.Name, () => preview.SetCamera(preset)));
         }
 
-        var view = new Grid { Background = new SolidColorBrush(Color.FromRgb(30, 31, 34)) };
+        var view = new Grid { Background = AppTheme.Background };
         view.Children.Add(preview);
         view.Children.Add(overlay);
         view.Children.Add(loadPreview);
@@ -149,6 +157,34 @@ internal sealed partial class PreviewPane : UserControl
         var tools = BuildTools();
         DockPanel.SetDock(tools, Dock.Right);
         root.Children.Add(tools);
+        var splitter = new Border { Width = 6, Background = AppTheme.Background, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.SizeWestEast) };
+        ToolTip.SetTip(splitter, "Drag to make the edit pane wider or narrower");
+        DockPanel.SetDock(splitter, Dock.Right);
+        root.Children.Add(splitter);
+        (double X, double Width)? dragging = null;
+        splitter.PointerPressed += (_, e) =>
+        {
+            dragging = (e.GetPosition(root).X, tools.Width);
+            e.Pointer.Capture(splitter);
+            e.Handled = true;
+        };
+        splitter.PointerMoved += (_, e) =>
+        {
+            if (dragging is { } start)
+            {
+                tools.Width = Math.Clamp(start.Width - (e.GetPosition(root).X - start.X), UiLayout.MinPaneWidth, UiLayout.MaxPaneWidth);
+            }
+        };
+        splitter.PointerReleased += (_, e) =>
+        {
+            if (dragging is not null)
+            {
+                dragging = null;
+                e.Pointer.Capture(null);
+                layout.PaneWidth = tools.Width;
+                layout.Save();
+            }
+        };
         root.Children.Add(view);
         Content = root;
 
@@ -198,6 +234,7 @@ internal sealed partial class PreviewPane : UserControl
                 }
 
                 UpdateSummary();
+                _ = ShowSeeThroughAsync(row.Index, (float)seeThrough.Value);
             }
         };
         foreach (var slider in new[] { hue, saturation, brightness, paintStrength })
@@ -227,6 +264,11 @@ internal sealed partial class PreviewPane : UserControl
             if (e.Key == Avalonia.Input.Key.Escape && sampling)
             {
                 SetSampling(false);
+            }
+            else if (e.Key == Avalonia.Input.Key.Escape && placing is not null)
+            {
+                placing = null;                                              // placing an added effect cancelled
+                addedStatus.Text = "Placing cancelled.";
             }
         };
         onlyLike.IsCheckedChanged += (_, _) =>
@@ -398,6 +440,56 @@ internal sealed partial class PreviewPane : UserControl
         }
     }
 
+    private readonly Dictionary<string, byte[]> seeThroughMaterials = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Shows part <paramref name="part"/> see-through in the preview with the same edited material the build writes (made once per material).</summary>
+    private async Task ShowSeeThroughAsync(int part, float amount)
+    {
+        if (preview.Session is not { } session)
+        {
+            return;
+        }
+
+        byte[]? material = null;
+        if (amount > 0.005f)
+        {
+            var path = session.PartMaterialPath(part) + "_c";
+            if (!seeThroughMaterials.TryGetValue(path, out material))
+            {
+                var archives = shownArchives;
+                try
+                {
+                    material = await Task.Run(() => EffectFiles.ReadFirst(archives, path) is { } bytes
+                        ? S2ModKit.Adapters.Source2.CompiledMaterialEdit.SetOpacity(bytes, path, S2ModKit.Adapters.Source2.CompiledMaterialEdit.Opacity(bytes, path) ?? 1f)
+                        : null).ConfigureAwait(true);
+                }
+                catch (S2ModKit.Domain.S2ModKitException exception)
+                {
+                    seeThroughNote.Text = $"The preview cannot show it: {exception.Error.Summary} The build still makes it see-through.";
+                    seeThroughNote.IsVisible = true;
+                    return;
+                }
+
+                if (material is null)
+                {
+                    return;
+                }
+
+                seeThroughMaterials[path] = material;
+            }
+        }
+
+        preview.RequestPartSeeThrough(part, amount, material, refusal =>
+        {
+            if (refusal is not null)
+            {
+                seeThroughNote.Text = refusal + " The build still makes it see-through.";
+                seeThroughNote.IsVisible = true;
+                AppLog.Shown(seeThroughNote.Text);
+            }
+        });
+    }
+
     /// <summary>Shows that a build is running (null: it ended): a large note above the changes, and the build button off.</summary>
     public void ShowBuilding(string? note)
     {
@@ -407,8 +499,14 @@ internal sealed partial class PreviewPane : UserControl
         buildEdited.IsEnabled = note is null && CanBuild;
     }
 
+    /// <summary>For the window's screenshot mode: opens the Shine hint.</summary>
+    public void OpenHintForShot() => shineHint.OpenForShot();
+
     /// <summary>For the window's screenshot mode: makes the selected part see-through by <paramref name="amount"/>.</summary>
     public void SeeThroughForShot(double amount) => seeThrough.Value = amount;
+
+    /// <summary>For the window's screenshot mode: shifts the selected part's hue.</summary>
+    public void HueForShot(double degrees) => hue.Value = degrees;
 
     /// <summary>The parts currently hidden in the preview (indices into the session's parts).</summary>
     public IReadOnlyCollection<int> HiddenParts => preview.Hidden;
@@ -420,7 +518,11 @@ internal sealed partial class PreviewPane : UserControl
         && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartSeeThrough.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
-    public async Task ReleaseAsync() => await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
+    public async Task ReleaseAsync()
+    {
+        CloseEffectsWindow();                                               // its view keeps the archives open too
+        await Task.WhenAny(preview.CloseAsync(), Task.Delay(3000));
+    }
 
     /// <summary>Shows <paramref name="entry"/> (null: vanilla <paramref name="vanillaModel"/>); others on the same model can be compared.</summary>
     public void Show(ModEntry? entry, IReadOnlyList<ModEntry> all, string? vanillaModel = null)
@@ -442,6 +544,7 @@ internal sealed partial class PreviewPane : UserControl
             return;
         }
 
+        CloseEffectsWindow();
         _ = preview.CloseAsync();                                           // the previous model: its archives are let go at once
         effectGroups = [];
         effectsView = null;
@@ -456,10 +559,18 @@ internal sealed partial class PreviewPane : UserControl
 
     private Grid BuildTools()
     {
-        var tools = new Grid { Width = 380, RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Background = new SolidColorBrush(Color.FromRgb(43, 45, 49)) };
+        var tools = new Grid { Width = layout.PaneWidth, RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Background = AppTheme.Side };
         var picked = new StackPanel { Margin = new Thickness(10, 8), Spacing = 4 };
-        picked.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Part", VerticalAlignment = VerticalAlignment.Center, Foreground = Muted }, partPicker } });
-        picked.Children.Add(new TextBlock { Text = "Hover a part in the list to highlight it; click the model to pick one.", Foreground = Muted, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+        picked.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Part", VerticalAlignment = VerticalAlignment.Center, Foreground = Muted, FontSize = 14 }, partPicker,
+                new Hint("Picking a part", "Hover a part in the list to highlight it on the model; click the model to pick the part under the pointer."),
+            },
+        });
         tools.Children.Add(picked);
 
         var tabs = new UniformGrid { Columns = 4, Margin = new Thickness(10, 0, 10, 6) };
@@ -485,42 +596,22 @@ internal sealed partial class PreviewPane : UserControl
 
         // colour
         colorPanel.Children.Add(colorTitle);
-        foreach (var (label, slider) in new[] { ("Hue shift", hue), ("Saturation", saturation), ("Brightness", brightness) })
-        {
-            colorPanel.Children.Add(Labelled(label, slider));
-        }
-
-        colorPanel.Children.Add(paint);
-        colorPanel.Children.Add(paintColor);
-        colorPanel.Children.Add(Labelled("Strength", paintStrength));
-        colorPanel.Children.Add(Wrap(onlyLike, sampleSwatch, pickColor));
-        colorPanel.Children.Add(Labelled("Tolerance", tolerance));
-        colorPanel.Children.Add(Labelled("Shine", shine, "0%"));
-        colorPanel.Children.Add(Labelled("See-through (WIP)", seeThrough, "0%"));
-        colorPanel.Children.Add(seeThroughNote);
-        colorPanel.Children.Add(shineNote);
+        colorPanel.Children.Add(Fold("colour.adjust", Heading("Hue and brightness"),
+            Labelled("Hue shift", hue), Labelled("Saturation", saturation), Labelled("Brightness", brightness)));
+        colorPanel.Children.Add(Fold("colour.paint", Heading("Paint a colour"),
+            paint, paintColor, Labelled("Strength", paintStrength), Wrap(onlyLike, sampleSwatch, pickColor), Labelled("Tolerance", tolerance)));
+        colorPanel.Children.Add(Fold("colour.surface", Heading("Shine and see-through"),
+            Labelled("Shine", shine, "0%", shineHint), Labelled("See-through (WIP)", seeThrough, "0%", seeThroughHint), seeThroughNote));
         colorPanel.Children.Add(Wrap(Button("Reset colour", ResetColor)));
 
         // shape
-        shapeControls.Children.Add(Section("Size", keepProportions));
-        foreach (var (label, slider) in new[] { ("Width", size[0]), ("Height", size[1]), ("Depth", size[2]) })
-        {
-            shapeControls.Children.Add(Labelled(label, slider, "0.00x"));
-        }
-
-        shapeControls.Children.Add(Section("Position"));
-        foreach (var (label, slider) in new[] { ("Left/right", move[0]), ("Up/down", move[1]), ("Fwd/back", move[2]) })
-        {
-            shapeControls.Children.Add(Labelled(label, slider, "+0;-0;0"));
-        }
-
-        shapeControls.Children.Add(Section("Rotation"));
-        foreach (var (label, slider) in new[] { ("Tilt", turn[0]), ("Turn", turn[1]), ("Roll", turn[2]) })
-        {
-            shapeControls.Children.Add(Labelled(label, slider, "+0°;-0°;0°"));
-        }
-
-        shapeControls.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 6, 0, 0), Children = { new TextBlock { Text = "Around", Foreground = Muted, VerticalAlignment = VerticalAlignment.Center }, pivot } });
+        shapeControls.Children.Add(Fold("shape.size", Heading("Size"),
+            keepProportions, Labelled("Width", size[0], "0.00x"), Labelled("Height", size[1], "0.00x"), Labelled("Depth", size[2], "0.00x")));
+        shapeControls.Children.Add(Fold("shape.position", Heading("Position"),
+            Labelled("Left/right", move[0], "+0;-0;0"), Labelled("Up/down", move[1], "+0;-0;0"), Labelled("Fwd/back", move[2], "+0;-0;0")));
+        shapeControls.Children.Add(Fold("shape.rotation", Heading("Rotation"),
+            Labelled("Tilt", turn[0], "+0°;-0°;0°"), Labelled("Turn", turn[1], "+0°;-0°;0°"), Labelled("Roll", turn[2], "+0°;-0°;0°"),
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 6, 0, 0), Children = { new TextBlock { Text = "Around", Foreground = Muted, VerticalAlignment = VerticalAlignment.Center }, pivot } }));
         shapeControls.Children.Add(Wrap(Button("Reset shape", ResetShape)));
         return tools;
     }
@@ -619,6 +710,7 @@ internal sealed partial class PreviewPane : UserControl
         overlay.IsVisible = true;
         preview.Open(new PreviewSessionOptions(archives, modelPath, SceneMap: "maps/ui/hero_select.vmap"));
         shownArchives = archives;
+        seeThroughMaterials.Clear();                                       // another model or mod: its own materials
         _ = LoadEffectsAsync(modelPath);
         _ = ReadCapabilitiesAsync(archives, modelPath);
     }
@@ -766,7 +858,7 @@ internal sealed partial class PreviewPane : UserControl
                     Children =
                     {
                         new TextBlock { Text = $"{row.Label}. {row.Name}", FontWeight = row.Piece is null ? FontWeight.SemiBold : FontWeight.Normal, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
-                        new TextBlock { Text = row.Piece is { } piece ? $"separate mesh - {piece.Triangles:N0} triangles, own colour" : $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Muted, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
+                        new TextBlock { Text = row.Piece is { } piece ? $"separate mesh - {piece.Triangles:N0} triangles, own colour" : $"{row.Part.Mesh} - {row.Part.Indices / 3:N0} triangles", Foreground = Muted, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 300 },
                     },
                 },
             },
@@ -855,13 +947,12 @@ internal sealed partial class PreviewPane : UserControl
         brightness.Value = change.Brightness;
         shine.Value = preview.PartShines.GetValueOrDefault(row.Index);
         seeThrough.Value = preview.PartSeeThrough.GetValueOrDefault(row.Index);
-        var sharers = preview.Session?.PartMaterialSharers(row.Index) ?? 0;
-        seeThroughNote.Text = "See-through (work in progress): every part painted from the same area of the colour texture turns see-through too "
-            + "(often both boots, or a boot and the skirt), and what is behind it or its hollow inside shows. "
-            + "Building takes up to a minute (the whole colour texture is written again). The preview does not show it: build and look in game"
-            + (sharers > 0 ? $". The {sharers} other part{(sharers == 1 ? " that shares" : "s that share")} its material lose their dark outline." : ".");
+        seeThroughHint.Text = "Only this part or piece turns see-through: it gets its own copy of the material and colour texture, so the rest keeps its "
+            + "colours and outline. What is behind it, or its hollow inside, shows. A see-through part has no dark outline. Far away (lower levels of "
+            + "detail) it stays solid. Building writes one texture copy per see-through part: a few seconds.";
+        seeThroughNote.IsVisible = false;
         shine.IsEnabled = preview.Session?.PartNormalTexture(row.Index) is not null;
-        shineNote.Text = shine.IsEnabled ? "Shine lowers the part's roughness: it reflects like latex or metal in game."
+        shineHint.Text = shine.IsEnabled ? "Shine lowers the part's roughness: it reflects like latex or metal in game."
             : "This part's material has no roughness texture, so shine cannot change it.";
         paint.IsChecked = change.Colorize is not null;
         if (change.Colorize is { } painted)
@@ -1099,6 +1190,56 @@ internal sealed partial class PreviewPane : UserControl
 
     private static Slider Shape(double minimum, double maximum, double value) => new() { Minimum = minimum, Maximum = maximum, Value = value, Height = 36 };
 
+    private static TextBlock Heading(string title) => new() { Text = title, FontWeight = FontWeight.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+
+    /// <summary>A section that folds; whether it is folded is remembered (<see cref="UiLayout"/>).</summary>
+    private Expander Fold(string key, Control header, params Control[] content)
+    {
+        var body = new StackPanel { Spacing = 4 };
+        foreach (var control in content)
+        {
+            Detach(control);
+            body.Children.Add(control);
+        }
+
+        var fold = new Expander
+        {
+            Header = header,
+            Content = body,
+            IsExpanded = !layout.Folded.Contains(key),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        // the theme's near-black header stood out too hard on the panel: a header one step lighter than the panel instead
+        foreach (var (name, brush) in new[]
+        {
+            ("ExpanderHeaderBackground", FoldHeader), ("ExpanderHeaderBackgroundPointerOver", FoldHeaderHover), ("ExpanderHeaderBackgroundPressed", FoldHeaderHover),
+            ("ExpanderHeaderBackgroundDisabled", FoldHeader), ("ExpanderContentBackground", FoldBody), ("ExpanderHeaderBorderBrush", Outline),
+            ("ExpanderHeaderBorderBrushPointerOver", Outline), ("ExpanderHeaderBorderBrushPressed", Outline), ("ExpanderContentBorderBrush", Outline),
+        })
+        {
+            fold.Resources[name] = brush;
+        }
+
+        fold.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != Expander.IsExpandedProperty)
+            {
+                return;
+            }
+
+            layout.Folded.Remove(key);
+            if (!fold.IsExpanded)
+            {
+                layout.Folded.Add(key);
+            }
+
+            layout.Save();
+        };
+        return fold;
+    }
+
     private static Grid Section(string title, Control? extra = null)
     {
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(0, 8, 0, 0) };
@@ -1113,16 +1254,17 @@ internal sealed partial class PreviewPane : UserControl
     }
 
     /// <summary>A label and a slider on one line (and its value, when a format is given), to keep the tool column short.</summary>
-    private static Grid Labelled(string label, Slider slider, string? format = null)
+    private static Grid Labelled(string label, Slider slider, string? format = null, Hint? hint = null)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("116,*,48"), Margin = new Thickness(0, -4) };
-        row.Children.Add(new TextBlock { Text = label, Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("150,*,48"), Margin = new Thickness(0, -4) };
+        var text = new TextBlock { Text = label, Foreground = Muted, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(hint is null ? text : Hint.Beside(text, hint));
         Detach(slider);
         Grid.SetColumn(slider, 1);
         row.Children.Add(slider);
         if (format is not null)
         {
-            var value = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+            var value = new TextBlock { FontSize = 13, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
             void Show() => value.Text = slider.Value.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
             Show();
             slider.PropertyChanged += (_, e) =>

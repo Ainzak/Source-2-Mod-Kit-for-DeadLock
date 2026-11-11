@@ -21,10 +21,10 @@ namespace S2ModKit.Desktop;
 /// </summary>
 internal sealed class MainWindow : Window
 {
-    private static readonly IBrush Sidebar = new SolidColorBrush(Color.FromRgb(43, 45, 49));
-    private static readonly IBrush Panel = new SolidColorBrush(Color.FromRgb(49, 51, 56));
-    private static readonly IBrush Warning = new SolidColorBrush(Color.FromRgb(240, 170, 70));
-    private static readonly IBrush Muted = new SolidColorBrush(Color.FromRgb(148, 155, 164));
+    private static readonly IBrush Sidebar = AppTheme.Side;
+    private static readonly IBrush Panel = AppTheme.Main;
+    private static readonly IBrush Warning = AppTheme.Warning;
+    private static readonly IBrush Muted = AppTheme.Muted;
 
     private AppSettings settings;
     private ModCatalog catalog;
@@ -67,6 +67,7 @@ internal sealed class MainWindow : Window
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Button repairAll = new() { IsVisible = false };
+    private readonly Button updateAll = new() { IsVisible = false };
     private readonly SelectableTextBlock managerBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly SelectableTextBlock crashBanner = new()
     {
@@ -202,8 +203,9 @@ internal sealed class MainWindow : Window
         header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { heroFilter, kindFilter } });
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
-        header.Children.Add(repairAll);
-        repairAll.Click += async (_, _) => await RepairAllAsync();
+        header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { repairAll, updateAll } });
+        repairAll.Click += async (_, _) => await RepairAllAsync(DoctorVerdict.Repairable);
+        updateAll.Click += async (_, _) => await RepairAllAsync(DoctorVerdict.Updatable);
         header.Children.Add(managerBanner);
         header.Children.Add(crashBanner);
         header.Children.Add(reapplyBanner);
@@ -385,10 +387,21 @@ internal sealed class MainWindow : Window
             }
 
             await Task.Delay(TimeSpan.FromSeconds(8));                      // preview session and shape capabilities
-            pane.ShowForShot(seeThroughShot ? "colour" : options.Tab, options.Part);
+            var hintShot = string.Equals(options.Tab, "hint", StringComparison.OrdinalIgnoreCase);   // the colour panel with the Shine hint open
+            pane.ShowForShot(seeThroughShot || hintShot ? "colour" : options.Tab, options.Part);
+            if (hintShot)
+            {
+                pane.OpenHintForShot();
+            }
+
+            if (double.TryParse(Environment.GetEnvironmentVariable("S2MODKIT_SHOT_HUE"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hueShift))
+            {
+                pane.HueForShot(hueShift);                                  // checks of a recolor in screenshot mode
+            }
+
             if (seeThroughShot)
             {
-                pane.SeeThroughForShot(0.6);
+                pane.SeeThroughForShot(double.TryParse(Environment.GetEnvironmentVariable("S2MODKIT_SHOT_SEE_THROUGH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var amount) ? amount : 0.6);
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2));
@@ -455,6 +468,7 @@ internal sealed class MainWindow : Window
             mods = await Task.Run(() => current.LoadAsync());
             listStatus.Text = $"{mods.Count} mods, {mods.Count(mod => mod.Loaded)} loaded. Addons: {settings.AddonsRoot}";
             doctor = (current.LastReport()?.Findings ?? []).ToDictionary(finding => finding.Key, StringComparer.Ordinal);
+            ShowRepairAll();                                               // Repair all / Update all from the last check
             updates = UpdateStore.Known(mods, SourceRecords.Load(), GameBananaIdOf);
             var build = await current.GameBuildAsync();
             updateBanner.IsVisible = await current.GameUpdatedSinceCheckAsync();
@@ -503,7 +517,7 @@ internal sealed class MainWindow : Window
         var updatesOnly = kind == WithUpdates;
         var flaggedOnly = kind == NeedsAttention || updatesOnly;
         var matches = mods.Where(mod => mod.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
-            && (kind != NeedsAttention || doctor.GetValueOrDefault(mod.Key) is { Verdict: not DoctorVerdict.Works })
+            && (kind != NeedsAttention || doctor.GetValueOrDefault(mod.Key) is { Verdict: not (DoctorVerdict.Works or DoctorVerdict.Updatable) })
             && (!updatesOnly || updates.ContainsKey(mod.Key))).ToArray();
         kind = flaggedOnly ? AllKinds : kind;
         var shown = new List<ListRow>();
@@ -631,6 +645,7 @@ internal sealed class MainWindow : Window
             DoctorVerdict.Broken => "\u26A0 broken after update",
             DoctorVerdict.Repairable => "\u26A0 repairable",
             DoctorVerdict.Look => "check after update",
+            DoctorVerdict.Updatable => "\u2191 can be updated",
             _ => null,
         };
         if (tags is { Count: > 0 } || badges.Count > 0 || health is not null || update)
@@ -640,7 +655,7 @@ internal sealed class MainWindow : Window
             chips.Children.AddRange(badges.Select(badge => Chip(badge is "wins" ? "wins" : "\u26A0 " + badge, badge is "wins" ? Muted : Warning)));
             if (health is not null)
             {
-                chips.Children.Add(Chip(health, finding!.Verdict == DoctorVerdict.Look ? Muted : Warning));
+                chips.Children.Add(Chip(health, finding!.Verdict is DoctorVerdict.Look or DoctorVerdict.Updatable ? Muted : Warning));
             }
 
             if (update)
@@ -824,9 +839,9 @@ internal sealed class MainWindow : Window
             actions.Children.Add(Button($"Update... (new file {available.Files[0].Added.LocalDateTime:d})", () => UpdateModAsync(mod, available)));
         }
 
-        if (doctor.GetValueOrDefault(mod.Key) is { Verdict: DoctorVerdict.Repairable } repairable)
+        if (doctor.GetValueOrDefault(mod.Key) is { Verdict: DoctorVerdict.Repairable or DoctorVerdict.Updatable } repairable)
         {
-            actions.Children.Add(Button("Repair", () => RunAsync(() => catalog.RepairFindingAsync(mod, repairable))));
+            actions.Children.Add(Button(repairable.Verdict == DoctorVerdict.Updatable ? "Update" : "Repair", () => RunAsync(() => catalog.RepairFindingAsync(mod, repairable))));
         }
 
         if (mod.Loaded && !mod.Key.StartsWith("app:", StringComparison.Ordinal))
@@ -1176,29 +1191,35 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Runs the mod doctor over every mod (read-only) and shows what the last game update affected.</summary>
-    /// <summary>The findings that Repair can fix for mods that are still in the list.</summary>
-    private DoctorFinding[] Repairable => [.. doctor.Values.Where(finding => finding.Verdict == DoctorVerdict.Repairable && mods.Any(mod => mod.Key == finding.Key && mod.Loaded))];
+    /// <summary>The findings of <paramref name="verdict"/> (repairable or updatable) for enabled mods that are still in the list.</summary>
+    private DoctorFinding[] Findings(DoctorVerdict verdict) => [.. doctor.Values.Where(finding => finding.Verdict == verdict && mods.Any(mod => mod.Key == finding.Key && mod.Loaded))];
 
     private void ShowRepairAll()
     {
-        var count = Repairable.Length;
-        repairAll.IsVisible = count > 1;
-        repairAll.Content = $"Repair all ({count})";
-        ToolTip.SetTip(repairAll, "Repairs every mod the last check found repairable, one after another. Each repair can be turned off or deleted like a mod.");
+        var repairable = Findings(DoctorVerdict.Repairable).Length;
+        repairAll.IsVisible = repairable > 1;
+        repairAll.Content = $"Repair all ({repairable})";
+        ToolTip.SetTip(repairAll, "Repairs every mod the last check found repairable, one after another. Each original is kept disabled as the old version.");
+        var updatable = Findings(DoctorVerdict.Updatable).Length;
+        updateAll.IsVisible = updatable > 0;
+        updateAll.Content = $"Update all ({updatable})";
+        ToolTip.SetTip(updateAll, "Gives every mod whose hero model is older than the game's the settings later updates added (animation sounds, cameras, health bar position). They work without them; each original is kept disabled as the old version.");
     }
 
-    /// <summary>Repairs every repairable mod, one at a time (each a journaled operation); stops at the first failure and says which.</summary>
-    private async Task RepairAllAsync()
+    /// <summary>Repairs or updates every such mod, one at a time (each a journaled operation); stops at the first failure and says which.</summary>
+    private async Task RepairAllAsync(DoctorVerdict verdict)
     {
         var done = new List<string>();
-        foreach (var finding in Repairable)
+        var all = Findings(verdict);
+        var doing = verdict == DoctorVerdict.Updatable ? "Updating" : "Repairing";
+        foreach (var finding in all)
         {
             if (mods.FirstOrDefault(mod => mod.Key == finding.Key) is not { } mod)
             {
                 continue;
             }
 
-            listStatus.Text = $"Repairing {done.Count + 1}/{Repairable.Length}: {mod.Name}...";
+            listStatus.Text = $"{doing} {done.Count + 1}/{all.Length}: {mod.Name}...";
             if (!await RunAsync(() => catalog.RepairFindingAsync(mod, finding)))
             {
                 break;
@@ -1209,7 +1230,8 @@ internal sealed class MainWindow : Window
         }
 
         ShowRepairAll();
-        listStatus.Text = done.Count == 0 ? listStatus.Text : $"Repaired {done.Count} mod{(done.Count == 1 ? string.Empty : "s")}: {string.Join(", ", done)}. " + listStatus.Text;
+        listStatus.Text = done.Count == 0 ? listStatus.Text
+            : $"{(verdict == DoctorVerdict.Updatable ? "Updated" : "Repaired")} {done.Count} mod{(done.Count == 1 ? string.Empty : "s")}: {string.Join(", ", done)}. " + listStatus.Text;
     }
 
     private async Task CheckModsAsync()
@@ -1222,12 +1244,12 @@ internal sealed class MainWindow : Window
             doctor = report.Findings.ToDictionary(finding => finding.Key, StringComparer.Ordinal);
             updateBanner.IsVisible = false;
             int Count(DoctorVerdict verdict) => report.Findings.Count(finding => finding.Verdict == verdict);
-            var flagged = report.Findings.Where(finding => finding.Verdict != DoctorVerdict.Works)
+            var flagged = report.Findings.Where(finding => finding.Verdict is not (DoctorVerdict.Works or DoctorVerdict.Updatable))
                 .Select(finding => mods.FirstOrDefault(mod => mod.Key == finding.Key)?.Name).OfType<string>().Order(StringComparer.OrdinalIgnoreCase).ToArray();
             listStatus.Text = report.ComparedWith is null
                 ? $"Recorded what your {report.Findings.Count} mods depend on in game build {report.Build}. After the next game update, 'Check mods' shows what changed for each mod."
-                    + (Count(DoctorVerdict.Repairable) > 0 ? $" {Count(DoctorVerdict.Repairable)} can be repaired now (models older than the game's): {string.Join(", ", flagged)}. Click one to see why." : string.Empty)
-                : $"Compared with game build {report.ComparedWith}: {Count(DoctorVerdict.Broken)} broken, {Count(DoctorVerdict.Repairable)} repairable, {Count(DoctorVerdict.Look)} worth a look, {Count(DoctorVerdict.Works)} unaffected."
+                    + (Count(DoctorVerdict.Updatable) > 0 ? $" {Count(DoctorVerdict.Updatable)} can be updated (models older than the game's; they work as they are): 'Update all' above the list." : string.Empty)
+                : $"Compared with game build {report.ComparedWith}: {Count(DoctorVerdict.Broken)} broken, {Count(DoctorVerdict.Repairable)} repairable, {Count(DoctorVerdict.Look)} worth a look, {Count(DoctorVerdict.Works) + Count(DoctorVerdict.Updatable)} unaffected{(Count(DoctorVerdict.Updatable) > 0 ? $" ({Count(DoctorVerdict.Updatable)} of them can be updated)" : string.Empty)}."
                     + (flagged.Length > 0 ? $" Showing only those: {string.Join(", ", flagged)}. Click one to see why; pick 'All kinds' to see every mod." : string.Empty);
             if (flagged.Length > 0)
             {

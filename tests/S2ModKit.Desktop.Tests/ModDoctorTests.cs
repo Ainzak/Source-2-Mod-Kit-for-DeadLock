@@ -22,16 +22,21 @@ public sealed class ModDoctorTests
     }
 
     [Fact]
-    public void AnOlderHeroModelAloneIsNotFlagged()
+    public void AnOlderHeroModelAloneCanBeUpdatedAndIsNotAProblem()
     {
         var gaps = new Dictionary<string, ModelSettingsGap> { ["models/heroes_wip/ivy/ivy.vmdl_c"] = new(["TaggedSoundSettings_t"], ["healthbar"]) };
-        var current = new DoctorSnapshot(100, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }]);
-        var later = new DoctorSnapshot(101, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }]);
+        var current = new DoctorSnapshot(100, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }, Facts("b")]);
+        var later = new DoctorSnapshot(101, DateTimeOffset.UnixEpoch, [Facts("a") with { ModelGaps = gaps }, Facts("b")]);
 
-        Assert.Equal(DoctorVerdict.Works, Assert.Single(DoctorRules.Compare(null, current)).Verdict);
-        var finding = Assert.Single(DoctorRules.Compare(current, later));
-        Assert.Equal(DoctorVerdict.Works, finding.Verdict);
-        Assert.Empty(finding.Reasons);
+        foreach (var findings in new[] { DoctorRules.Compare(null, current), DoctorRules.Compare(current, later) })
+        {
+            var older = Assert.Single(findings, finding => finding.Key == "a");
+            Assert.Equal(DoctorVerdict.Updatable, older.Verdict);
+            Assert.Equal(["models/heroes_wip/ivy/ivy.vmdl_c"], older.RestoreModels);
+            Assert.Empty(older.StaleOverrides);
+            Assert.Contains("animation sounds", Assert.Single(older.Reasons), StringComparison.Ordinal);
+            Assert.Equal(DoctorVerdict.Works, Assert.Single(findings, finding => finding.Key == "b").Verdict);
+        }
     }
 
     [Fact]
