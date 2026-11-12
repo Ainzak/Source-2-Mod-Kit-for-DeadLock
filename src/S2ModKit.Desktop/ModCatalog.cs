@@ -124,6 +124,17 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
             .GroupBy(install => install.Receipt.CurrentFileName ?? install.Receipt.TargetFileName, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.MaxBy(install => install.Receipt.CreatedUtc)!, StringComparer.OrdinalIgnoreCase);
 
+        // a file renamed outside the app keeps its receipt by content: the one installed package of exactly its size and file count
+        var installedPackages = installs.Where(install => install.Receipt.Status == "installed").Select(install => (Install: install, Size: PackageSize(install.Receipt))).ToArray();
+        AppInstall? ByContent(AddonArchiveSummary archive)
+        {
+            var matches = installedPackages.Where(item => item.Size == archive.Size && item.Install.Receipt.EntryCount == archive.EntryCount)
+                .Select(item => item.Install.Receipt.PackagePath).Distinct(StringComparer.OrdinalIgnoreCase).Take(2).ToArray();
+            return matches.Length == 1
+                ? installedPackages.Where(item => item.Install.Receipt.PackagePath.Equals(matches[0], StringComparison.OrdinalIgnoreCase)).MaxBy(item => item.Install.Receipt.CreatedUtc).Install
+                : null;
+        }
+
         var firstInstalled = installs.GroupBy(install => install.Receipt.PackagePath, StringComparer.OrdinalIgnoreCase)    // a re-enable writes a new receipt: keep the first date
             .ToDictionary(g => g.Key, g => g.Min(install => install.FirstCreatedUtc), StringComparer.OrdinalIgnoreCase);
         var mods = new List<ModEntry>();
@@ -131,7 +142,8 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         {
             var archives = group.OrderBy(archive => archive.Slot ?? int.MaxValue).ThenBy(archive => archive.FileName, StringComparer.OrdinalIgnoreCase).ToArray();
             var first = archives[0];
-            var install = archives.Select(archive => byTarget.GetValueOrDefault(archive.FileName)).FirstOrDefault(found => found is not null);
+            var install = archives.Select(archive => byTarget.GetValueOrDefault(archive.FileName) is { } found && Describes(found.Receipt, archive) ? found : ByContent(archive))
+                .FirstOrDefault(found => found is not null);
             var source = install is not null ? ModSource.App : first.ModId is not null ? ModSource.Manager : ModSource.Other;
             var files = archives.Select(archive => Path.Combine(settings.AddonsRoot, archive.FileName)).ToArray();
             var entries = await ReadEntriesAsync(files, cancellationToken).ConfigureAwait(false);
@@ -167,6 +179,40 @@ internal sealed partial class ModCatalog(AppSettings settings, string? managerSt
         var conflicts = ModConflictAnalysis.Analyze(mods);
         var listed = mods.Select(mod => mod with { Versions = VersionsOf(library, mod, mods), Conflicts = conflicts.GetValueOrDefault(mod.Key) }).OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase).ToArray();
         return DismissedConflicts.Apply(listed, Dismissed.Load());                    // conflicts marked as fine are not shown   // by name: a mod keeps its place when switched
+    }
+
+    /// <summary>
+    /// Whether an install receipt still describes the file of its name: another mod can take the same slot later (a manager or a
+    /// manual copy), and the app's old label then named someone else's mod (a mod shown as an old test install was deleted). The
+    /// file must have the receipt's file count and, while the installed package still exists, the package's size.
+    /// </summary>
+    internal static bool Describes(AddonFileInstallReceipt receipt, AddonArchiveSummary archive)
+    {
+        if (receipt.EntryCount > 0 && archive.EntryCount != receipt.EntryCount)
+        {
+            return false;
+        }
+
+        try
+        {
+            return !File.Exists(receipt.PackagePath) || new FileInfo(receipt.PackagePath).Length == archive.Size;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return true;                                                     // unreadable package path: the file count decided
+        }
+    }
+
+    private static long? PackageSize(AddonFileInstallReceipt receipt)
+    {
+        try
+        {
+            return File.Exists(receipt.PackagePath) ? new FileInfo(receipt.PackagePath).Length : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The versions of <paramref name="mod"/> that are in the list, when the library has at least two of them.</summary>

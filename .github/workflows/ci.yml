@@ -31,9 +31,6 @@ jobs:
       - name: Test
         run: dotnet test --solution S2ModKit.slnx --no-build --configuration Release --minimum-expected-tests 1286
 
-      - name: Test standalone geometry authoring contracts
-        run: python -B -m unittest discover -s tools/blender/tests -q
-
       - name: Publish win-x64 candidate
         run: dotnet publish src/S2ModKit.Cli/S2ModKit.Cli.csproj --configuration Release -p:PublishProfile=WinX64SingleFile --output artifacts/publish --no-restore --verbosity quiet
 

@@ -51,6 +51,13 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "portable"
 
+[Registry]
+; GameBanana 1-click install: s2modkit:https://gamebanana.com/mmdl/<file>,Mod,<mod> starts the app (or hands the link to the running one)
+Root: HKA; Subkey: "Software\Classes\s2modkit"; ValueType: string; ValueName: ""; ValueData: "URL:S2ModKit 1-click install"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\s2modkit"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\s2modkit\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\S2ModKit.exe,0"
+Root: HKA; Subkey: "Software\Classes\s2modkit\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\S2ModKit.exe"" ""%1"""
+
 [Icons]
 Name: "{group}\S2ModKit"; Filename: "{app}\S2ModKit.exe"
 Name: "{group}\S2ModKit user guide"; Filename: "{app}\docs\USER-GUIDE.md"

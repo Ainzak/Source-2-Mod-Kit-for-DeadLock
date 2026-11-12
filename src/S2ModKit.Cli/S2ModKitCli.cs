@@ -289,6 +289,7 @@ public sealed partial class S2ModKitCli
     {
         var root = new RootCommand("Deterministic Source 2 compiled-model mod workbench");
         root.Subcommands.Add(CreateDoctorCommand(output, error));
+        root.Subcommands.Add(CreateAnimCommand(output, error));
         root.Subcommands.Add(CreateCatalogueCommand(output, error));
         root.Subcommands.Add(CreateCompatibilityCommand(output, error));
         root.Subcommands.Add(CreateBoundsCommand(output, error));

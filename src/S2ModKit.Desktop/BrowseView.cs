@@ -308,6 +308,45 @@ internal sealed class BrowseView : UserControl
             return;                                                         // another mod was picked meanwhile
         }
 
+        ShowInfo(info);
+    }
+
+    /// <summary>
+    /// A GameBanana 1-click link: shows the mod's page and installs the named file as its Install button would (a file no longer on
+    /// the page is not installed).
+    /// </summary>
+    public async Task InstallLinkAsync(OneClickLink link)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        list.SelectedItem = null;
+        page.Content = new TextBlock { Text = "Loading the mod of the 1-click link...", Foreground = Muted, Margin = new Thickness(20) };
+        GameBananaPage info;
+        try
+        {
+            info = await client.PageAsync(link.ModId);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            page.Content = new SelectableTextBlock { Text = $"GameBanana could not be reached ({AppUpdates.Describe(exception)}).", Foreground = Warning, Margin = new Thickness(20), TextWrapping = TextWrapping.Wrap };
+            return;
+        }
+
+        var buttons = ShowInfo(info);
+        if (info.Files.FirstOrDefault(file => file.Id == link.FileId) is not { } chosen || !buttons.TryGetValue(chosen.Id, out var install))
+        {
+            Status = $"The file of the 1-click link is no longer on '{info.Mod.Name}'; pick one of its files.";
+            return;
+        }
+
+        install.IsEnabled = false;
+        var installed = InstallRequested is { } handler && await handler(info, chosen);
+        ShowInstalled(install, installed || IsInstalled(chosen.Id));
+    }
+
+    /// <summary>Shows a mod's page; returns its files' Install buttons by file id.</summary>
+    private Dictionary<long, Button> ShowInfo(GameBananaPage info)
+    {
+        var buttons = new Dictionary<long, Button>();
         var body = new StackPanel { Spacing = 10, Margin = new Thickness(20, 14) };
         body.Children.Add(new SelectableTextBlock { Text = info.Mod.Name, FontSize = 20, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         body.Children.Add(new TextBlock
@@ -338,6 +377,7 @@ internal sealed class BrowseView : UserControl
         foreach (var file in info.Files)
         {
             var install = new Button { Content = "Install", VerticalAlignment = VerticalAlignment.Center, MinWidth = 96, HorizontalContentAlignment = HorizontalAlignment.Center };
+            buttons[file.Id] = install;
             ShowInstalled(install, IsInstalled(file.Id));
             install.Click += async (_, _) =>
             {
@@ -378,5 +418,6 @@ internal sealed class BrowseView : UserControl
         }
 
         page.Content = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = body };
+        return buttons;
     }
 }

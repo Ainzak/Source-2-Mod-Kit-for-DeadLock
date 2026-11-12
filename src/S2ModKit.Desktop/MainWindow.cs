@@ -92,7 +92,7 @@ internal sealed class MainWindow : Window
         Width = 1700;
         Height = 1000;
         settings = AppSettings.Load(options.Game);
-        AppLog.Start(settings.Data, $"S2ModKit {AppUpdates.Current.ToString(3)} ({(AppSettings.Installed ? "installed" : "portable")}) on {Environment.OSVersion.VersionString}; "
+        AppLog.Start(settings.Data, $"S2ModKit {AppUpdates.Text(AppUpdates.Current)} ({(AppSettings.Installed ? "installed" : "portable")}) on {Environment.OSVersion.VersionString}; "
             + $"game {settings.Game}; data {settings.Data}");
         AppLog.CaptureCrashes();
         crashBanner.IsVisible = AppLog.PreviousCrash;
@@ -108,6 +108,7 @@ internal sealed class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            OneClickLink.StopListening();
             sounds?.Release();
             AppLog.Close();
         };
@@ -325,6 +326,12 @@ internal sealed class MainWindow : Window
                 return;
             }
 
+            OneClickLink.StartListening(link => Dispatcher.UIThread.Post(() => _ = InstallLinkAsync(link)));
+            if (options.Link is { } started)
+            {
+                await InstallLinkAsync(started);
+            }
+
             if (settings.CheckUpdates)
             {
                 if (UpdateStore.LastCheck is not { } last || DateTimeOffset.UtcNow - last > TimeSpan.FromHours(20))
@@ -397,6 +404,23 @@ internal sealed class MainWindow : Window
             if (double.TryParse(Environment.GetEnvironmentVariable("S2MODKIT_SHOT_HUE"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hueShift))
             {
                 pane.HueForShot(hueShift);                                  // checks of a recolor in screenshot mode
+            }
+
+            if (Environment.GetEnvironmentVariable("S2MODKIT_SHOT_CLIP") is { Length: > 0 } clipShot)
+            {
+                pane.ClipForShot(clipShot);                                 // checks of animation mods in screenshot mode
+                await Task.Delay(TimeSpan.FromSeconds(3));
+                var clipSaved = false;
+                pane.Control.AfterFrame = (session, view, width, height, _) =>
+                {
+                    if (!clipSaved)
+                    {
+                        clipSaved = true;
+                        File.WriteAllBytes(path + "-3d.png", new S2ModKit.Infrastructure.PngPreviewImageEncoder().EncodePng(session.Capture(view, width, height)));
+                    }
+                };
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                pane.Control.AfterFrame = null;
             }
 
             if (seeThroughShot)
@@ -1476,14 +1500,14 @@ internal sealed class MainWindow : Window
             if (!quiet)
             {
                 listStatus.Text = failure is null
-                    ? $"S2ModKit {AppUpdates.Current.ToString(3)} is the latest version."
+                    ? $"S2ModKit {AppUpdates.Text(AppUpdates.Current)} is the latest version."
                     : $"Could not check for updates: GitHub could not be reached ({failure}).";
             }
 
             return;
         }
 
-        appUpdate.Children.Add(new TextBlock { Text = $"S2ModKit {update.Version.ToString(3)} is available (you have {AppUpdates.Current.ToString(3)}).", Foreground = Warning, TextWrapping = TextWrapping.Wrap });
+        appUpdate.Children.Add(new TextBlock { Text = $"S2ModKit {AppUpdates.Text(update.Version)} is available (you have {AppUpdates.Text(AppUpdates.Current)}).", Foreground = Warning, TextWrapping = TextWrapping.Wrap });
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         if (AppSettings.Installed && update.Setup is not null)
         {
@@ -1661,6 +1685,23 @@ internal sealed class MainWindow : Window
         mine.Click += (_, _) => Pick(false);
         online.Click += (_, _) => Pick(true);
         return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { mine, online } };
+    }
+
+    /// <summary>A GameBanana 1-click link: the window comes forward, Browse GameBanana shows the mod and installs the file.</summary>
+    private async Task InstallLinkAsync(OneClickLink link)
+    {
+        AppLog.Info($"1-click link: mod {link.ModId}, file {link.FileId}");
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+        await SetBrowseAsync(true);
+        if (browse is not null)
+        {
+            await browse.InstallLinkAsync(link);
+        }
     }
 
     /// <summary>Switches between the installed mods and the GameBanana browser (created and loaded the first time it is shown).</summary>

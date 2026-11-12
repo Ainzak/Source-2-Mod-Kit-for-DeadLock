@@ -108,6 +108,7 @@ internal static class AppUpdates
         }
 
         var install = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        AppLog.ClosingForUpdate();                                          // the setup may end the app before it closes itself
         Process.Start(new ProcessStartInfo(file)
         {
             UseShellExecute = false,
@@ -124,13 +125,20 @@ internal static class AppUpdates
     internal static Version? ParseVersion(string? text)
     {
         var core = (text ?? string.Empty).Trim().TrimStart('v', 'V').Split('+', '-')[0];
-        return Version.TryParse(core, out var version) ? new Version(version.Major, version.Minor, Math.Max(0, version.Build)) : null;
+        return Version.TryParse(core, out var version)
+            ? version.Revision > 0                                           // a fix release such as 0.9.5.1 keeps its fourth number
+                ? new Version(version.Major, version.Minor, Math.Max(0, version.Build), version.Revision)
+                : new Version(version.Major, version.Minor, Math.Max(0, version.Build))
+            : null;
     }
+
+    /// <summary>A version as people read it: three numbers, four for a fix release.</summary>
+    internal static string Text(Version version) => version.ToString(version.Revision > 0 ? 4 : 3);
 
     private static HttpClient Client()
     {
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"S2ModKit/{Current.ToString(3)}");   // GitHub requires a user agent; no personal data
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"S2ModKit/{Text(Current)}");   // GitHub requires a user agent; no personal data
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return http;
     }

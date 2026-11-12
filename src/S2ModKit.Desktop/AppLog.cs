@@ -61,6 +61,11 @@ internal static partial class AppLog
 
     public static void Info(string message) => Write("INFO ", message);
 
+    /// <summary>The line written before the setup of an update starts: the setup may end the app before it closes, which is no crash.</summary>
+    public const string UpdateLine = "Closing for the update";
+
+    public static void ClosingForUpdate() => Info(UpdateLine);
+
     /// <summary>A message the window shows (repeats of the same text are written once).</summary>
     public static void Shown(string? message)
     {
@@ -182,8 +187,14 @@ internal static partial class AppLog
                 continue;
             }
 
-            found = true;
             var session = "s2modkit-" + Path.GetFileNameWithoutExtension(file)["crash-".Length..] + ".log";
+            if (text.Length == 0 && EndedForUpdate(Path.Combine(folder, session)))
+            {
+                TryDelete(file);                                               // the update's setup ended it: no crash to report
+                continue;
+            }
+
+            found = true;
             Write("CRASH", $"The session of {session} ended unexpectedly. "
                 + (text.Length == 0 ? "No trace was written (the app was ended from outside, or the PC shut down)." : "Trace:" + Environment.NewLine + text)
                 + LastLines(Path.Combine(folder, session)));
@@ -198,6 +209,31 @@ internal static partial class AppLog
         }
 
         return found;
+    }
+
+    /// <summary>Whether the session's log ends with the update line (its last few lines, as closing writes little after it).</summary>
+    internal static bool EndedForUpdate(string log)
+    {
+        try
+        {
+            return File.Exists(log) && File.ReadLines(log).TakeLast(5).Any(line => line.EndsWith(UpdateLine, StringComparison.Ordinal));
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    private static void TryDelete(string file)
+    {
+        try
+        {
+            File.Delete(file);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // looked at again next time
+        }
     }
 
     private static string LastLines(string log)

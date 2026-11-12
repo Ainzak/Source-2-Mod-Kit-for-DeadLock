@@ -57,6 +57,11 @@ internal static class Program
             return 0;
         }
 
+        if (args.Length == 1 && OneClickLink.Parse(args[0]) is not null && OneClickLink.SendToRunningApp(args[0]))
+        {
+            return 0;                                                       // the running app installs it
+        }
+
         App.Options = AppOptions.Parse(args);
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         return 0;
@@ -76,17 +81,26 @@ internal static class Program
 /// tool <c>--tab Parts|Colour|Shape</c> with part <c>--part &lt;number&gt;</c>, 0: the first separate mesh), saves the window as a picture and closes (layout checks without
 /// controlling the desktop); <c>--by-hero</c> starts in the per-hero view.</summary>
 internal sealed record AppOptions(string? Game, string Model, string? SelfTest, string? Addon = null, float? Outline = null,
-    string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false, string? CrashTest = null, string? Effect = null)
+    string? UiShot = null, string? Select = null, string? Tab = null, int? Part = null, bool ByHero = false, string? CrashTest = null, string? Effect = null,
+    OneClickLink? Link = null)
 {
     public static AppOptions Parse(string[] args)
     {
         string? game = null, selfTest = null, addon = null, uiShot = null, select = null, tab = null, crashTest = null, effect = null;
         int? part = null;
         var byHero = false;
+        OneClickLink? link = null;
         float? outline = null;
         var model = "models/heroes_wip/wraith/wraith.vmdl";
         for (var i = 0; i < args.Length; i += 2)
         {
+            if (OneClickLink.Parse(args[i]) is { } linked)                   // Windows starts the app with a GameBanana 1-click link
+            {
+                link = linked;
+                i--;
+                continue;
+            }
+
             if (args[i] == "--by-hero")
             {
                 byHero = true;
@@ -116,6 +130,6 @@ internal sealed record AppOptions(string? Game, string Model, string? SelfTest, 
             }
         }
 
-        return new AppOptions(game, model, selfTest, addon, outline, uiShot, select, tab, part, byHero, crashTest, effect);
+        return new AppOptions(game, model, selfTest, addon, outline, uiShot, select, tab, part, byHero, crashTest, effect, link);
     }
 }

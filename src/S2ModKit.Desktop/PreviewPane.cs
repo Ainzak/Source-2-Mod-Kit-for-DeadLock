@@ -113,6 +113,15 @@ internal sealed partial class PreviewPane : UserControl
     public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>, IReadOnlyDictionary<int, float>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
+
+    /// <summary>For window pictures: selects the first animation whose name contains <paramref name="text"/>.</summary>
+    public void ClipForShot(string text)
+    {
+        if (allAnimations.FirstOrDefault(name => name.Contains(text, StringComparison.OrdinalIgnoreCase)) is { } clip)
+        {
+            animations.SelectedItem = clip;
+        }
+    }
     private readonly StackPanel abilityBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
     private Task<IReadOnlyDictionary<string, IReadOnlyList<HeroAbility>>?>? abilityData;
 

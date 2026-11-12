@@ -721,7 +721,7 @@ colour's lightness (shading kept), so black and white can be painted (the deskto
 ## Position authoring
 
 The `authoring` commands return JSON. `import-recipe` prepares a source-checked recipe for the normal
-compiled build/verify/package lifecycle. See [position authoring](POSITION-AUTHORING.md).
+compiled build/verify/package lifecycle.
 
 | Command | Required options |
 |---|---|

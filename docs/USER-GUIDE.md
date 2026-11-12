@@ -620,6 +620,9 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
     `S2ModKit.theme.json` beside the settings. **Undo my changes** goes back to the chosen theme's colours; the Default
     theme uses the system's accent colour (**Use the system accent** brings it back after a change). Dark themes only:
     fields and menus keep their own dark colours.
+26. **GameBanana 1-click install.** The setup program lets GameBanana's 1-click buttons open S2ModKit: the app (or the copy
+    already open) shows the mod in **Browse GameBanana** and installs that file, as its **Install** button does. The
+    portable zip does not register the link type; use the setup program for 1-click.
 
 Previews are offline evidence: they are close to the game but not a game test.
 

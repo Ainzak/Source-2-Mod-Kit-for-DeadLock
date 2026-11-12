@@ -24,6 +24,19 @@ public sealed class AppUpdateAndSettingsTests
     }
 
     [Fact]
+    public void AFixReleaseKeepsItsFourthNumberAndIsNewerThanItsBase()
+    {
+        var fix = AppUpdates.ParseVersion("v0.9.5.1");
+
+        Assert.Equal(new Version(0, 9, 5, 1), fix);
+        Assert.True(fix > AppUpdates.ParseVersion("0.9.5"));
+        Assert.True(fix < AppUpdates.ParseVersion("0.9.6"));
+        Assert.Equal("0.9.5.1", AppUpdates.Text(fix!));
+        Assert.Equal("0.9.5", AppUpdates.Text(AppUpdates.ParseVersion("0.9.5")!));
+        Assert.NotNull(AppUpdates.Parse(Release.Replace("0.8.0", "0.9.5.1", StringComparison.Ordinal), new Version(0, 9, 5)));
+    }
+
+    [Fact]
     public void TheSameOrAnOlderVersionADraftOrAPrereleaseIsNoUpdate()
     {
         Assert.Null(AppUpdates.Parse(Release, new Version(0, 8, 0)));

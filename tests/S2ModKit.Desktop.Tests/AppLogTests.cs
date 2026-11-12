@@ -35,6 +35,34 @@ public sealed class AppLogTests
     }
 
     [Fact]
+    public void ASessionEndedByTheUpdateSetupIsNoCrashButATraceAfterItStillIs()
+    {
+        var data = Path.Combine(Path.GetTempPath(), "s2mk-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var logs = Path.Combine(data, "logs");
+            Directory.CreateDirectory(logs);
+            File.WriteAllText(Path.Combine(logs, "s2modkit-20200101-000000.log"), $"00:00:01.000 INFO  {AppLog.UpdateLine}\n");
+            File.WriteAllText(Path.Combine(logs, "crash-20200101-000000.txt"), string.Empty);
+
+            AppLog.Start(data, "S2ModKit test start");
+
+            Assert.False(AppLog.PreviousCrash);
+            Assert.False(File.Exists(Path.Combine(logs, "crash-20200101-000000.txt")));
+
+            File.WriteAllText(Path.Combine(logs, "s2modkit-20200102-000000.log"), $"00:00:01.000 INFO  {AppLog.UpdateLine}\n");
+            File.WriteAllText(Path.Combine(logs, "crash-20200102-000000.txt"), "Stack overflow.\n   at Some.Method()");
+            AppLog.Start(data, "S2ModKit test start again");
+
+            Assert.True(AppLog.PreviousCrash);                                  // a real trace is still reported
+        }
+        finally
+        {
+            Directory.Delete(data, true);
+        }
+    }
+
+    [Fact]
     public void ACrashFileOfAnEndedSessionIsReportedOnceAndOneStillRunningIsLeftAlone()
     {
         var data = Path.Combine(Path.GetTempPath(), "s2mk-log-" + Guid.NewGuid().ToString("N"));

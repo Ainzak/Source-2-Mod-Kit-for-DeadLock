@@ -65,7 +65,8 @@ no geometry-shaping controls in the desktop app at present.
 - Preview selected and excluded geometry across every LOD before building.
 - Inspect component candidates and scaffold recipes without publishing a mutation.
 - Export Blender geometry, validate all-LOD position returns and build independently verified
-  existing-mesh sculpts through a bounded import contract. See [position authoring](docs/POSITION-AUTHORING.md).
+  existing-mesh sculpts through a bounded import contract (`authoring` commands in the
+  [CLI reference](docs/CLI-REFERENCE.md#position-authoring)).
 - Build, verify, package, explicitly install, observe, and receipt-rollback owned addons.
 
 Support is structural, not hero-name based. Unknown layouts, incomplete LOD coverage, ambiguous

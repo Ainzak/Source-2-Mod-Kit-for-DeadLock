@@ -167,7 +167,7 @@ internal sealed partial class GameBananaClient
     private static HttpClient CreateClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd($"S2ModKit/{AppUpdates.Current.ToString(3)}");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd($"S2ModKit/{AppUpdates.Text(AppUpdates.Current)}");
         return client;
     }
 

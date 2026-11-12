@@ -7,7 +7,7 @@ Non-interactive commands and JSON output support reproducible automation. Geomet
 Blender position imports currently use the CLI; the former `interactive` terminal mode was retired
 in 0.4.0.
 
-For an existing-mesh Blender sculpt, use the [position authoring commands](POSITION-AUTHORING.md).
+For an existing-mesh Blender sculpt, use the [position authoring commands](CLI-REFERENCE.md#position-authoring).
 Keep the trusted bundle hash separate, return every selected LOD and validate against immutable source.
 `authoring import-recipe` freezes the return in a recipe-12 import and immutable project artifacts.
 Use normal `plan`, `build`, `verify` and minimal packaging: complete compiled reopen verification
