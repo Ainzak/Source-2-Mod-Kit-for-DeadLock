@@ -1,6 +1,6 @@
 # Security policy
 
-S2ModKit is pre-alpha software. Please do not use it to modify an active game installation
+Please do not use S2ModKit to modify an active game installation
 without a backup and an explicit rollback path.
 
 ## Reporting a vulnerability
