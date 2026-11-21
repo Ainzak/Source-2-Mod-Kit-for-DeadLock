@@ -498,8 +498,9 @@ starting the game. It needs a GPU with OpenGL 4.6. Changes to the addons folder 
    files), sorted by name, date added or load order. **By hero** groups mods under each hero (heroes are read from the
    game's own data), plus Objects, World, Interface and Other; every group is folded until clicked (the group of the
    shown mod opens), and a hero without mods shows the game's own model. Filter by
-   name, hero or kind (model, animation, sound, UI, particles). Names, heroes and dates from Deadlock Mod Manager and
-   HELLCAT are read, never written.
+   name, hero or kind. A mixed mod appears under every kind it contains. Use **material** for Hideout paintings
+   and **ui** for hero portraits and icons. After installing from **Pictures (WIP)**, **Show in My mods** selects the
+   installed mod. Names, heroes and dates from Deadlock Mod Manager and HELLCAT are read, never written.
 3. **Manage.** **Enable** and **Disable** rename the mod's files in place (nothing is moved or copied); **Delete** sends
    them to the Recycle Bin; **Install mod...** (or dropping a file on the window) installs a `.vpk`, `.zip`, `.7z` or
    `.rar`, asking which variant when an archive has several; the new mod is selected, and a note names the enabled mods

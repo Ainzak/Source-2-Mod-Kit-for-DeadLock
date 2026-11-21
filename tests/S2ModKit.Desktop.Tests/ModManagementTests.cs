@@ -518,6 +518,8 @@ public sealed class ModManagementTests
         Assert.Throws<S2ModKitException>(() => new ModLibraryDocument().WithVersions("Skin", [new ModLibraryVersion { Key = "a" }, new ModLibraryVersion { Key = "a" }], now));
         Assert.Equal(["k3"], library.WithVersions("Skin", [new ModLibraryVersion { Key = "k3", Label = "x" }], now).Mods[0].Versions.Skip(2).Select(version => version.Key));
         Assert.Empty(library.Without("k1").Mods);                            // one version left is no group
+        var reused = library.Without("k2").WithVersions("Celeste", [new ModLibraryVersion { Key = "c1", Label = "original" }, new ModLibraryVersion { Key = "k2", Label = "edits re-applied" }], now);
+        Assert.Equal(["c1", "k2"], Assert.Single(reused.Mods).Versions.Select(version => version.Key));   // a file name freed outside the app is taken by the new install
         Assert.Same(library, library.WithRenames([new AddonRename("zzz_dir.vpk", "yyy_dir.vpk")]));
     }
 

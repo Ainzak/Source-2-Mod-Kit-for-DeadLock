@@ -1,0 +1,33 @@
+{
+  "schema": "picture-targets@1",
+  "comment": "Surfaces S2ModKit can put pictures on. Paintings: measured in the map (material, colour texture, the texture span its canvas uses, its real shape). Templates: game textures of a known layout that animated pictures are written into, under the painting's own frames path. Hero pictures: file patterns under the game's hero art, {hero} = the hero's internal name.",
+  "whiteMask": "materials/default/default_mask_tga_344101f8.vtex",
+  "templates": [
+    { "width": 4096, "height": 2048, "path": "materials/overlays/plaster_damaged_01_color_psd_4bdca2e2.vtex_c" },
+    { "width": 4096, "height": 4096, "path": "materials/concrete/texturescom_concrete_brick2_color_tif_b1b18826.vtex_c" }
+  ],
+  "paintings": [
+    {
+      "id": "hideout-portrait",
+      "name": "The Patron's portrait",
+      "map": "Hideout",
+      "place": "above the fireplace",
+      "material": "models/hideout/materials/hideout_portrait_large.vmat_c",
+      "colorTexture": "models/hideout/materials/hideout_portrait_large_color_psd_bc05d6c1.vtex_c",
+      "framesTexture": "models/hideout/materials/s2mk/hideout_portrait_frames.vtex_c",
+      "uvRange": [ 0, 0, 1.03125, 1 ],
+      "canvas": [ 117.8, 175.9 ],
+      "glow": 0.5,
+      "roomTint": [ 0.31, 0.16, 0.08 ]
+    }
+  ],
+  "heroPictures": [
+    { "id": "card", "name": "Card", "pattern": "panorama/images/heroes/{hero}_card_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "card-critical", "name": "Kill card", "pattern": "panorama/images/heroes/{hero}_card_critical_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "card-gloat", "name": "Gloat card", "pattern": "panorama/images/heroes/{hero}_card_gloat_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "vertical", "name": "Hero select portrait", "pattern": "panorama/images/heroes/{hero}_vertical_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "small", "name": "Small icon", "pattern": "panorama/images/heroes/{hero}_sm_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "minimap", "name": "Minimap icon", "pattern": "panorama/images/heroes/{hero}_mm_psd(_[0-9a-f]{8})?\\.vtex_c" },
+    { "id": "background", "name": "Hero screen background", "pattern": "panorama/images/heroes/backgrounds/{hero}_bg_psd(_[0-9a-f]{8})?\\.vtex_c" }
+  ]
+}

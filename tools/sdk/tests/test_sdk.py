@@ -204,6 +204,22 @@ class Tests(unittest.TestCase):
                        data().replace('"root"', '"renamed"'), data().replace('value=1', 'value=true')):
             with self.assertRaises(ValueError): compare(data(), actual)
 
+    def test_declared_jiggle_bones_are_the_only_allowed_additions(self):
+        jiggled = data().replace('["root"]', '["root","jiggle_a"]').replace('m_nParent=[-1]', 'm_nParent=[-1,0]')             .replace('m_bonePosParent=[[0,0,0]]', 'm_bonePosParent=[[0,0,0],[1,0,0]]').replace('m_boneRotParent=[[0,0,0,1]]', 'm_boneRotParent=[[0,0,0,1],[0,0,0,1]]')
+        self.assertEqual((0, 0), compare(data(), jiggled, {'jiggle_a': 'root'}))
+        for declared in (None, {'jiggle_b': 'root'}, {'jiggle_a': None}, {'root': None}):
+            with self.assertRaises(ValueError): compare(data(), jiggled, declared)
+        with self.assertRaises(ValueError): compare(data(), data(), {'jiggle_a': 'root'})   # declared but missing
+
+    def test_declared_particles_are_the_only_allowed_game_data_change(self):
+        snow = data().replace('{camera={value=1}}', '{camera={value=1} particle_cfg_list=[{name=resource:"particles/snow.vpcf"}]}')
+        self.assertEqual((0, 0), compare(data(), snow, None, ['particles/snow.vpcf']))
+        with self.assertRaises(ValueError): compare(data(), snow)                                   # undeclared
+        with self.assertRaises(ValueError): compare(data(), snow, None, ['particles/rain.vpcf'])   # another one
+        with self.assertRaises(ValueError): compare(data(), data(), None, ['particles/snow.vpcf'])  # declared, not built
+        preview = snow.replace('"particles/snow.vpcf"}', '"particles/snow.vpcf" config="preview"}')
+        with self.assertRaises(ValueError): compare(data(), preview, None, ['particles/snow.vpcf'])  # must not be preview-only
+
     def test_animation_masks_use_bone_names_and_reject_corruption(self):
         self.assertEqual('models/pose_ASTRO.dmx', artifact_path('models/pose_ASTRO.dmx'))
         for path in ('../pose.dmx', 'C:/pose.dmx', '/pose.dmx', 'models//pose.dmx'):

@@ -8,7 +8,7 @@
     "expectedDirectoryHash": "d6e53045cae0efc675b52146a985c3294f961e339956e58942072932f84dc887"
   },
   "heroes": [
-    { "heroId": "abrams", "displayName": "Abrams", "aliases": ["atlas"], "rosterStatus": "active", "resources": [
+    { "heroId": "abrams", "displayName": "Abrams", "aliases": ["atlas", "bull"], "rosterStatus": "active", "resources": [
       { "resourceId": "abrams.primary", "displayName": "Abrams", "role": "primary_model", "logicalPath": "models/heroes_wip/abrams/abrams.vmdl_c", "optional": false, "qualificationStatus": "unqualified", "extensions": {} }
     ], "extensions": { "sourceHeroId": 6 } },
     { "heroId": "apollo", "displayName": "Apollo", "aliases": ["fencer"], "rosterStatus": "active", "resources": [

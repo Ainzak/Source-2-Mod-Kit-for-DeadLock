@@ -80,6 +80,7 @@ public sealed partial class PreviewSession
 
             own.Opacity = 1f - amount;
             Show(own);
+            ReleaseIfPlain(own);
             return null;
         }
 #pragma warning disable CA1031 // the renderer's material loader throws many kinds; reported to the window
@@ -97,6 +98,7 @@ public sealed partial class PreviewSession
         {
             target.Change = change;
             Show(target);
+            ReleaseIfPlain(target);
         }
     }
 
@@ -107,6 +109,7 @@ public sealed partial class PreviewSession
         {
             target.Shine = shine;
             Show(target);
+            ReleaseIfPlain(target);
         }
     }
 
@@ -198,6 +201,46 @@ public sealed partial class PreviewSession
     }
 
     private readonly Dictionary<int, (byte[] First, List<int> Pieces)> splitParts = [];
+
+    /// <summary>
+    /// An own copy whose settings are all back to the game's (solid, own colours, no shine) is dropped: the part or piece is drawn with its
+    /// original material and draw call again, exactly as before it was changed (a reloaded copy does not always draw the same).
+    /// </summary>
+    private void ReleaseIfPlain(Own own)
+    {
+        if (own.Opacity < 0.995f || own.Change is not null || own.Shine > 0)
+        {
+            return;
+        }
+
+        var part = picker.ParentOf(own.Index);
+        var (mesh, draw) = drawOrder[part];
+        owns.Remove(own.Index);
+        own.Colour?.Delete();
+        own.Normal?.Delete();
+        if (own.PieceOf is null)
+        {
+            draw.SetNewMaterial(own.Original);
+            if (mesh.DrawCallsBlended.Remove(draw))
+            {
+                mesh.DrawCallsOpaque.Add(draw);
+            }
+
+            ink.SetNoShell(part, false);
+            return;
+        }
+
+        mesh.DrawCallsOpaque.Remove(own.Target);
+        mesh.DrawCallsBlended.Remove(own.Target);
+        ink.SetPieceNoShell(part, (IReadOnlyCollection<int>)picker.Vertices(own.Index), false);
+        var split = splitParts[part];
+        split.Pieces.Remove(own.Index);
+        Reorder(part, draw, split);                                      // the piece's triangles go back into the part's draw
+        if (split.Pieces.Count == 0)
+        {
+            splitParts.Remove(part);
+        }
+    }
 
     /// <summary>Writes part <paramref name="part"/>'s triangles in the build's order (the rest, then each piece) and points the draw calls at their ranges.</summary>
     private void Reorder(int part, DrawCall draw, (byte[] First, List<int> Pieces) split)

@@ -48,10 +48,11 @@ public sealed class VrfModelPreviewRenderer : IModelPreviewRenderer
             .Select(i => session.ClipSeconds <= 0 ? 0f : i / (float)spec.FramesPerSecond % session.ClipSeconds)
             .ToArray();
         var frames = spec.Views.Select(_ => new List<PreviewImage>(times.Length)).ToArray();
-        foreach (var t in times)
+        for (var frame = 0; frame < times.Length; frame++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            session.SetTime(t);
+            session.SetTime(times[frame]);
+            session.AnimateMaterials(frame / (float)spec.FramesPerSecond);   // a glow's pulse runs on play time, also without a clip
             for (var v = 0; v < spec.Views.Count; v++)
             {
                 frames[v].Add(session.Capture(spec.Views[v], spec.Width, spec.Height));

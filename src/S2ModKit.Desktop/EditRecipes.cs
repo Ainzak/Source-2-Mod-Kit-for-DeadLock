@@ -32,13 +32,14 @@ internal sealed record EditRecipe(
     DateTimeOffset Built,
     RecipeShine[]? Shines = null,
     RecipeAddedEffect[]? Added = null,
-    RecipeOpacity[]? Opacities = null)
+    RecipeOpacity[]? Opacities = null,
+    RecipeLook[]? Looks = null)
 {
     public const string FileName = "recipe.json";
     public const string CurrentSchema = "app-recipe@1";
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
-    public bool HasEdits => Hidden.Length > 0 || Recolors.Length > 0 || Shapes.Length > 0 || Effects.Count > 0 || Shines is { Length: > 0 } || Added is { Length: > 0 } || Opacities is { Length: > 0 };
+    public bool HasEdits => Hidden.Length > 0 || Recolors.Length > 0 || Shapes.Length > 0 || Effects.Count > 0 || Shines is { Length: > 0 } || Added is { Length: > 0 } || Opacities is { Length: > 0 } || Looks is { Length: > 0 };
 
     public void Write(string folder) => File.WriteAllText(Path.Combine(folder, FileName), JsonSerializer.Serialize(this, Indented));
 
@@ -90,3 +91,16 @@ internal sealed record RecipeAddedEffect(string Effect, string? Bone, float[] Of
 
 /// <summary>A see-through part: its material and the opacity it is drawn with (1 solid, 0 invisible).</summary>
 internal sealed record RecipeOpacity(int Part, string Material, float Opacity);
+
+/// <summary>A part with a look (<c>glow</c> or <c>spectral</c>): its material, colour, glow strength, pulse (radians per second; amount as a
+/// fraction), opacity (spectral only) and whether the outline takes the colour (glow only).</summary>
+/// <summary>A part's glow. Older 2026-11-15 test recipes also carry <c>Kind</c> ("spectral": edges on), <c>Glow</c>, <c>Outline</c> and outline
+/// settings (the outline glow was removed); they read as this glow.</summary>
+internal sealed record RecipeLook(int Part, string Material, float R, float G, float B, float Strength, float PulseSpeed, float PulseAmount, bool Edges = false,
+    string? Kind = null)
+{
+    public S2ModKit.Adapters.Source2.MaterialLook ToLook() => new(R, G, B, Strength, PulseSpeed, PulseAmount, Edges || Kind == "spectral");
+
+    public static RecipeLook Of(int part, string material, S2ModKit.Adapters.Source2.MaterialLook look) =>
+        new(part, material, look.R, look.G, look.B, look.Strength, look.PulseSpeed, look.PulseAmount, look.Edges);
+}

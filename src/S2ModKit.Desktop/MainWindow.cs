@@ -12,6 +12,8 @@ using Avalonia.Threading;
 using S2ModKit.Application;
 using S2ModKit.Domain;
 
+using static S2ModKit.Desktop.ModKindFilter;
+
 namespace S2ModKit.Desktop;
 
 /// <summary>
@@ -19,7 +21,7 @@ namespace S2ModKit.Desktop;
 /// preview for model mods and an information panel for the rest. Any mod can be enabled, disabled (renamed in place) or deleted
 /// (Recycle Bin); install takes a .vpk, .zip, .7z or .rar by button or by dropping it on the window.
 /// </summary>
-internal sealed class MainWindow : Window
+internal sealed partial class MainWindow : Window
 {
     private static readonly IBrush Sidebar = AppTheme.Side;
     private static readonly IBrush Panel = AppTheme.Main;
@@ -32,6 +34,7 @@ internal sealed class MainWindow : Window
     private SoundsPane? sounds;
     private Control? myMods;
     private BrowseView? browse;
+    private PicturesView? pictures;
     private GameBananaClient? gameBanana;
     private IReadOnlyDictionary<string, ModUpdate> updates = new Dictionary<string, ModUpdate>();
     private readonly ListBox list = new() { Background = Brushes.Transparent };
@@ -41,7 +44,7 @@ internal sealed class MainWindow : Window
     private readonly ToggleButton heroView = new() { Content = "By hero" };
     private readonly ComboBox sort = new() { ItemsSource = new[] { "Name", "Date added", "Load order" }, SelectedIndex = 0 };
     private readonly ComboBox heroFilter = new() { MinWidth = 170 };
-    private readonly ComboBox kindFilter = new() { MinWidth = 120, ItemsSource = new[] { AllKinds, "model", "sound", "ui", "particles", "other", NeedsAttention, WithUpdates }, SelectedIndex = 0 };
+    private readonly ComboBox kindFilter = new() { MinWidth = 120, ItemsSource = ModKindFilter.Options, SelectedIndex = 0 };
     private readonly SelectableTextBlock title = new() { FontSize = 20, FontWeight = FontWeight.SemiBold };
     private readonly SelectableTextBlock details = new() { Foreground = Muted };
     private readonly StackPanel actions = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -56,13 +59,6 @@ internal sealed class MainWindow : Window
     private readonly ContentControl bodyLayer = new() { IsVisible = false };   // Files and Sounds, drawn over the hidden preview
     private static readonly int[] PreviewSpeeds = [60, 30];
     private const string AllHeroes = "All heroes";
-    private const string AllKinds = "All kinds";
-
-    /// <summary>Kind filter entry: only the mods the last "Check mods" marked (broken, repairable or worth a look).</summary>
-    private const string NeedsAttention = "Flagged by Check mods";
-
-    /// <summary>Kind filter entry: mods with a newer file on GameBanana.</summary>
-    private const string WithUpdates = "New files on GameBanana";
     private IReadOnlyList<ModEntry> mods = [];
     private IReadOnlyDictionary<string, DoctorFinding> doctor = new Dictionary<string, DoctorFinding>();
     private readonly SelectableTextBlock updateBanner = new() { Foreground = Warning, TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -114,17 +110,20 @@ internal sealed class MainWindow : Window
         };
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto || options.SelfTest is not null || options.UiShot is not null };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough, looks) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough, looks);
         list.ItemTemplate = new FuncDataTemplate<ListRow>((row, _) => row switch
         {
             HeaderRow header => new TextBlock
             {
+                Width = Cards ? CardsRowWidth : double.NaN,                         // a header takes its own line among the cards
                 Text = header.Foldable ? $"{(header.Open ? "\u25BE" : "\u25B8")} {header.Title}" : header.Title,
                 FontWeight = FontWeight.Bold,
                 FontSize = 14,
                 Margin = new Thickness(2, header.Foldable ? 4 : 10, 2, 2),
             },
-            ModRow { Mod: var mod } item => ModItem(mod, item.Tags, item.LoadOrder, doctor.GetValueOrDefault(mod.Key), updates.ContainsKey(mod.Key)),
+            ModRow { Mod: var mod } item => Cards ? ModCard(mod, doctor.GetValueOrDefault(mod.Key), updates.ContainsKey(mod.Key))
+                : ModItem(mod, item.Tags, item.LoadOrder, doctor.GetValueOrDefault(mod.Key), updates.ContainsKey(mod.Key)),
+            BaseRow { Hero: var hero } when Cards => BaseCard(hero),
             BaseRow { Hero: var hero } => new StackPanel
             {
                 Margin = new Thickness(2, 4),
@@ -187,9 +186,10 @@ internal sealed class MainWindow : Window
         BrowseView.SteadyWidth(heroFilter);
         BrowseView.SteadyWidth(kindFilter);
 
-        var side = new DockPanel { Width = 380, Background = Sidebar };
+        var side = new DockPanel { Width = UiLayout.Load().ListWidth, Background = Sidebar };
+        sidePanel = side;
         var header = new StackPanel { Spacing = 8, Margin = new Thickness(12) };
-        header.Children.Add(ModeSwitch(browse: false));
+        header.Children.Add(ModeSwitch(ModView.Mine));
         header.Children.Add(new WrapPanel                                 // wraps to a second line in the narrow side panel
         {
             ItemSpacing = 6,
@@ -200,7 +200,9 @@ internal sealed class MainWindow : Window
             },
         });
         header.Children.Add(search);
-        header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { flatView, heroView, sort } });
+        header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { flatView, heroView, sort, cardsView } });
+        ToolTip.SetTip(cardsView, "Show the mods as picture cards (your picture, or the mod's GameBanana picture)");
+        cardsView.Click += (_, _) => SetCards(cardsView.IsChecked == true);
         header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { heroFilter, kindFilter } });
         header.Children.Add(appUpdate);
         header.Children.Add(updateBanner);
@@ -236,9 +238,17 @@ internal sealed class MainWindow : Window
         pane.IsVisible = false;
         main.Children.Add(body);
 
+        if (UiLayout.Load().ModCards || (options.UiShot is not null && Environment.GetEnvironmentVariable("S2MODKIT_SHOT_CARDS") == "1"))
+        {
+            SetCards(true, remember: options.UiShot is null);             // window pictures never change the saved layout
+        }
+
         var root = new DockPanel();
         DockPanel.SetDock(side, Dock.Left);
         root.Children.Add(side);
+        var grip = ListGrip(side, root);
+        DockPanel.SetDock(grip, Dock.Left);
+        root.Children.Add(grip);
         root.Children.Add(main);
         myMods = root;
         Content = new Grid { Children = { myMods } };
@@ -350,7 +360,15 @@ internal sealed class MainWindow : Window
     {
         var placeEffect = string.Equals(options.Tab, "addeffect", StringComparison.OrdinalIgnoreCase);
         var seeThroughShot = string.Equals(options.Tab, "seethrough", StringComparison.OrdinalIgnoreCase);   // --part N see-through, with the 3D view
+        var lookShot = string.Equals(options.Tab, "look", StringComparison.OrdinalIgnoreCase);              // --part N with the Glow look's controls in view
         var effectsShot = placeEffect || seeThroughShot || string.Equals(options.Tab, "effects", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(options.Tab, "pictures", StringComparison.OrdinalIgnoreCase))   // the Pictures tab, the first painting with S2MODKIT_SHOT_PICTURES (file;file)
+        {
+            await SetViewAsync(ModView.Pictures);
+            pictures?.ShowForShot((Environment.GetEnvironmentVariable("S2MODKIT_SHOT_PICTURES") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries));
+            await Task.Delay(TimeSpan.FromSeconds(4));
+        }
+
         if (string.Equals(options.Tab, "browse", StringComparison.OrdinalIgnoreCase))     // the GameBanana browser with its first mod open
         {
             await SetBrowseAsync(true);
@@ -395,7 +413,7 @@ internal sealed class MainWindow : Window
 
             await Task.Delay(TimeSpan.FromSeconds(8));                      // preview session and shape capabilities
             var hintShot = string.Equals(options.Tab, "hint", StringComparison.OrdinalIgnoreCase);   // the colour panel with the Shine hint open
-            pane.ShowForShot(seeThroughShot || hintShot ? "colour" : options.Tab, options.Part);
+            pane.ShowForShot(seeThroughShot || hintShot || lookShot ? "colour" : options.Tab, options.Part);
             if (hintShot)
             {
                 pane.OpenHintForShot();
@@ -421,6 +439,11 @@ internal sealed class MainWindow : Window
                 };
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 pane.Control.AfterFrame = null;
+            }
+
+            if (lookShot)
+            {
+                pane.LookForShot();
             }
 
             if (seeThroughShot)
@@ -477,7 +500,7 @@ internal sealed class MainWindow : Window
     private static int Overflow(int depth) => Overflow(depth + 1) + 1;
 #pragma warning restore CA1857, S2190
 
-    private async Task LoadAsync(string? select = null)
+    private async Task LoadAsync(string? select = null, string? selectPackage = null)
     {
         if (!settings.GameFound)
         {
@@ -508,6 +531,16 @@ internal sealed class MainWindow : Window
             var hero = heroFilter.SelectedItem as string;
             heroFilter.ItemsSource = (string[])[AllHeroes, .. mods.SelectMany(mod => mod.HeroNames).Distinct().Order(StringComparer.OrdinalIgnoreCase)];
             heroFilter.SelectedItem = hero is not null && mods.Any(mod => mod.HeroNames.Contains(hero)) ? hero : AllHeroes;
+            if (selectPackage is not null)
+            {
+                select = mods.FirstOrDefault(mod => string.Equals(mod.Install?.Receipt.PackagePath,
+                    selectPackage, StringComparison.OrdinalIgnoreCase))?.Key;
+                if (select is null)
+                {
+                    listStatus.Text = $"Could not find an installation of '{Path.GetFileName(selectPackage)}'.";
+                }
+            }
+
             ApplySearch(select);
         }
 #pragma warning disable CA1031 // shown in the window
@@ -538,12 +571,9 @@ internal sealed class MainWindow : Window
         var current = select ?? SelectedMod?.Key;
         var hero = heroFilter.SelectedItem as string ?? AllHeroes;
         var kind = kindFilter.SelectedItem as string ?? AllKinds;
-        var updatesOnly = kind == WithUpdates;
-        var flaggedOnly = kind == NeedsAttention || updatesOnly;
+        var flaggedOnly = IsStatusFilter(kind);
         var matches = mods.Where(mod => mod.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
-            && (kind != NeedsAttention || doctor.GetValueOrDefault(mod.Key) is { Verdict: not (DoctorVerdict.Works or DoctorVerdict.Updatable) })
-            && (!updatesOnly || updates.ContainsKey(mod.Key))).ToArray();
-        kind = flaggedOnly ? AllKinds : kind;
+            && Matches(mod, kind, doctor.GetValueOrDefault(mod.Key)?.Verdict, updates.ContainsKey(mod.Key))).ToArray();
         var shown = new List<ListRow>();
         if (byHero)
         {
@@ -554,19 +584,19 @@ internal sealed class MainWindow : Window
             foreach (var name in matches.SelectMany(mod => mod.HeroNames).Concat(everyHero).Distinct().Order(StringComparer.OrdinalIgnoreCase).Where(name => hero is AllHeroes || name == hero))
             {
                 var group = matches.Where(mod => mod.HeroNames.Contains(name))
-                    .Select(mod => (mod, tags: mod.HeroKinds?.GetValueOrDefault(name) ?? [])).Where(item => kind == AllKinds
-                    || (item.tags.Count > 0 ? item.tags.Any(tag => tag.Equals(kind, StringComparison.OrdinalIgnoreCase)) : item.mod.MainKind == kind)).ToArray();
-                AddGroup(shown, name, group.Select(item => new ModRow(item.mod, item.tags)), Hero.FindByName(name) is { } found ? new BaseRow(found) : null, unfold, current);
+                    .Select(mod => new ModRow(mod, mod.HeroKinds?.GetValueOrDefault(name) ?? []));
+                var baseGame = kind == AllKinds && Hero.FindByName(name) is { } found ? new BaseRow(found) : null;
+                AddGroup(shown, name, group, baseGame, unfold, current);
             }
 
             foreach (var name in hero is AllHeroes ? ModAttribution.Groups : [])
             {
-                AddGroup(shown, name, matches.Where(mod => mod.HeroNames.Count == 0 && mod.Group == name && (kind == AllKinds || mod.MainKind == kind)).Select(mod => new ModRow(mod)), null, unfold, current);
+                AddGroup(shown, name, matches.Where(mod => mod.HeroNames.Count == 0 && mod.Group == name).Select(mod => new ModRow(mod)), null, unfold, current);
             }
         }
         else
         {
-            var flat = matches.Where(mod => (hero == AllHeroes || mod.HeroNames.Contains(hero)) && (kind == AllKinds || mod.MainKind == kind));
+            var flat = matches.Where(mod => hero == AllHeroes || mod.HeroNames.Contains(hero));
             var loadOrder = sort.SelectedIndex == 2;
             shown.AddRange((sort.SelectedIndex switch
             {
@@ -674,7 +704,7 @@ internal sealed class MainWindow : Window
         };
         if (tags is { Count: > 0 } || badges.Count > 0 || health is not null || update)
         {
-            var chips = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 3, 0, 0) };
+            var chips = new WrapPanel { ItemSpacing = 4, LineSpacing = 3, Margin = new Thickness(0, 3, 0, 0) };   // wraps on a narrow card
             chips.Children.AddRange((tags ?? []).Select(tag => Chip(tag, Muted)));
             chips.Children.AddRange(badges.Select(badge => Chip(badge is "wins" ? "wins" : "\u26A0 " + badge, badge is "wins" ? Muted : Warning)));
             if (health is not null)
@@ -892,6 +922,13 @@ internal sealed class MainWindow : Window
             Add("Re-apply edits (build them again on the current game)", () => ReapplyAsync([mod]), mod.Loaded && recipe is not null);
         }
 
+        Add("Rename...", () => RenameAsync(mod));
+        Add("Set picture...", () => SetPictureAsync(mod));
+        if (Pictures.UserPicture(ModProfiles.IdentityOf(mod)) is not null)
+        {
+            Add("Remove picture", () => RemovePictureAsync(mod));
+        }
+
         Add("Merge with other mods...", () => MergeAsync(mod), mod.Files.Count > 0);
         if (MergeRecord.Of(mod) is not null)
         {
@@ -1019,9 +1056,26 @@ internal sealed class MainWindow : Window
             AllowMultiple = false,
             FileTypeFilter = [new FilePickerFileType("Deadlock mod or archive") { Patterns = ["*.vpk", "*.zip", "*.7z", "*.rar"] }],
         });
-        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path
+            && await new InstallDetailsDialog(path, PickPictureAsync).ShowDialog<InstallDetails?>(this) is { } chosen)
         {
-            await InstallPathAsync(path);
+            var receipts = await InstallPathAsync(path, chosen.Name);
+            if (chosen.Picture is { } picture && receipts.Count > 0)
+            {
+                try
+                {
+                    foreach (var receipt in receipts)                         // each installed variant gets the picture
+                    {
+                        Pictures.SetUserPicture("package:" + receipt.PackagePath, picture);
+                    }
+
+                    await LoadAsync(SelectedMod?.Key);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    listStatus.Text += " The picture was not kept: " + exception.Message;
+                }
+            }
         }
     }
 
@@ -1113,7 +1167,8 @@ internal sealed class MainWindow : Window
 
     /// <summary>Builds one edited version with the hidden, recolored and reshaped parts (masks, boxes and movements taken from the open preview).</summary>
     private async Task BuildAsync(ModEntry? mod, string model, IReadOnlySet<int> hidden, IReadOnlyDictionary<int, ColorAdjustment> colors, IReadOnlyDictionary<int, PartShape> shapes,
-        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect> added, IReadOnlyDictionary<int, float> seeThrough)
+        IReadOnlyDictionary<string, EffectColorChange> effects, IReadOnlyDictionary<int, float> shines, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect> added, IReadOnlyDictionary<int, float> seeThrough,
+        IReadOnlyDictionary<int, S2ModKit.Adapters.Source2.MaterialLook> looks)
     {
         var session = pane.Control.Session;
         var shiny = shines.Select(pair => session?.PartNormalTexture(pair.Key) is { } texture ? new PartShine(pair.Key, texture, pair.Value) : null).OfType<PartShine>().ToArray();
@@ -1137,13 +1192,14 @@ internal sealed class MainWindow : Window
         }
 
         var slow = shapeEdits.Count > 0 ? "Building: the reshaped parts go through the checked model operations; this can take a minute..."
-            : seeThrough.Count > 0 || shiny.Length > 0 ? "Building: see-through and shine write large textures again; this can take a minute..." : null;
+            : seeThrough.Count > 0 || looks.Count > 0 || shiny.Length > 0 ? "Building: see-through, looks and shine write large textures again; this can take a minute..." : null;
         listStatus.Text = slow ?? "Building...";
         pane.ShowBuilding(slow ?? "Building the edited mod...");
         try
         {
             await RunAsync(() => catalog.BuildEditsAsync(mod, model, hidden, recolors, shapeEdits, effects, shiny, added,
-                [.. seeThrough.Where(_ => session is not null).Select(pair => new PartOpacity(pair.Key, session!.PartMaterialPath(pair.Key), 1 - pair.Value))]));
+                [.. seeThrough.Where(_ => session is not null).Select(pair => new PartOpacity(pair.Key, session!.PartMaterialPath(pair.Key), 1 - pair.Value))],
+                [.. looks.Where(_ => session is not null).Select(pair => new PartLook(pair.Key, session!.PartMaterialPath(pair.Key), pair.Value))]));
         }
         finally
         {
@@ -1152,6 +1208,32 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Asks for a pak number (1-99, lower wins) and puts the mod there; when another mod has that slot, offers to swap them.</summary>
+    /// <summary>A name of the user's own for a mod, shown only in the app (the files keep theirs); empty gives the old name back.</summary>
+    private async Task RenameAsync(ModEntry mod)
+    {
+        var original = mod.OriginalName ?? mod.Name;
+        var answer = await new TextPromptDialog($"Rename '{mod.Name}'", $"The name shows in S2ModKit only; the mod's files keep their names. Leave it empty for its original name, '{original}'.",
+            "Name", "Rename", mod.Name, allowEmpty: true).ShowDialog<string?>(this);
+        if (answer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            catalog.Names.Set(mod, answer.Length == 0 || answer == original ? null : answer);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Error("Shown in the window", exception);
+            listStatus.Text = "Could not save the name: " + exception.Message;
+            return;
+        }
+
+        await LoadAsync(mod.Key);
+        listStatus.Text = answer.Length == 0 || answer == original ? $"'{original}' has its original name again." : $"Renamed to '{answer}'.";
+    }
+
     private async Task MoveToSlotAsync(ModEntry mod)
     {
         var current = mod.FirstSlot;
@@ -1668,23 +1750,38 @@ internal sealed class MainWindow : Window
         return long.TryParse(mod.ModId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
     }
 
-    /// <summary>"My mods | Browse" at the top of the left panel; both views carry one.</summary>
-    private StackPanel ModeSwitch(bool browse)
+    /// <summary>The three views behind the switch at the top of the left panel.</summary>
+    private enum ModView
     {
-        var mine = new ToggleButton { Content = "My mods", IsChecked = !browse, FontSize = 16, FontWeight = FontWeight.SemiBold };
-        var online = new ToggleButton { Content = "Browse GameBanana", IsChecked = browse, FontSize = 16, FontWeight = FontWeight.SemiBold };
-        void Pick(bool toBrowse)
+        Mine,
+        Browse,
+        Pictures,
+    }
+
+    /// <summary>"My mods | Browse GameBanana | Pictures" at the top of the left panel; every view carries one.</summary>
+    private WrapPanel ModeSwitch(ModView current)
+    {
+        var buttons = new (ModView View, string Label)[] { (ModView.Mine, "My mods"), (ModView.Browse, "Browse GameBanana"), (ModView.Pictures, "Pictures (WIP)") }
+            .Select(item => (item.View, Button: new ToggleButton { Content = item.Label, IsChecked = item.View == current, FontSize = 16, FontWeight = FontWeight.SemiBold })).ToArray();
+        var panel = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 4, LineSpacing = 4 };
+        foreach (var (view, button) in buttons)
         {
-            (mine.IsChecked, online.IsChecked) = (!browse, browse);       // each view has its own switch: its state never changes
-            if (toBrowse != browse)
+            button.Click += (_, _) =>
             {
-                _ = SetBrowseAsync(toBrowse);
-            }
+                foreach (var (other, toggle) in buttons)
+                {
+                    toggle.IsChecked = other == current;                     // each view has its own switch: its state never changes
+                }
+
+                if (view != current)
+                {
+                    _ = SetViewAsync(view);
+                }
+            };
+            panel.Children.Add(button);
         }
 
-        mine.Click += (_, _) => Pick(false);
-        online.Click += (_, _) => Pick(true);
-        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { mine, online } };
+        return panel;
     }
 
     /// <summary>A GameBanana 1-click link: the window comes forward, Browse GameBanana shows the mod and installs the file.</summary>
@@ -1704,37 +1801,73 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>Switches between the installed mods and the GameBanana browser (created and loaded the first time it is shown).</summary>
-    private async Task SetBrowseAsync(bool on)
+    private Task SetBrowseAsync(bool on) => SetViewAsync(on ? ModView.Browse : ModView.Mine);
+
+    /// <summary>Switches between the installed mods, the GameBanana browser and the Pictures tab (each created the first time it is
+    /// shown).</summary>
+    private async Task SetViewAsync(ModView view, string? selectPackage = null)
     {
         if (Content is not Grid host || myMods is null)
         {
             return;
         }
 
-        if (on && browse is null)
+        if (view == ModView.Browse && browse is null)
         {
             gameBanana = new GameBananaClient(Path.Combine(settings.Data, "gamebanana-cache"));
-            browse = new BrowseView(gameBanana, ModeSwitch(browse: true));
+            browse = new BrowseView(gameBanana, ModeSwitch(ModView.Browse));
             browse.InstallRequested += InstallFromGameBananaAsync;
             browse.IsInstalled = InstalledFromGameBanana;
             host.Children.Add(browse);
         }
 
-        myMods.IsVisible = !on;
-        if (browse is not null)
+        if (view == ModView.Pictures && pictures is null)
         {
-            browse.IsVisible = on;
+            pictures = new PicturesView(settings, ModeSwitch(ModView.Pictures))
+            {
+                InstallRequested = InstallPicturesAsync,
+                ShowInstalled = package => SetViewAsync(ModView.Mine, package),
+            };
+            host.Children.Add(pictures);
         }
 
-        if (on)
+        myMods.IsVisible = view == ModView.Mine;
+        if (browse is not null)
+        {
+            browse.IsVisible = view == ModView.Browse;
+        }
+
+        if (pictures is not null)
+        {
+            pictures.IsVisible = view == ModView.Pictures;
+        }
+
+        if (view == ModView.Browse)
         {
             await browse!.OpenAsync();                                      // the hidden preview stops drawing by itself
         }
-        else
+        else if (view == ModView.Mine)
         {
-            await LoadAsync(SelectedMod?.Key);                              // installs made while browsing show up
+            await LoadAsync(SelectedMod?.Key, selectPackage);
         }
+    }
+
+    /// <summary>Installs a pictures mod built in the Pictures tab into My mods under its name, its first frame as the card picture.</summary>
+    private async Task<PictureInstallResult> InstallPicturesAsync(PictureBuild built, string label)
+    {
+        var receipts = await InstallPathAsync(built.Package, label);
+        if (receipts.Count == 0)
+        {
+            return new PictureInstallResult(listStatus.Text ?? "The pictures mod was built but not installed.");
+        }
+
+        foreach (var receipt in receipts)
+        {
+            Pictures.SetUserPicture("package:" + receipt.PackagePath, built.Picture);
+        }
+
+        var installed = receipts[0];
+        return new PictureInstallResult($"Installed '{label}' as {installed.TargetFileName} ({built.Message}). Restart Deadlock to see it.", installed.PackagePath);
     }
 
     /// <summary>Downloads a GameBanana file (checked against its size and checksum), installs it like a dropped file under the mod's
@@ -1811,7 +1944,7 @@ internal sealed class MainWindow : Window
     {
         catalog = new ModCatalog(settings);
         pane = new PreviewPane(settings) { OpenAutomatically = settings.PreviewAuto };
-        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough);
+        pane.BuildRequested += (mod, model, hidden, colors, shapes, effects, shines, added, seeThrough, looks) => _ = BuildAsync(mod, model, hidden, colors, shapes, effects, shines, added, seeThrough, looks);
         paneHost.Content = pane;
         ShowBody(null);
         await LoadAsync();
@@ -1881,16 +2014,16 @@ internal sealed class ConfirmDialog : Window
 /// <summary>Asks for one line of text; the result of <c>ShowDialog</c> is the text, or null when cancelled.</summary>
 internal sealed class TextPromptDialog : Window
 {
-    public TextPromptDialog(string title, string message, string placeholder, string confirm)
+    public TextPromptDialog(string title, string message, string placeholder, string confirm, string? initial = null, bool allowEmpty = false)
     {
         Title = title;
         Width = 480;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var text = new TextBox { PlaceholderText = placeholder };
+        var text = new TextBox { PlaceholderText = placeholder, Text = initial ?? string.Empty };
         var yes = new Button { Content = confirm, IsDefault = true };
         var no = new Button { Content = "Cancel", IsCancel = true };
-        yes.Click += (_, _) => Close(string.IsNullOrWhiteSpace(text.Text) ? null : text.Text.Trim());
+        yes.Click += (_, _) => Close(string.IsNullOrWhiteSpace(text.Text) ? (allowEmpty ? string.Empty : null) : text.Text.Trim());
         no.Click += (_, _) => Close(null);
         Opened += (_, _) => text.Focus();
         Content = new StackPanel

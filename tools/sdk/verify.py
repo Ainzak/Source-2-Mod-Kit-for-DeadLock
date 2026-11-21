@@ -66,10 +66,24 @@ def rig(text):
             for i, name in enumerate(names)}
 
 
-def compare(source, actual):
-    require(canonical(metadata(source)) == canonical(metadata(actual)), 'HERO_METADATA_CHANGED')
+def compare(source, actual, extra=None, particles=()):
+    """extra: {bone: parent} declared new bones (jiggle_bones@1); particles: declared particle_cfg entries the build added.
+    Every source bone and all other model game data must still match."""
+    extra = dict(extra or {})
+    got = metadata(actual)
+    if particles:
+        names = lambda items: [i.get('name', {}).get('$value') if isinstance(i.get('name'), dict) else i.get('name') for i in items]
+        listed = got.get('particle_cfg_list', [])
+        added = [i for i in listed if names([i])[0] in particles and 'config' not in i]
+        require(sorted(names(added)) == sorted(particles), 'DECLARED_PARTICLES_MISSING')
+        got = dict(got)
+        kept = [i for i in listed if i not in added]
+        if kept: got['particle_cfg_list'] = kept
+        else: got.pop('particle_cfg_list', None)
+    require(canonical(metadata(source)) == canonical(got), 'HERO_METADATA_CHANGED')
     a, b = rig(source), rig(actual)
-    require(a.keys() == b.keys(), 'BONE_NAMES_CHANGED')
+    require(not extra.keys() & a.keys() and b.keys() == a.keys() | extra.keys(), 'BONE_NAMES_CHANGED')
+    require(all(b[n][0] == p for n, p in extra.items()), 'DECLARED_BONE_PARENTS_CHANGED')
     max_position, max_rotation = 0, 0
     for name, (parent, x) in a.items():
         other_parent, y = b[name]

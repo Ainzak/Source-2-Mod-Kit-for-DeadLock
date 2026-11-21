@@ -47,7 +47,7 @@ public sealed record ModLibraryDocument
             || Mods.Where(mod => mod != existing).Any(mod => mod.Versions.Any(version => keys.Contains(version.Key)))
             || (existing?.Versions.Any(version => keys.Contains(version.Key)) ?? false))
         {
-            throw Errors.InvalidRecipe("MOD_LIBRARY_DUPLICATE_VERSION", "A version key is empty, repeated or already in the library.", "List each mod once, as a version of one library mod.");
+            throw Errors.InvalidRecipe("MOD_LIBRARY_DUPLICATE_VERSION", "The same mod file would be listed twice in the app's list of mod versions.", "The mod files themselves are in place; only the link between versions was not saved. If this repeats, send the log from Help.");
         }
 
         var added = versions.Select(version => version with { CreatedUtc = version.CreatedUtc ?? now }).ToArray();

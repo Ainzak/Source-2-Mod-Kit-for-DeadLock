@@ -98,7 +98,7 @@ public sealed class ShineTests
         var before = InPlaceTexture.ReadStored(entries[normal + "_c"].ToArray(), normal + "_c");
         var channel = ShineMath.RoughnessChannel(before.Codec);
 
-        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, [new PartShine(part, normal!, 1f)], null, null, token);
+        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, [new PartShine(part, normal!, 1f)], null, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var output = new Package();
@@ -155,6 +155,185 @@ public sealed class ShineTests
         Assert.Equal(material.IntParams.Count, ((ValveResourceFormat.ResourceTypes.Material)second.DataBlock!).IntParams.Count);   // set, not added twice
     }
 
+    [Fact]
+    public void ThePulseIsTheMaterialCompilersOwnProgram()
+    {
+        // a = 0.4, b = 2, c = 1 as the Source 2 SDK compiler writes a * sin(b * time()) + c
+        byte[] compiler = [0x07, 0xCD, 0xCC, 0xCC, 0x3E, 0x07, 0x00, 0x00, 0x00, 0x40, 0x06, 0x1B, 0x00, 0x15, 0x06, 0x00, 0x00, 0x15, 0x07, 0x00, 0x00, 0x80, 0x3F, 0x13, 0x00];
+
+        Assert.Equal(compiler, CompiledMaterialLook.PulseExpression(0.4f, 2f, 1f));
+    }
+
+    [Fact]
+    public void ALookWithValuesOutsideTheirRangeIsRefusedBeforeAnythingIsRead()
+    {
+        var glow = new MaterialLook(0.2f, 0.6f, 1f, 0.6f, 2.5f, 0.6f, false);
+
+        Assert.Equal("MATERIAL_LOOK_VALUE", Assert.Throws<S2ModKitException>(() => CompiledMaterialLook.Apply([], "a.vmat_c", glow with { R = 1.5f }, "a.vtex")).Error.Code);
+        Assert.Equal("MATERIAL_LOOK_VALUE", Assert.Throws<S2ModKitException>(() => CompiledMaterialLook.Apply([], "a.vmat_c", glow with { Strength = float.NaN }, "a.vtex")).Error.Code);
+        Assert.Equal("MATERIAL_LOOK_MASK", Assert.Throws<S2ModKitException>(() => CompiledMaterialLook.Apply([], "a.vmat_c", glow, "a.png")).Error.Code);
+    }
+
+    /// <summary>Live check (S2MODKIT_TEST_GAME): a hero material glows in the chosen colour with the game's own self-illumination settings, its own
+    /// mask texture and a pulse, and its outline takes another colour, thicker and brighter; a second look replaces the first (set, not added
+    /// twice) and no pulse removes the dynamic setting.</summary>
+    [Fact]
+    public void AMaterialGlowsWithItsOwnMaskAndAPulse()
+    {
+        var game = Environment.GetEnvironmentVariable("S2MODKIT_TEST_GAME");
+        if (string.IsNullOrWhiteSpace(game))
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME to enable this proprietary local check.");
+            return;
+        }
+
+        const string Arms = "models/heroes_wip/wraith/materials/wraith_arms.vmat_c";
+        const string Mask = "models/heroes_wip/wraith/materials/wraith_arms_s2mk_own1_glowmask.vtex";
+        var original = ReadGame(game, Arms);
+        var glow = new MaterialLook(0.2f, 0.6f, 1f, 0.8f, 2.5f, 0.5f, false);
+
+        var edited = CompiledMaterialLook.Apply(original, Arms, glow, Mask);
+
+        var (material, references) = Read(edited, Arms);
+        Assert.Equal("pbr.vfx", material.ShaderName);
+        Assert.Equal(1, material.IntParams["F_SELF_ILLUM"]);
+        Assert.Equal(1, material.IntParams["F_SOLID_COLOR_OUTLINE"]);
+        Assert.Equal(0f, material.FloatParams["g_flSelfIllumAlbedoFactor1"]);           // the chosen colour itself
+        Assert.Equal(0.8f, material.FloatParams["g_flSelfIllumScale1"], 3);
+        Assert.Equal(new System.Numerics.Vector4(0.2f, 0.6f, 1f, 0f), material.VectorParams["g_vSelfIllumTint1"]);
+        Assert.Equal(Mask, material.TextureParams["g_tSelfIllumMask"]);
+        Assert.Contains(Mask, references);
+        var others = CompiledMaterialEdit.Textures(original, Arms).Where(texture => texture.Key != "g_tSelfIllumMask");
+        Assert.All(others, texture => Assert.Equal(texture.Value, material.TextureParams[texture.Key]));   // the other textures stay
+        Assert.Equal(PulseOf(edited, Arms), CompiledMaterialLook.PulseExpression(0.8f * 0.5f, 2.5f, 0.8f));
+
+        // a second look on the same material: settings are set, not added again; no pulse removes the dynamic setting
+        var steady = CompiledMaterialLook.Apply(edited, Arms, glow with { PulseSpeed = 0f, Strength = 1.5f, Edges = true, R = 1f }, Mask);
+        var (again, _) = Read(steady, Arms);
+        Assert.Equal(material.IntParams.Count, again.IntParams.Count);
+        Assert.Null(PulseOf(steady, Arms));
+        Assert.Equal(1.5f, again.FloatParams["g_flSelfIllumScale1"], 3);
+        Assert.Equal(1f, again.VectorParams["g_vSelfIllumTint1"].X);
+        Assert.Equal(10f, again.FloatParams["g_flSelfIllumFresnelMaskExponent"]);       // brighter at the edges
+        Assert.Equal(0.85f, again.VectorParams["g_vSelfIllumFresnelMaskTint1"].X, 3);
+        Assert.Equal(1f, again.VectorParams["g_vColorTint1"].X, 3);                    // 0.4 + 0.6 x colour
+        Assert.Equal(-1.19f, again.FloatParams["g_flAlphaAnglePower1"], 3);
+    }
+
+    /// <summary>Live check (S2MODKIT_TEST_GAME, S2MODKIT_MESHOPTIMIZER_PATH): a piece with a look gets its own draw call and material copy with a
+    /// white copy of the material's glow mask; the shared material stays; the recipe keeps the look and a re-apply builds it again.</summary>
+    [Fact]
+    public async Task BuildEditedModGivesTheChosenPieceALookAndKeepsItInTheRecipe()
+    {
+        var game = Environment.GetEnvironmentVariable("S2MODKIT_TEST_GAME");
+        if (string.IsNullOrWhiteSpace(game) || !File.Exists(Environment.GetEnvironmentVariable("S2MODKIT_MESHOPTIMIZER_PATH")))
+        {
+            Assert.Skip("Set S2MODKIT_TEST_GAME and S2MODKIT_MESHOPTIMIZER_PATH to enable this proprietary local check.");
+            return;
+        }
+
+        var token = TestContext.Current.CancellationToken;
+        using var root = new ModTestRoot();
+        var entries = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+        byte[] model;
+        using (var citadel = new Package())
+        using (var core = new Package())
+        {
+            citadel.Read(Path.Combine(game, "citadel", "pak01_dir.vpk"));
+            core.Read(Path.Combine(game, "core", "pak01_dir.vpk"));
+            byte[]? Copy(string path)
+            {
+                var package = citadel.FindEntry(path) is not null ? citadel : core;
+                if (package.FindEntry(path) is not { } entry)
+                {
+                    return null;
+                }
+
+                package.ReadEntry(entry, out var bytes);
+                entries[path] = bytes;
+                return bytes;
+            }
+
+            model = Copy(ModTestRoot.Model)!;
+            foreach (var material in CompiledMaterialEdit.ModelMaterials(model, ModTestRoot.Model))
+            {
+                if (Copy(material + "_c") is { } bytes)
+                {
+                    foreach (var texture in CompiledMaterialEdit.Textures(bytes, material + "_c").Where(item => item.Key is "g_tColor" or "g_tSelfIllumMask"))
+                    {
+                        Copy(texture.Value + "_c");
+                    }
+                }
+            }
+        }
+
+        var piece = PartMasks.Pieces(model, ModTestRoot.Model).First(item => (Draws(model)[item.Part].Material is var material) && entries.ContainsKey(material + "_c"));
+        var before = Draws(model);
+        var partMaterial = before[piece.Part].Material;
+        var pak = Path.Combine(root.Game, "citadel", "pak01_dir.vpk");
+        File.Delete(pak);
+        await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, entries, token);
+        var look = new MaterialLook(0.2f, 0.6f, 1f, 0.9f, 2.5f, 0.6f, true);
+
+        var catalog = root.Catalog();
+        await catalog.BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, null, null, null, [new PartLook(piece.Index, partMaterial, look)], token);
+
+        var built = Assert.Single(await catalog.LoadAsync(token), mod => mod.Loaded);
+        using var output = new Package();
+        output.Read(built.Files[0]);
+        output.ReadEntry(output.FindEntry(ModTestRoot.Model)!, out var builtModel);
+        var after = Draws(builtModel);
+        Assert.Equal(before.Count + 1, after.Count);
+        var split = after[piece.Part + 1];
+        Assert.EndsWith("_s2mk_own1.vmat", split.Material, StringComparison.Ordinal);
+        Assert.Equal(partMaterial, after[piece.Part].Material);                 // the rest of the part keeps its material
+        Assert.Equal(before[piece.Part].Triangles.Order(), after[piece.Part].Triangles.Concat(split.Triangles).Order());   // every triangle is still drawn
+
+        output.ReadEntry(output.FindEntry(split.Material + "_c")!, out var newMaterial);
+        var (written, references) = Read(newMaterial, split.Material + "_c");
+        Assert.Equal(1, written.IntParams["F_SELF_ILLUM"]);
+        Assert.Equal(0.9f, written.FloatParams["g_flSelfIllumScale1"], 3);
+        Assert.NotNull(PulseOf(newMaterial, split.Material + "_c"));
+        var mask = written.TextureParams["g_tSelfIllumMask"];
+        Assert.EndsWith("_s2mk_own1_glowmask.vtex", mask, StringComparison.Ordinal);
+        Assert.Contains(mask, references);
+        output.ReadEntry(output.FindEntry(mask + "_c")!, out var maskBytes);
+        var (rgba, _, _, _) = InPlaceTexture.ReadStored(maskBytes, mask + "_c");
+        Assert.All(rgba.Chunk(4), texel => Assert.Equal(new byte[] { 255, 255, 255 }, texel[..3]));   // white: the glow covers the whole part
+        Assert.Null(output.FindEntry(partMaterial + "_c"));                     // the shared material is not shipped: unchanged
+
+        var recipe = EditRecipe.Of(built)!;
+        var recipeLook = Assert.Single(recipe.Looks!);
+        Assert.Equal((piece.Index, partMaterial, true, 0.9f), (recipeLook.Part, recipeLook.Material, recipeLook.Edges, recipeLook.Strength));
+        Assert.True(recipe.HasEdits);
+
+        output.Dispose();                                                       // the re-apply renames the first build's files
+        await catalog.ReapplyAsync(built, await catalog.LoadAsync(token), token);
+        var again = Assert.Single(await catalog.LoadAsync(token), mod => mod.Loaded);
+        Assert.Equal(recipeLook, Assert.Single(EditRecipe.Of(again)!.Looks!));
+
+        // an edit of this edited mod: another piece of the same material gets its own copy under a new name, the first copy stays
+        byte[] againModel;
+        using (var first = new Package())
+        {
+            first.Read(again.Files[0]);
+            first.ReadEntry(first.FindEntry(ModTestRoot.Model)!, out againModel);
+        }
+
+        var other = PartMasks.Pieces(againModel, ModTestRoot.Model).First(item => Draws(againModel)[item.Part].Material == partMaterial);
+        await catalog.BuildEditsAsync(again, ModTestRoot.Model, new HashSet<int>(), [], null, null, null, null, null,
+            [new PartLook(other.Index, partMaterial, look with { R = 1f, G = 0f, B = 0f })], token);
+        var second = Assert.Single(await catalog.LoadAsync(token), mod => mod.Loaded);
+        using var secondOutput = new Package();
+        secondOutput.Read(second.Files[0]);
+        secondOutput.ReadEntry(secondOutput.FindEntry(ModTestRoot.Model)!, out var secondModel);
+        var materials = Draws(secondModel).Select(draw => draw.Material).Where(name => name.Contains("_s2mk_own", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(materials.Length, materials.Distinct().Count());           // no two pieces share a copy
+        Assert.Contains(materials, name => name.EndsWith("_s2mk_own2.vmat", StringComparison.Ordinal));
+        secondOutput.ReadEntry(secondOutput.FindEntry(split.Material + "_c")!, out var firstCopy);
+        Assert.Equal(0.2f, Read(firstCopy, split.Material + "_c").Item1.VectorParams["g_vSelfIllumTint1"].X, 3);   // the first piece keeps its own look
+    }
+
     /// <summary>Live check (S2MODKIT_TEST_GAME, S2MODKIT_MESHOPTIMIZER_PATH): a see-through piece of a Wraith part gets its own draw call
     /// with its own translucent material and a BC3 copy of the colour texture at the chosen alpha; the part's other triangles keep the
     /// original material, the triangles are all still there, and the recipe keeps the piece.</summary>
@@ -199,7 +378,7 @@ public sealed class ShineTests
         File.Delete(pak);
         await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, entries, token);
 
-        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, null, null, [new PartOpacity(piece.Index, partMaterial, 0.3f)], token);
+        await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(), [], null, null, null, null, [new PartOpacity(piece.Index, partMaterial, 0.3f)], null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var output = new Package();
@@ -277,7 +456,7 @@ public sealed class ShineTests
         await S2ModKit.Adapters.Vpk.CompactVpkArchiveIO.WriteAsync(pak, entries, token);
 
         await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(),
-            [new PartRecolor(piece.Index, colourTexture, mask, width, height, new S2ModKit.Application.ColorAdjustment(HueShiftDegrees: 120), partMaterial)], null, null, null, null, null, token);
+            [new PartRecolor(piece.Index, colourTexture, mask, width, height, new S2ModKit.Application.ColorAdjustment(HueShiftDegrees: 120), partMaterial)], null, null, null, null, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var output = new Package();
@@ -338,7 +517,7 @@ public sealed class ShineTests
 
         await root.Catalog().BuildEditsAsync(null, ModTestRoot.Model, new HashSet<int>(),
             [new PartRecolor(pieces[0].Index, colourTexture, PartMasks.Mask(model, ModTestRoot.Model, pieces[0].Index, width, height), width, height, new S2ModKit.Application.ColorAdjustment(HueShiftDegrees: 90), partMaterial)],
-            null, null, null, null, [new PartOpacity(pieces[1].Index, partMaterial, 0.4f)], token);
+            null, null, null, null, [new PartOpacity(pieces[1].Index, partMaterial, 0.4f)], null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var output = new Package();
@@ -352,6 +531,37 @@ public sealed class ShineTests
         Assert.All(new[] { after[part + 1].Material, after[part + 2].Material }, material => Assert.Contains("_s2mk_own", material, StringComparison.Ordinal));
         Assert.NotEqual(after[part + 1].Material, after[part + 2].Material);
         Assert.Equal(before[part].Triangles.Order(), after[part].Triangles.Concat(after[part + 1].Triangles).Concat(after[part + 2].Triangles).Order());
+    }
+
+    private static byte[] ReadGame(string game, string path)
+    {
+        foreach (var archive in new[] { "citadel", "core" })
+        {
+            using var package = new Package();
+            package.Read(Path.Combine(game, archive, "pak01_dir.vpk"));
+            if (package.FindEntry(path) is { } entry)
+            {
+                package.ReadEntry(entry, out var bytes);
+                return bytes;
+            }
+        }
+
+        throw new FileNotFoundException(path);
+    }
+
+    private static (ValveResourceFormat.ResourceTypes.Material Material, List<string> References) Read(byte[] compiled, string path)
+    {
+        using var resource = new ValveResourceFormat.Resource { FileName = path };
+        resource.Read(new MemoryStream(compiled));
+        return ((ValveResourceFormat.ResourceTypes.Material)resource.DataBlock!, [.. resource.ExternalReferences!.ResourceRefInfoList.Select(info => info.Name)]);
+    }
+
+    /// <summary>The bytes of the material's dynamic glow scale (null: none).</summary>
+    private static byte[]? PulseOf(byte[] compiled, string path)
+    {
+        var (material, _) = Read(compiled, path);
+        var entry = material.Data["m_dynamicParams"].Values.FirstOrDefault(item => item["m_name"].ToString(System.Globalization.CultureInfo.InvariantCulture) == "g_flSelfIllumScale1");
+        return entry is null ? null : entry["m_value"].AsBlob();
     }
 
     /// <summary>The level-0 draw calls in order: material, index count and their triangles (sorted vertex triples).</summary>

@@ -23,6 +23,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
+    <Content Include="..\..\catalogues\pictures.json" Link="catalogues\pictures.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
   <PropertyGroup>
     <ApplicationIcon>Assets\S2ModKit.ico</ApplicationIcon>

@@ -33,7 +33,7 @@ internal static partial class GameHeroes
         var stamp = $"{new FileInfo(archive).Length}-{File.GetLastWriteTimeUtc(archive).Ticks}-{File.GetLastWriteTimeUtc(names).Ticks}";
         if (ReadCache(cachePath, stamp) is { } cached)
         {
-            return cached;
+            return cached.Select(hero => WithShippedAliases(hero, shipped)).ToArray();
         }
 
         try
@@ -79,11 +79,17 @@ internal static partial class GameHeroes
 
             var folders = new List<string> { id };
             folders.AddRange(new[] { model, Text(data, "m_strWIPModelName") }.Select(path => path.Split('/')).Where(parts => parts.Length > 3).Select(parts => Hero.StripVersion(parts[2])));
-            folders.AddRange(shipped.Where(known => known.Folders.Intersect(folders, StringComparer.OrdinalIgnoreCase).Any()).SelectMany(known => known.Folders));
-            heroes.Add(new Hero(name, [.. folders.Where(folder => folder.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)], model));
+            heroes.Add(WithShippedAliases(new Hero(name, folders, model), shipped));
         }
 
         return [.. heroes.OrderBy(hero => hero.Name, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static Hero WithShippedAliases(Hero hero, IReadOnlyList<Hero> shipped)
+    {
+        var aliases = shipped.Where(known => known.Folders.Intersect(hero.Folders, StringComparer.OrdinalIgnoreCase).Any())
+            .SelectMany(known => known.Folders);
+        return hero with { Folders = [.. hero.Folders.Concat(aliases).Where(folder => folder.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)] };
     }
 
     private static string Text(KVObject data, string key) => data.TryGetValue(key, out var value) && !value.IsNull ? value.ToString(null) : string.Empty;

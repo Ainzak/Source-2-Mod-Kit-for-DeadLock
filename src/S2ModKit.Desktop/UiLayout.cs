@@ -17,6 +17,17 @@ internal sealed class UiLayout
 
     public List<string> Folded { get; set; } = [];
 
+    /// <summary>The mod list as picture cards instead of text rows.</summary>
+    public bool ModCards { get; set; }
+
+    /// <summary>The mod list's width as text rows and as cards (the user drags its edge).</summary>
+    public double ListWidth { get; set; } = 380;
+
+    public double CardsWidth { get; set; } = 620;
+
+    public const double MinListWidth = 300;
+    public const double MaxListWidth = 1400;
+
     private static string FilePath => Path.Combine(Path.GetDirectoryName(AppSettings.FilePath)!, "S2ModKit.layout.json");
 
     public static UiLayout Load()
@@ -26,6 +37,8 @@ internal sealed class UiLayout
             var layout = File.Exists(FilePath) ? JsonSerializer.Deserialize<UiLayout>(File.ReadAllText(FilePath)) ?? new UiLayout() : new UiLayout();
             layout.PaneWidth = Math.Clamp(layout.PaneWidth, MinPaneWidth, MaxPaneWidth);
             layout.Folded ??= [];
+            layout.ListWidth = Math.Clamp(layout.ListWidth, MinListWidth, MaxListWidth);
+            layout.CardsWidth = Math.Clamp(layout.CardsWidth, MinListWidth, MaxListWidth);
             return layout;
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)

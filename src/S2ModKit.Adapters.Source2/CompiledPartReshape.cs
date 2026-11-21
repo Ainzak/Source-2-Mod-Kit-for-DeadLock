@@ -475,7 +475,7 @@ public static partial class CompiledPartReshape
                     ?? (index < embedded.Count ? embedded[index] : throw Errors.Unsupported("SHAPE_MESH_TABLE", "This model's mesh table does not list all its meshes.", "Report the model."));   // older files: in table order
                 if (!entry.ContainsKey("m_nDataBlock"))
                 {
-                    throw Errors.Unsupported("SHAPE_MESH_TABLE", "This model stores its meshes in an older layout the app cannot rewrite yet.", "Pick another model.");
+                    throw Errors.Unsupported("SHAPE_MESH_TABLE", "This model keeps its meshes in the game's older combined layout (some ability, weapon and map models), so its shape cannot be changed.", "Change its colours, shine, glow, see-through or hidden parts instead; they work on these models.");
                 }
 
                 layout.Meshes.Add(new MeshInfo(index, name, LodSuffix().Replace(name, string.Empty), mesh, entry, resource.Blocks[Int(entry, "m_nDataBlock")]));
@@ -525,7 +525,7 @@ public static partial class CompiledPartReshape
             var descriptors = mesh.Control.TryGetValue("m_vertexBuffers", out var list) && list is not null && list.IsArray ? list : null;
             var vb = mesh.Mesh.VBIB.VertexBuffers[buffer];
             var position = Field(vb, "POSITION");
-            string? problem = descriptors is null || buffer >= descriptors.Count ? "This model keeps its vertices in an older layout the app cannot rewrite yet."
+            string? problem = descriptors is null || buffer >= descriptors.Count ? "This model keeps its vertices in the game's older combined layout (some ability, weapon and map models), so its shape cannot be changed; colours, shine, glow, see-through and hiding still work."
                 : position is null || position.Value.Format.ToString() is not ("R32G32B32_FLOAT" or "R32G32B32A32_FLOAT") ? "This part's vertices are stored in a packed format the app cannot change yet."
                 : descriptors[buffer].TryGetValue("m_bCompressedZSTD", out var zstd) && zstd is not null && zstd.ToBoolean(CultureInfo.InvariantCulture) ? "This part's vertices are stored with a compression the app cannot write yet."
                 : max < min ? "This part has no vertices."

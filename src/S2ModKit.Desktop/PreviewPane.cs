@@ -44,6 +44,26 @@ internal sealed partial class PreviewPane : UserControl
     private readonly ToggleButton play = new() { Content = "Pause", IsChecked = true, Width = 70 };
     private readonly Slider timeline = new() { Minimum = 0, Maximum = 1, MinWidth = 200 };
     private readonly TextBlock timeText = new() { VerticalAlignment = VerticalAlignment.Center, Width = 100 };
+    private readonly Border gameNote = new()
+    {
+        IsVisible = false,
+        Background = AppTheme.Section,
+        CornerRadius = new CornerRadius(4),
+        Padding = new Thickness(8, 5),
+        Margin = new Thickness(8),
+        MaxWidth = 340,
+        HorizontalAlignment = HorizontalAlignment.Right,
+        VerticalAlignment = VerticalAlignment.Top,
+        Child = new TextBlock
+        {
+            Text = "Glow and see-through look different in the game: the game draws them with its own lighting and blending, so a "
+                + "see-through part can vanish here and show tinted in the game. Check them in the game.",
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+        },
+    };
+
+    private bool madeLooks;
     private readonly TextBlock stats = new() { Foreground = Muted, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(8) };
 
     // part tools
@@ -110,7 +130,7 @@ internal sealed partial class PreviewPane : UserControl
 
     /// <summary>Raised by "Build edited mod": the shown mod (null for the base game), its model, the hidden parts, the recolored
     /// parts and the reshaped parts.</summary>
-    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>, IReadOnlyDictionary<int, float>>? BuildRequested;
+    public event Action<ModEntry?, string, IReadOnlySet<int>, IReadOnlyDictionary<int, ColorAdjustment>, IReadOnlyDictionary<int, PartShape>, IReadOnlyDictionary<string, EffectColorChange>, IReadOnlyDictionary<int, float>, IReadOnlyList<S2ModKit.Adapters.Source2.AddedEffect>, IReadOnlyDictionary<int, float>, IReadOnlyDictionary<int, S2ModKit.Adapters.Source2.MaterialLook>>? BuildRequested;
 
     private IReadOnlyList<string> allAnimations = [];
 
@@ -156,6 +176,7 @@ internal sealed partial class PreviewPane : UserControl
         view.Children.Add(cameras);
         view.Children.Add(abilityBar);
         view.Children.Add(stats);
+        view.Children.Add(gameNote);
         var root = new DockPanel();
         foreach (var bar in new[] { top, anim })
         {
@@ -342,7 +363,8 @@ internal sealed partial class PreviewPane : UserControl
             if (model.SelectedItem is string modelPath && CanBuild)
             {
                 BuildRequested?.Invoke(compare.SelectedIndex == 0 ? mod : null, modelPath, preview.Hidden.ToHashSet(),
-                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines), AddedEffects, new Dictionary<int, float>(preview.PartSeeThrough));
+                    new Dictionary<int, ColorAdjustment>(preview.PartColors), new Dictionary<int, PartShape>(preview.PartShapes), EffectChanges, new Dictionary<int, float>(preview.PartShines), AddedEffects, new Dictionary<int, float>(preview.PartSeeThrough),
+                    new Dictionary<int, S2ModKit.Adapters.Source2.MaterialLook>(preview.PartLooks));
             }
         };
         ToolTip.SetTip(withLoaded, "Off: this mod alone on the unmodded game.\nOn: also load every mod the game currently loads (enabled pakNN_dir.vpk files)"
@@ -524,7 +546,7 @@ internal sealed partial class PreviewPane : UserControl
     public IReadOnlyList<PreviewPart> Parts => [.. parts.Select(row => row.Part)];
 
     private bool CanBuild => compare.SelectedIndex <= (mod is null ? 0 : 1)                                // this mod, or the base game
-        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartSeeThrough.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
+        && (preview.Hidden.Count > 0 || preview.PartColors.Count > 0 || preview.PartShines.Count > 0 || preview.PartSeeThrough.Count > 0 || preview.PartLooks.Count > 0 || preview.PartShapes.Count > 0 || effectChanges.Count > 0 || NewAddedCount > 0);
 
     /// <summary>Closes the preview session (it keeps the shown archives open) and waits until it is released.</summary>
     public async Task ReleaseAsync()
@@ -609,8 +631,8 @@ internal sealed partial class PreviewPane : UserControl
             Labelled("Hue shift", hue), Labelled("Saturation", saturation), Labelled("Brightness", brightness)));
         colorPanel.Children.Add(Fold("colour.paint", Heading("Paint a colour"),
             paint, paintColor, Labelled("Strength", paintStrength), Wrap(onlyLike, sampleSwatch, pickColor), Labelled("Tolerance", tolerance)));
-        colorPanel.Children.Add(Fold("colour.surface", Heading("Shine and see-through"),
-            Labelled("Shine", shine, "0%", shineHint), Labelled("See-through (WIP)", seeThrough, "0%", seeThroughHint), seeThroughNote));
+        colorPanel.Children.Add(Fold("colour.surface", Heading("Shine, see-through and glow"),
+            [Labelled("Shine", shine, "0%", shineHint), Labelled("See-through (WIP)", seeThrough, "0%", seeThroughHint), seeThroughNote, .. LookRows()]));
         colorPanel.Children.Add(Wrap(Button("Reset colour", ResetColor)));
 
         // shape
@@ -693,6 +715,9 @@ internal sealed partial class PreviewPane : UserControl
             return;
         }
 
+        madeLooks = false;                                                  // until the next model opens
+        ShowGameNote();
+
         var shown = compare.SelectedIndex switch
         {
             0 => mod,
@@ -767,6 +792,8 @@ internal sealed partial class PreviewPane : UserControl
         overlay.IsVisible = false;
         ShowListedEffects(session);                                         // a mod built here with added effects plays them
         stats.Text = $"opened in {elapsed.TotalSeconds:F1} s";
+        madeLooks = session.HasMadeLooks;
+        ShowGameNote();
         parts = [.. session.Parts.SelectMany((part, index) => session.Pieces.Where(piece => piece.Part == index).Select(piece => new PartRow(piece.Index, part, piece))
             .Prepend(new PartRow(index, part)))];                           // a part made of separate meshes lists them under it, for their own colours
         ranges.Clear();
@@ -892,8 +919,13 @@ internal sealed partial class PreviewPane : UserControl
         UpdateSummary();
     }
 
+    /// <summary>The note on the view that glow and see-through differ in the game: for a mod with them, or while they are edited.</summary>
+    private void ShowGameNote() =>
+        gameNote.IsVisible = madeLooks || preview.PartLooks.Count > 0 || preview.PartSeeThrough.Values.Any(amount => amount > 0.005f);
+
     private void UpdateSummary()
     {
+        ShowGameNote();
         var changes = new List<string>();
         if (preview.Hidden.Count > 0)
         {
@@ -918,6 +950,11 @@ internal sealed partial class PreviewPane : UserControl
         if (preview.PartSeeThrough.Count > 0)
         {
             changes.Add($"{preview.PartSeeThrough.Count} see-through");
+        }
+
+        if (preview.PartLooks.Count > 0)
+        {
+            changes.Add($"{preview.PartLooks.Count} glowing");
         }
 
         if (NewAddedCount > 0)
@@ -960,6 +997,7 @@ internal sealed partial class PreviewPane : UserControl
             + "colours and outline. What is behind it, or its hollow inside, shows. A see-through part has no dark outline. Far away (lower levels of "
             + "detail) it stays solid. Building writes one texture copy per see-through part: a few seconds.";
         seeThroughNote.IsVisible = false;
+        ShowLook(row);
         shine.IsEnabled = preview.Session?.PartNormalTexture(row.Index) is not null;
         shineHint.Text = shine.IsEnabled ? "Shine lowers the part's roughness: it reflects like latex or metal in game."
             : "This part's material has no roughness texture, so shine cannot change it.";
@@ -1023,6 +1061,7 @@ internal sealed partial class PreviewPane : UserControl
         if (selected is { } row)
         {
             preview.PartShines.Remove(row.Index);
+            preview.PartLooks.Remove(row.Index);
             preview.RequestPartShine(row.Index, null);
             preview.PartColors.Remove(row.Index);
             ranges.Remove(row.Index);
@@ -1176,7 +1215,13 @@ internal sealed partial class PreviewPane : UserControl
         }
 
         preview.PartShines.Clear();
+        foreach (var part in preview.PartSeeThrough.Keys.ToArray())
+        {
+            preview.RequestPartSeeThrough(part, 0, null);                    // solid again on screen too
+        }
+
         preview.PartSeeThrough.Clear();
+        preview.PartLooks.Clear();
 
         foreach (var part in ranges.Keys.ToArray())
         {

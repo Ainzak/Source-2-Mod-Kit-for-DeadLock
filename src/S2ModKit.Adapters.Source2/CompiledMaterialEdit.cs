@@ -112,35 +112,58 @@ public static class CompiledMaterialEdit
         using var stream = new MemoryStream();
         material.Serialize(stream);
         return CompiledModelEdit.ReplaceBlocks(compiled, resource, new Dictionary<int, byte[]> { [resource.Blocks.IndexOf(material)] = stream.ToArray() });
+    }
 
-        static void Set(KVObject list, string name, string valueKey, Func<KVObject, KVObject> value)
+    /// <summary>Sets <paramref name="valueKey"/> of the entry named <paramref name="name"/> in a parameter list (<c>m_intParams</c> and the like), or adds the entry in the layout of the list's first one.</summary>
+    internal static void Set(KVObject list, string name, string valueKey, Func<KVObject, KVObject> value)
+    {
+        var found = list.Values.FirstOrDefault(item => item["m_name"].ToString(CultureInfo.InvariantCulture) == name);
+        if (found is not null)
         {
-            var found = list.Values.FirstOrDefault(item => item["m_name"].ToString(CultureInfo.InvariantCulture) == name);
-            if (found is not null)
-            {
-                found[valueKey] = value(found[valueKey]);
-                return;
-            }
-
-            var template = list[0];
-            var entry = KVObject.Collection();
-            entry.Flag = template.Flag;
-            foreach (var (key, item) in template.Children)
-            {
-                entry.Add(key, key == "m_name" ? new KVObject(name) { Flag = item.Flag } : key == valueKey ? value(item) : item);
-            }
-
-            list.Add(entry);
+            found[valueKey] = value(found[valueKey]);
+            return;
         }
 
-        static KVObject Whole(KVObject like, int number) => like.ValueType switch
+        var template = list[0];
+        var entry = KVObject.Collection();
+        entry.Flag = template.Flag;
+        foreach (var (key, item) in template.Children)
         {
-            KVValueType.UInt64 => (KVObject)(ulong)number,
-            KVValueType.UInt32 => (KVObject)(uint)number,
-            KVValueType.Int64 => (KVObject)(long)number,
-            _ => (KVObject)number,
-        };
+            entry.Add(key, key == "m_name" ? new KVObject(name) { Flag = item.Flag } : key == valueKey ? value(item) : item);
+        }
+
+        list.Add(entry);
     }
+
+    /// <summary>
+    /// Sets a number setting and drops a whole-number copy of the same name: SDK-compiled materials keep settings written without a
+    /// decimal point (<c>g_flSelfIllumAlbedoFactor1 1</c>) in <c>m_intParams</c>, and the game reads that copy, not the one in
+    /// <c>m_floatParams</c> (the pearl test on 2026-11-17 kept its old albedo factor and showed no glow in game, while VRF drew it).
+    /// </summary>
+    internal static void SetFloat(KVObject root, KVObject floats, string name, float value)
+    {
+        if (root.TryGetValue("m_intParams", out var ints) && ints.IsArray)
+        {
+            for (var i = ints.Count - 1; i >= 0; i--)
+            {
+                if (ints[i]["m_name"].ToString(CultureInfo.InvariantCulture) == name)
+                {
+                    ints.RemoveAt(i);                                       // in place: callers keep their reference to the list
+                }
+            }
+        }
+
+        Set(floats, name, "m_flValue", like => Same(like, value));
+    }
+
+    /// <summary>A whole number in the number type of <paramref name="like"/>.</summary>
+    internal static KVObject Whole(KVObject like, int number) => like.ValueType switch
+    {
+        KVValueType.UInt64 => (KVObject)(ulong)number,
+        KVValueType.UInt32 => (KVObject)(uint)number,
+        KVValueType.Int64 => (KVObject)(long)number,
+        _ => (KVObject)number,
+    };
 
     /// <summary>
     /// A copy of a compiled material under another name that draws texture setting <paramref name="parameter"/> from
@@ -199,7 +222,8 @@ public static class CompiledMaterialEdit
 
     private static float Number(KVObject value) => float.Parse(value.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
 
-    private static KVObject Same(KVObject original, float number) => original.ValueType switch
+    /// <summary>A number in the floating-point type of <paramref name="original"/>.</summary>
+    internal static KVObject Same(KVObject original, float number) => original.ValueType switch
     {
         KVValueType.FloatingPoint64 => (KVObject)(double)number,
         _ => (KVObject)number,

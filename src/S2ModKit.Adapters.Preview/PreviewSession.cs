@@ -115,6 +115,9 @@ public sealed partial class PreviewSession : IDisposable
         Parts = node.RenderableMeshes
             .SelectMany(mesh => mesh.DrawCalls.Select(draw => new PreviewPart(mesh.Name, draw.Material.Material.Name, draw.Material.ShaderName, draw.IndexCount)))
             .ToArray();
+        HasMadeLooks = node.RenderableMeshes.SelectMany(mesh => mesh.DrawCalls).Any(draw =>
+            draw.Material.Material.Name.Contains("_s2mk_own", StringComparison.OrdinalIgnoreCase)
+            && (draw.Material.Material.IntParams.GetValueOrDefault("F_TRANSLUCENT") != 0 || draw.Material.Material.IntParams.GetValueOrDefault("F_SELF_ILLUM") != 0));
         Pieces = picker.Count == Parts.Count
             ? [.. Enumerable.Range(0, Parts.Count).SelectMany(part => picker.PiecesOf(part).Select((piece, number) => new PartPiece(piece, part, number + 1, picker.TriangleCount(piece))))]
             : [];
@@ -127,6 +130,10 @@ public sealed partial class PreviewSession : IDisposable
     public static string RendererName => $"ValveResourceFormat.Renderer {typeof(VRenderer).Assembly.GetName().Version}; {GLEnvironment.GpuRendererAndDriver}";
 
     public IReadOnlyList<PreviewPart> Parts { get; }
+
+    /// <summary>True when a part uses a material copy made by the app (<c>_s2mk_own</c>) that is see-through or glowing: the preview
+    /// draws those differently from the game.</summary>
+    public bool HasMadeLooks { get; }
 
     /// <summary>The separate meshes of parts made of several (index from <c>Parts.Count</c> up): each can take its own colour.</summary>
     public IReadOnlyList<PartPiece> Pieces { get; }

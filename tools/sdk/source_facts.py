@@ -20,13 +20,16 @@ def restore_masks(nodes, source_text):
         node['morph_weights'] = []
 
 
-def restore_bind(dm, native_text, datamodel):
+def restore_bind(dm, native_text, datamodel, extra=None):
+    """extra: {joint: parent} declared bones absent from the source (jiggle_bones@1); they keep their authored bind."""
+    extra = dict(extra or {})
     names, parents, positions, rotations = [field(native_text,k) for k in
             ('m_boneName','m_nParent','m_bonePosParent','m_boneRotParent')]
     require(len(set(names)) == len(names) == len(parents) == len(positions) == len(rotations),
             'SOURCE_BIND_ARRAYS_INVALID')
     joints = [e for e in dm.elements if e.type == 'DmeJoint']
-    require({j.name for j in joints} == set(names) and len(joints) == len(names), 'DMX_SOURCE_JOINTS_CHANGED')
+    require(not set(extra) & set(names), 'DMX_DECLARED_JOINT_IN_SOURCE')
+    require({j.name for j in joints} == set(names) | set(extra) and len(joints) == len(names) + len(extra), 'DMX_SOURCE_JOINTS_CHANGED')
     named = dict(zip(names,zip(parents,positions,rotations)))
     actual_parents = {}
     for joint in joints:
@@ -35,7 +38,8 @@ def restore_bind(dm, native_text, datamodel):
                 require(child.name not in actual_parents,'DMX_DUPLICATE_PARENT')
                 actual_parents[child.name] = joint.name
     require(all(actual_parents.get(n) == (names[p] if p >= 0 else None)
-                for n,(p,_,_) in named.items()), 'DMX_SOURCE_PARENTS_CHANGED')
+                for n,(p,_,_) in named.items()) and all(actual_parents.get(n) == p for n,p in extra.items()),
+            'DMX_SOURCE_PARENTS_CHANGED')
     transforms = [e for e in dm.elements if e.type == 'DmeTransform' and e.name in named]
     require(len(transforms) == 2*len(names) and all(sum(t.name == n for t in transforms) == 2 for n in names),
             'DMX_SOURCE_BIND_STATES_CHANGED')
@@ -72,6 +76,6 @@ def restore_bind(dm, native_text, datamodel):
         require(length > 1e-8,'SOURCE_BIND_QUATERNION_INVALID')
         t['orientation'] = datamodel.Quaternion([v/length for v in q])
     require(protected() == before,'DMX_UNDECLARED_TRANSPORT_CHANGE')
-    return {'operation':'sdk_source_bind_transport@1','bones':len(names),
+    return {'operation':'sdk_source_bind_transport@1','bones':len(names),'declaredBones':sorted(extra),
             'maxExportLocalPositionError':max_position,'maxExportLocalRotationError':max_rotation,
             'nonBindAttributesExact':True,'runtimeTested':False}

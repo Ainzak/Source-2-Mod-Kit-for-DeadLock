@@ -256,7 +256,7 @@ internal sealed class PartPicker
             }
 
             var groups = Enumerable.Range(0, triangles).GroupBy(t => Find(welded[t * 3]))
-                .Select(group => group.ToArray()).Where(group => group.Length >= triangles * 0.04)
+                .Select(group => group.ToArray()).SelectMany(BySide).Where(group => group.Length >= triangles * 0.04)
                 .OrderByDescending(group => group.Length).ThenBy(group => group[0]).Take(12).ToArray();
             if (groups.Length < 2)
             {
@@ -273,6 +273,20 @@ internal sealed class PartPicker
                 indices = [.. group.SelectMany(t => new[] { indices[t * 3], indices[(t * 3) + 1], indices[(t * 3) + 2] })],
                 TriangleIds = group,
             })];
+        }
+
+        /// <summary>
+        /// A mesh made of a left and a right half with a clear gap at the model's middle (a pair of boots or gloves) as two pieces, so one
+        /// side can be changed alone. The model's side axis is y; a mesh that crosses the middle stays one piece.
+        /// </summary>
+        private IEnumerable<int[]> BySide(int[] group)
+        {
+            var side = group.Select(t => (positions[indices[t * 3]].Y + positions[indices[(t * 3) + 1]].Y + positions[indices[(t * 3) + 2]].Y) / 3f).ToArray();
+            var left = group.Where((_, i) => side[i] > 0).ToArray();
+            var right = group.Where((_, i) => side[i] <= 0).ToArray();
+            var gap = side.Min(MathF.Abs);
+            var width = side.Max(MathF.Abs);
+            return left.Length >= group.Length * 0.25 && right.Length >= group.Length * 0.25 && gap > 0.15f * width ? [left, right] : [group];
         }
 
         /// <summary>The bone with the most weight on vertex <paramref name="v"/> (an index into the skinning matrices).</summary>

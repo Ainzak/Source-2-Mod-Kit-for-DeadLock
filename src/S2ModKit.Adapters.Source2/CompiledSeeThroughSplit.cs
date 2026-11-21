@@ -69,7 +69,7 @@ public static class CompiledSeeThroughSplit
                     var entry = Enumerable.Range(0, embedded.Count).Select(i => embedded[i]).FirstOrDefault(item => item.ContainsKey("m_nMeshIndex") && Int(item, "m_nMeshIndex") == meshIndex)
                         ?? throw Errors.Unsupported("SEE_THROUGH_LAYOUT", "This model's mesh table does not list its meshes.", "Report the model.");
                     var descriptor = entry.TryGetValue("m_indexBuffers", out var list) && list.IsArray && buffer < list.Count ? list[buffer]
-                        : throw Errors.Unsupported("SEE_THROUGH_LAYOUT", "This model keeps its triangles in an older layout.", "Pick another part.");
+                        : throw Errors.Unsupported("SEE_THROUGH_LAYOUT", "This model keeps its triangles in the game's older combined layout, so a part cannot be split into pieces.", "Change the whole part instead.");
                     if (descriptor.TryGetValue("m_bCompressedZSTD", out var zstd) && zstd.ToBoolean(CultureInfo.InvariantCulture))
                     {
                         throw Errors.Unsupported("SEE_THROUGH_LAYOUT", "This part's triangles are stored with a compression the app cannot write yet.", "Change the whole part instead.");

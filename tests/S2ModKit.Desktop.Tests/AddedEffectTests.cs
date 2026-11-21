@@ -142,14 +142,14 @@ public sealed class AddedEffectTests
         }, token);
         AddedEffect[] added = [new(Flame, "head", new Vector3(0, 2, 0)), new(Flame, null, Vector3.Zero)];
 
-        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, added, null, token);
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, added, null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         Assert.Equal(2, Shipped(built.Files[0]).Count(path => path.StartsWith("particles/s2modkit/geist/added_", StringComparison.Ordinal)));
         Assert.Equal(2, EditRecipe.Of(built)!.Added!.Length);
         Assert.Equal("head", EditRecipe.Of(built)!.Added![0].Bone);
 
-        var missing = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect("particles/no/such.vpcf", null, Vector3.Zero)], null, token));
+        var missing = await Assert.ThrowsAsync<S2ModKitException>(() => root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect("particles/no/such.vpcf", null, Vector3.Zero)], null, null, token));
         Assert.Equal("ADDED_EFFECT_MISSING", missing.Error.Code);
 
         await root.Catalog().ReapplyAsync(built, await root.Catalog().LoadAsync(token), token);
@@ -199,7 +199,7 @@ public sealed class AddedEffectTests
         }, token);
         var before = File.ReadAllBytes(source);
 
-        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Parent, "head", Vector3.Zero, source)], null, token);
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Parent, "head", Vector3.Zero, source)], null, null, token);
 
         Assert.Equal(before, File.ReadAllBytes(source));
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
@@ -273,7 +273,7 @@ public sealed class AddedEffectTests
             [Added + "_c"] = game(Added),
         }, token);
 
-        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Added, null, Vector3.Zero, Parent: Ability)], null, token);
+        await root.Catalog().BuildEditsAsync(null, Geist, new HashSet<int>(), [], null, null, null, [new AddedEffect(Added, null, Vector3.Zero, Parent: Ability)], null, null, token);
 
         var built = Assert.Single(await root.Catalog().LoadAsync(token), mod => mod.Loaded);
         using var package = new Package();

@@ -35,7 +35,8 @@ public sealed partial class S2ModKitCli
         var installManager = ManagerStateOption();
         var installCache = CacheOption();
         var installFormat = CreateFormatOption();
-        foreach (var option in new Option[] { installRoot, installPackage, installSlot, installReceipts, installLabel, installManager, installCache, installFormat })
+        var installShared = new Option<bool>("--allow-shared-files") { Description = "Install although enabled mods change some of the same files (the mod loaded first wins, as the app allows); an identical copy of the package is still refused." };
+        foreach (var option in new Option[] { installRoot, installPackage, installSlot, installReceipts, installLabel, installManager, installCache, installFormat, installShared })
         {
             install.Options.Add(option);
         }
@@ -50,7 +51,8 @@ public sealed partial class S2ModKitCli
                     parseResult.GetRequiredValue(installReceipts),
                     parseResult.GetRequiredValue(installLabel),
                     ManagerStatePath(parseResult.GetValue(installManager)),
-                    parseResult.GetValue(installCache)),
+                    parseResult.GetValue(installCache),
+                    AllowSharedFiles: parseResult.GetValue(installShared)),
                 cancellationToken),
             RenderAddonFileResult,
             cancellationToken));

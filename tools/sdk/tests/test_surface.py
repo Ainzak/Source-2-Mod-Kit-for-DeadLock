@@ -174,6 +174,27 @@ class SurfaceTests(unittest.TestCase):
         restore_bind(dm,scaled,types.SimpleNamespace(Vector3=list,Quaternion=list))
         self.assertEqual([0,0,0,1],dm.elements[-1]['orientation'])
 
+    def test_declared_jiggle_joints_keep_their_authored_bind(self):
+        class Element(dict):
+            def __init__(self,name,kind,uid,**attributes):
+                super().__init__(attributes);self.name=name;self.type=kind;self.id=uid
+        def fixture(parent_of_extra='root'):
+            transforms=[Element('root','DmeTransform',str(i),position=[.0001,0,0],orientation=[0,0,0,1]) for i in range(2)]
+            extra=[Element('jiggle_a','DmeTransform','x'+str(i),position=[3,0,0],orientation=[0,0,0,1]) for i in range(2)]
+            jig=Element('jiggle_a','DmeJoint','jj',transform=extra[0],children=[])
+            joint=Element('root','DmeJoint','j',transform=transforms[0],children=[jig] if parent_of_extra=='root' else [])
+            return types.SimpleNamespace(elements=[joint,jig]+transforms+extra)
+        text='m_boneName=["root"] m_nParent=[-1] m_bonePosParent=[[0,0,0]] m_boneRotParent=[[0,0,0,1]]'
+        dm=fixture();report=restore_bind(dm,text,types.SimpleNamespace(Vector3=list,Quaternion=list),{'jiggle_a':'root'})
+        self.assertEqual(['jiggle_a'],report['declaredBones'])
+        self.assertEqual([3,0,0],dm.elements[-1]['position'])            # the new joint keeps its authored bind
+        with self.assertRaisesRegex(ValueError,'JOINTS_CHANGED'):
+            restore_bind(fixture(),text,types.SimpleNamespace(Vector3=list,Quaternion=list))
+        with self.assertRaisesRegex(ValueError,'PARENTS_CHANGED'):
+            restore_bind(fixture(None),text,types.SimpleNamespace(Vector3=list,Quaternion=list),{'jiggle_a':'root'})
+        with self.assertRaisesRegex(ValueError,'IN_SOURCE'):
+            restore_bind(fixture(),text,types.SimpleNamespace(Vector3=list,Quaternion=list),{'root':None,'jiggle_a':'root'})
+
     def test_duplicate_vertex_uv_seams_cannot_open_or_escape_external_boundary(self):
         original=source()
         original['positions'][3:]=[[2,0,0],[2,2,0],[0,2,0]]

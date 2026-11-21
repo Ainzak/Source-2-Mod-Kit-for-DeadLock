@@ -111,6 +111,9 @@ internal sealed class PreviewControl : OpenGlControlBase
     /// <summary>How see-through each changed part is (0-1; parts not listed are solid); the built mod gets it.</summary>
     public Dictionary<int, float> PartSeeThrough { get; } = [];
 
+    /// <summary>The look (glow or spectral) of each changed part; the built mod gets it. The preview does not draw it.</summary>
+    public Dictionary<int, S2ModKit.Adapters.Source2.MaterialLook> PartLooks { get; } = [];
+
     private (IReadOnlyList<PlacedEffect> Effects, byte[]? Overlay, Action<IReadOnlyList<string?>>? Done)? placedRequest;
     private (Point At, Action<(string Bone, System.Numerics.Vector3 Offset)?> Done)? pointRequest;
 
@@ -189,6 +192,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         PartShines.Clear();
         shineRequests.Clear();
         PartSeeThrough.Clear();
+        PartLooks.Clear();
         seeThroughRequests.Clear();
         colorRequests.Clear();
         rangeRequests.Clear();
@@ -390,6 +394,7 @@ internal sealed class PreviewControl : OpenGlControlBase
         }
 
         session.SetTime(time);
+        session.AnimateMaterials((float)now);                               // a glow's pulse and other time-driven settings
         session.OutlineThickness = Outline;
         ApplyHighlight(now);
         var view = new PreviewView("live", yaw, pitch, zoom, height);

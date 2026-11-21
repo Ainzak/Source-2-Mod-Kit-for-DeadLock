@@ -43,6 +43,24 @@ public sealed class ReapplyTests
         }
     }
 
+    [Fact]
+    public void LooksAreAnEditOfTheRecipeAndOlderRecipesStillRead()
+    {
+        var look = RecipeLook.Of(3, "models/x/m.vmat", new S2ModKit.Adapters.Source2.MaterialLook(0.2f, 0.4f, 0.6f, 1f, 2.5f, 0.6f, true));
+        Assert.Equal(new S2ModKit.Adapters.Source2.MaterialLook(0.2f, 0.4f, 0.6f, 1f, 2.5f, 0.6f, true), look.ToLook());
+        var first = System.Text.Json.JsonSerializer.Deserialize<RecipeLook>("""{"Part":3,"Material":"m.vmat","Kind":"spectral","R":1,"G":0,"B":0,"Strength":0.6,"PulseSpeed":2,"PulseAmount":0.5,"Opacity":0.55,"ColouredOutline":true}""")!;
+        Assert.Equal(new S2ModKit.Adapters.Source2.MaterialLook(1f, 0f, 0f, 0.6f, 2f, 0.5f, true), first.ToLook());   // a first-version recipe
+        var recipe = new EditRecipe(EditRecipe.CurrentSchema, 6860, "models/x/x.vmdl", null, null, null, [], [], [], new Dictionary<string, EffectColorChange>(), DateTimeOffset.UnixEpoch, Looks: [look]);
+        Assert.True(recipe.HasEdits);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(recipe);
+        Assert.Equal(look, System.Text.Json.JsonSerializer.Deserialize<EditRecipe>(json)!.Looks![0]);
+
+        var older = System.Text.Json.JsonSerializer.Deserialize<EditRecipe>(json.Replace(",\"Looks\":[" + System.Text.Json.JsonSerializer.Serialize(look) + "]", string.Empty, StringComparison.Ordinal))!;
+        Assert.Null(older.Looks);                                                       // a recipe made before looks existed
+        Assert.False(older.HasEdits);
+    }
+
     /// <summary>Live check (S2MODKIT_TEST_GAME): a test game folder with the real Doorman model and two of his effects; an edit (one part
     /// hidden, effects to blue) is built, then re-applied: a new version with the same edits, the first one kept disabled.</summary>
     [Fact]
@@ -76,7 +94,7 @@ public sealed class ReapplyTests
 
         var catalog = root.Catalog();
         var blue = new EffectColorChange(new RgbColor(0.1f, 0.3f, 1f));
-        await catalog.BuildEditsAsync(null, Model, new HashSet<int> { 0 }, [], null, effects.ToDictionary(effect => effect, _ => blue), null, null, null, token);
+        await catalog.BuildEditsAsync(null, Model, new HashSet<int> { 0 }, [], null, effects.ToDictionary(effect => effect, _ => blue), null, null, null, null, token);
         var mods = await catalog.LoadAsync(token);
         var edited = Assert.Single(mods, mod => mod.Loaded);
         var recipe = EditRecipe.Of(edited);

@@ -601,6 +601,33 @@ never touched. Without an installation it changes nothing.
 | `--receipts` | Yes | Receipts folder used by `install-file`. |
 | `--format` | No | `text` (default) or `json`. |
 
+### `s2mod models update`
+
+Copies what later game updates added to the game's hero models (cameras, tagged sounds, hero-select scene, damage
+numbers, attachment points whose bones the mod has) into an older mod archive, as the app's **Update** does for an
+installed mod. Writes a new archive; the input is never changed, and nothing is written when no model lacks anything.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--package` | Yes | Mod archive (`_dir.vpk`) to update. |
+| `--game` | Yes | Deadlock `game` folder. |
+| `--output` | Yes | New archive (must not exist). |
+| `--format` | No | `text` (default) or `json`. |
+
+### `s2mod anim clip-events`
+
+Gives an edited compiled animation clip the game clip's own events and per-track read offsets in the current layout (the
+Deadlock SDK compiler writes an older event layout, which can leave a hero stuck after the animation). Frame count,
+duration and skeleton must match the game clip of the same path; pose data is not changed. Writes a new file.
+
+| Option | Required | Meaning |
+|---|---:|---|
+| `--clip` | Yes | Edited compiled clip (`.vnmclip_c`). |
+| `--game` | Yes | Deadlock `game` folder. |
+| `--path` | Yes | The clip's game path, for example `models/heroes_wip/wraith/clips/slide_loop.vnmclip_c`. |
+| `--output` | Yes | New file (must not exist). |
+| `--format` | No | `text` (default) or `json`. |
+
 ### `s2mod mods status`
 
 Read-only. Lists every addon the game loads (`pakNN_dir.vpk`) with its Deadlock Mod Manager name, resource kinds and an

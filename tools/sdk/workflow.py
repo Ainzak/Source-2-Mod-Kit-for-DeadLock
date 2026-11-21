@@ -428,6 +428,12 @@ def environment(config, which, out, manifest, decompiled, dmx, restore_source=Fa
     require(shaders, 'SDK_SHADERS_MISSING')
     for p in shaders:
         shutil.copyfile(p, private_core / p.name)
+    # CS2 since 2026-11-12 opens game/core/pak01_dir.vpk beside the -game folder: link the core archive in (read-only use).
+    for p in (sdk / 'core').glob('pak01_*.vpk') if which == 'cs2' else ():
+        try:
+            os.link(p, private_core / p.name)
+        except OSError:
+            shutil.copyfile(p, private_core / p.name)
     mounts = [os.path.relpath(p, base / 'game').replace('\\', '/') for p in
               (sdk / ('csgo' if which == 'cs2' else 'citadel'), sdk / 'core')]
     require(all((base / 'game' / p).is_dir() for p in mounts), 'SDK_MOUNT_MISSING')
